@@ -9,6 +9,6 @@ description = "A tool to convert Windows cursors to Linux cursors."
 [dependencies]
 clap = { version = "4.5.51", features = ["derive"] }
 log = "0.4.28"
-miette = "7.6.0"
+miette = { version = "7.6.0", features = ["fancy"] }
 simplelog = "0.12.2"
 time = "0.3.44"
