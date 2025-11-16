@@ -1,6 +1,6 @@
 use currust::{
     cli::{Args, validate_args},
-    logging::init_logging, parse::cursor::parse_cur,
+    logging::init_logging,
 };
 
 use log::debug;
@@ -14,7 +14,6 @@ fn main() -> Result<()> {
     init_logging(&args)?;
 
     debug!("args={args:?}");
-    parse_cur(&args.cursor_file)?;
 
     Ok(())
 }
