@@ -7,7 +7,7 @@ use std::fs::File;
 
 use log::LevelFilter;
 use miette::{IntoDiagnostic, Result};
-use simplelog::{self, ConfigBuilder, TermLogger, TerminalMode, WriteLogger};
+use simplelog::{self, ColorChoice, ConfigBuilder, TermLogger, TerminalMode, WriteLogger};
 
 /// Initializes logging based on the given `args`.
 pub fn init_logging(args: &ParsedArgs) -> Result<()> {
@@ -27,13 +27,8 @@ pub fn init_logging(args: &ParsedArgs) -> Result<()> {
         let stream = File::open(f).into_diagnostic()?;
         WriteLogger::init(filter, config, stream).into_diagnostic()?;
     } else {
-        TermLogger::init(
-            filter,
-            config,
-            TerminalMode::Mixed,
-            simplelog::ColorChoice::Auto,
-        )
-        .into_diagnostic()?;
+        TermLogger::init(filter, config, TerminalMode::Mixed, ColorChoice::Auto)
+            .into_diagnostic()?;
     }
 
     Ok(())
