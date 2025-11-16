@@ -1,17 +1,13 @@
 //! Stores the CLI through [`Args`], which uses [`clap`].
 //!
-//! Other modules should use [`ParsedArgs`], which
-//! has validation for, e.g, filepath arguments.
+//! Other modules should use [`ParsedArgs`], which is validated.
 
 use crate::errors::ArgParseError;
 
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::path::PathBuf;
 
 use clap::Parser;
-use miette::{IntoDiagnostic, Result};
+use miette::Result;
 use simplelog::Level;
 
 /// Represents received CLI arguments.
@@ -23,15 +19,17 @@ pub struct Args {
     cursor_file: String,
 
     /// Disables logs entirely
-    #[arg(short, long, help_heading = "logging")]
+    #[arg(short, long, help_heading = "Logging")]
     quiet: bool,
 
     /// Shows all logs with severity ≥ LEVEL
-    #[arg(long, value_name = "LEVEL", default_value_t = Level::Warn, help_heading = "logging")]
+    /// 
+    /// Available severity levels: TRACE, DEBUG, INFO, WARN, ERROR
+    #[arg(long, value_name = "LEVEL", default_value_t = Level::Warn, help_heading = "Logging")]
     log_level: Level,
 
     /// Writes logs to FILE instead of the terminal
-    #[arg(long, value_name = "FILE", help_heading = "logging")]
+    #[arg(long, value_name = "FILE", help_heading = "Logging")]
     log_file: Option<String>,
 }
 
@@ -58,7 +56,7 @@ pub struct ParsedArgs {
 pub fn validate_args(args: Args) -> Result<ParsedArgs> {
     let cursor_file = PathBuf::from(&args.cursor_file)
         .canonicalize()
-        .map_err(|_| ArgParseError::invalid_file(None, &args.cursor_file))?;
+        .map_err(|_| ArgParseError::missing_file(None, &args.cursor_file))?;
 
     let cursor_file_ext = cursor_file.extension().ok_or_else(|| {
         miette::miette!(
@@ -75,16 +73,15 @@ pub fn validate_args(args: Args) -> Result<ParsedArgs> {
         ));
     }
 
-    let log_file = args.log_file.map(|s| PathBuf::from(s));
-
-    if let Some(p) = &log_file {
-        if p == Path::new("/") {
-            return Err(miette::miette!("cannot create log at file-system root"));
-        }
-
-        fs::create_dir_all(p.parent().unwrap()).into_diagnostic()?;
-        fs::write(p, "").into_diagnostic()?;
-    }
+    // map `Option<String>` to Option<PathBuf>, canonicalizing `Some(PathBuf)`
+    let log_file = args
+        .log_file
+        .map(|s| {
+            PathBuf::from(&s)
+                .canonicalize()
+                .map_err(|_| ArgParseError::missing_file(Some("--log-file"), &s))
+        })
+        .transpose()?;
 
     Ok(ParsedArgs {
         cursor_file,
