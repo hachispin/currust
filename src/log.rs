@@ -24,7 +24,7 @@ pub fn init_logging(args: &ParsedArgs) -> Result<()> {
 
     // write to file if specified, else terminal
     if let Some(f) = &args.log_file {
-        let stream = File::open(f).into_diagnostic()?;
+        let stream = File::create(f).into_diagnostic()?;
         WriteLogger::init(filter, config, stream).into_diagnostic()?;
     } else {
         TermLogger::init(filter, config, TerminalMode::Mixed, ColorChoice::Auto)
