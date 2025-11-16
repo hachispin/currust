@@ -3,6 +3,8 @@
 //! Other modules should use [`ParsedArgs`], which
 //! has validation for, e.g, filepath arguments.
 
+use crate::errors::ArgParseError;
+
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -46,11 +48,17 @@ pub struct ParsedArgs {
     pub log_file: Option<PathBuf>,
 }
 
-/// Validates the given `args`
+/// Validates the given `args`, this includes:
+///
+/// - validating input files exist and are valid (e.g, ending in `.cur`)
+/// - converting types (e.g, from [`String`] to [`PathBuf`])
+///      for construction of [`ParsedArgs`]
+/// - resolving paths
+///
 pub fn validate_args(args: Args) -> Result<ParsedArgs> {
-    let cursor_file = PathBuf::from(args.cursor_file)
+    let cursor_file = PathBuf::from(&args.cursor_file)
         .canonicalize()
-        .into_diagnostic()?;
+        .map_err(|_| ArgParseError::invalid_file(None, &args.cursor_file))?;
 
     let cursor_file_ext = cursor_file.extension().ok_or_else(|| {
         miette::miette!(
