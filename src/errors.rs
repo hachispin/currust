@@ -6,7 +6,22 @@ use thiserror::Error;
 #[derive(Error, Debug, Diagnostic)]
 #[error("{error}")]
 #[diagnostic(help("{help}"))]
+/// Used for displaying diagnostics when parsing CLI arguments.
 pub struct ArgParseError {
+    error: String,
+    #[source_code]
+    src: NamedSource<String>,
+    #[label("here!")]
+    pos: SourceSpan,
+    help: String,
+}
+
+#[derive(Error, Debug, Diagnostic)]
+#[error("{error}")]
+#[diagnostic(help("{help}"))]
+/// Used as a general error for problems while parsing
+/// raw bytes, such as magic bytes not matching.
+pub struct BlobError {
     error: String,
     #[source_code]
     src: NamedSource<String>,
@@ -36,7 +51,7 @@ impl ArgParseError {
         (NamedSource::new("stdin", src), pos.into())
     }
 
-    /// Creates a diagnostic given a non-existent filepath.
+    /// Used when given a non-existent filepath.
     pub fn missing_file(flag: Option<&str>, value: &str) -> Self {
         let src_pos = Self::get_src_and_pos(flag, value);
 
@@ -48,7 +63,7 @@ impl ArgParseError {
         }
     }
 
-    /// Used receiving a file with the wrong/no file extension
+    /// Used when receiving a file with the wrong/no file extension
     pub fn invalid_file_ext(
         flag: Option<&str>,
         value: &str,
@@ -68,6 +83,20 @@ impl ArgParseError {
             src: src_pos.0,
             pos: src_pos.1,
             help: format!("point to a file with the expected '.{expected_ext}' extension"),
+        }
+    }
+}
+
+impl BlobError {
+    pub fn new(src: &[u8], filename: &str) -> Self {
+        let src = format!("{src:?}");
+        let src_len = src.len();
+
+        Self {
+            error: "something went wrong".to_string(),
+            src: NamedSource::new(filename, src),
+            pos: (0, src_len).into(),
+            help: "yeah you're cooked bro".to_string(),
         }
     }
 }
