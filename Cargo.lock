@@ -156,6 +156,7 @@ dependencies = [
  "clap",
  "log",
  "miette",
+ "nofmt",
  "simplelog",
  "thiserror",
  "time",
@@ -272,6 +273,12 @@ checksum = "1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316"
 dependencies = [
  "adler2",
 ]
+
+[[package]]
+name = "nofmt"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b06910a54adb901a01dfd9c475e7959c41acd55a078101ec70fb180f01b7435f"
 
 [[package]]
 name = "num-conv"

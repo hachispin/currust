@@ -10,6 +10,7 @@ description = "A tool to convert Windows cursors to Linux cursors."
 clap = { version = "4.5.51", features = ["derive"] }
 log = "0.4.28"
 miette = { version = "7.6.0", features = ["fancy"] }
+nofmt = "1.0.0"
 simplelog = "0.12.2"
 thiserror = "2.0.17"
 time = "0.3.44"
