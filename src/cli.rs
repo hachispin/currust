@@ -59,18 +59,20 @@ pub fn validate_args(args: Args) -> Result<ParsedArgs> {
         .map_err(|_| ArgParseError::missing_file(None, &args.cursor_file))?;
 
     let cursor_file_ext = cursor_file.extension().ok_or_else(|| {
-        miette::miette!(
-            "failed to parse extension for cursor input {:?}",
-            cursor_file
-        )
+        ErrReport::from(ArgParseError::invalid_file_ext(
+            None,
+            &args.cursor_file,
+            None,
+            "cur",
+        ))
     })?;
 
     // this isn't comprehensive--file headers are validated later
     if cursor_file_ext != "cur" {
-        return Err(ErrReport::from(ArgParseError::wrong_file_ext(
+        return Err(ErrReport::from(ArgParseError::invalid_file_ext(
             None,
             &args.cursor_file,
-            &cursor_file_ext.to_string_lossy(),
+            Some(&cursor_file_ext.to_string_lossy()),
             "cur",
         )));
     }

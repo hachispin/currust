@@ -48,19 +48,23 @@ impl ArgParseError {
         }
     }
 
-    /// Used receiving a file with the wrong file extension
-    pub fn wrong_file_ext(
+    /// Used receiving a file with the wrong/no file extension
+    pub fn invalid_file_ext(
         flag: Option<&str>,
         value: &str,
-        received_ext: &str,
+        received_ext: Option<&str>,
         expected_ext: &str,
     ) -> Self {
         let src_pos = Self::get_src_and_pos(flag, value);
 
+        let error = if let Some(ext) = received_ext {
+            format!("expected file extension '.{expected_ext}', instead got '.{ext}'")
+        } else {
+            format!("expected file extension '.{expected_ext}', instead found no extension")
+        };
+
         Self {
-            error: format!(
-                "expected file extension '.{expected_ext}', instead got '.{received_ext}'"
-            ),
+            error,
             src: src_pos.0,
             pos: src_pos.1,
             help: format!("point to a file with the expected '.{expected_ext}' extension"),
