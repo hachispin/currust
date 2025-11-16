@@ -7,7 +7,7 @@ use crate::errors::ArgParseError;
 use std::path::PathBuf;
 
 use clap::Parser;
-use miette::Result;
+use miette::{ErrReport, Result};
 use simplelog::Level;
 
 /// Represents received CLI arguments.
@@ -23,7 +23,7 @@ pub struct Args {
     quiet: bool,
 
     /// Shows all logs with severity ≥ LEVEL
-    /// 
+    ///
     /// Available severity levels: TRACE, DEBUG, INFO, WARN, ERROR
     #[arg(long, value_name = "LEVEL", default_value_t = Level::Warn, help_heading = "Logging")]
     log_level: Level,
@@ -67,10 +67,12 @@ pub fn validate_args(args: Args) -> Result<ParsedArgs> {
 
     // this isn't comprehensive--file headers are validated later
     if cursor_file_ext != "cur" {
-        return Err(miette::miette!(
-            "expected extension `.cur`, got {}",
-            cursor_file_ext.display()
-        ));
+        return Err(ErrReport::from(ArgParseError::wrong_file_ext(
+            None,
+            &args.cursor_file,
+            &cursor_file_ext.to_string_lossy(),
+            "cur",
+        )));
     }
 
     // map `Option<String>` to Option<PathBuf>, canonicalizing `Some(PathBuf)`
