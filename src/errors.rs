@@ -7,7 +7,7 @@ use thiserror::Error;
 #[error("{error}")]
 #[diagnostic(help("{help}"))]
 /// Used for displaying diagnostics when parsing CLI arguments.
-pub struct ArgParseError {
+pub struct ArgError {
     error: String,
     #[source_code]
     src: NamedSource<String>,
@@ -30,8 +30,8 @@ pub struct BlobError {
     help: String,
 }
 
-impl ArgParseError {
-    /// Helper function for computing [`ArgParseError::src`] and [`ArgParseError::pos`].
+impl ArgError {
+    /// Helper function for computing [`ArgError::src`] and [`ArgError::pos`].
     /// The first item in the tuple is the `src`, and the second is the `pos`.
     ///
     /// Note: `flag` is [`Option<T>`] to account for positional arguments.
