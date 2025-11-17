@@ -10,4 +10,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - CLI args
-- Path validation
+- Path and file validation
+- Rudimentary `.cur` parsing
