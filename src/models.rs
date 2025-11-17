@@ -18,12 +18,12 @@ use zerocopy::{
 /// being variable-sized (with length `img_count`).
 ///
 /// Reference: https://en.wikipedia.org/wiki/ICO_(file_format)#ICONDIR_structure
-struct IconDirHeader {
+struct IconDirHeader<'a> {
     /// must be 0
-    _reserved: u16_le,
+    _reserved: &'a u16_le,
     /// 1 = ICO, 2 = CUR. other values are invalid
-    type_: u16_le,
-    img_count: u16_le,
+    type_: &'a u16_le,
+    img_count: &'a u16_le,
 }
 
 /// The full model of `ICONDIR`, including `idEntries`
@@ -61,13 +61,13 @@ pub struct IconDir<'a> {
 /// Reference: https://en.wikipedia.org/wiki/ICO_(file_format)#ICONDIRENTRY_structure
 pub struct IconDirEntry<'b> {
     /// width of stored image
-    width: &'b u8,
+    width: u8,
     /// height of stored image
-    height: &'b u8,
+    height: u8,
     /// irrelevant really
-    color_count: &'b u8,
+    color_count: u8,
     /// must be 0
-    _reserved: &'b u8,
+    _reserved: u8,
     // x-coordinate of cursor click pixel (i.e, hotspot)
     hotspot_x: &'b u16_le,
     /// y-coordinate of cursor click pixel (i.e, hotspot)
