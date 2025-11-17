@@ -2,11 +2,7 @@
 //!
 //! Note that the `.cur` format follows little-endian byte ordering.
 
-use std::{
-    fs,
-    io::Cursor,
-    path::Path,
-};
+use std::{fs, io::Cursor, path::Path};
 
 use binrw::BinRead;
 use miette::{IntoDiagnostic, Result};
