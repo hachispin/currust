@@ -17,6 +17,5 @@ fn main() -> Result<()> {
 
     let cur = WinCursor::new(&args.cursor_file)?;
     debug!("cursor dump: {:?}", cur.icon_dir);
-
     Ok(())
 }

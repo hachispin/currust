@@ -37,13 +37,13 @@ impl ArgParseError {
     /// Note: `flag` is [`Option<T>`] to account for positional arguments.
     fn get_src_and_pos(flag: Option<&str>, value: &str) -> (NamedSource<String>, SourceSpan) {
         let src = if let Some(f) = flag {
-            format!("{f} {value}")
+            format!("flags: {f}\nvalue: {value}")
         } else {
             value.to_string()
         };
 
         let pos = if let Some(f) = flag {
-            (f.len() + 1, value.len())
+            (f.len() + 15, value.len()) // +15 = len("flags: ") + len("\nvalue: ")
         } else {
             (0, src.len())
         };
