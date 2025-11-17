@@ -86,17 +86,3 @@ impl ArgParseError {
         }
     }
 }
-
-impl BlobError {
-    pub fn new(src: &[u8], filename: &str) -> Self {
-        let src = format!("{src:02x?}");
-        let src_len = src.len();
-
-        Self {
-            error: "parsing blob failed".to_string(),
-            src: NamedSource::new(filename, src),
-            pos: (0, src_len).into(),
-            help: "yeah you're cooked bro".to_string(),
-        }
-    }
-}
