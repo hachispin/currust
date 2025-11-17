@@ -3,7 +3,9 @@
 //! Note that the `.cur` format follows little-endian byte ordering.
 
 use std::{
-    fs::{self, File}, io::Cursor, path::Path
+    fs,
+    io::Cursor,
+    path::Path,
 };
 
 use binrw::BinRead;
@@ -11,14 +13,13 @@ use miette::{IntoDiagnostic, Result};
 
 /// Models the byte layout of `ICONDIR`.
 ///
-/// Reference: https://en.wikipedia.org/wiki/ICO_(file_format)#ICONDIR_structure
+/// Reference: <https://en.wikipedia.org/wiki/ICO_(file_format)#ICONDIR_structure>
 #[derive(BinRead, Debug)]
-#[br(little, magic=b"\x00\x00\x02\x00")] // contains reserved and type
+#[br(little, magic = b"\x00\x00\x02\x00")] // contains reserved and type
 pub struct IconDir {
     // `idReserved` and `idType` aren't here as
     // they're considered part of the magic bytes.
     // `binrw` starts reading *after* them.
-
     /// the number of images
     pub num_images: u16,
     /// entries exist for each image, containing
@@ -30,7 +31,7 @@ pub struct IconDir {
 /// Models the byte layout of `ICONDIRENTRY`, which
 /// stores info regarding an image (may be bmp/png)
 ///
-/// Reference: https://en.wikipedia.org/wiki/ICO_(file_format)#ICONDIRENTRY_structure
+/// Reference: <https://en.wikipedia.org/wiki/ICO_(file_format)#ICONDIRENTRY_structure>
 #[derive(BinRead, Debug)]
 #[brw(little, assert(_reserved == 0), assert(hotspot_x <= width as u16), assert(hotspot_y <= height as u16))]
 pub struct IconDirEntry {

@@ -40,9 +40,13 @@ pub struct Args {
 #[allow(unused)]
 #[derive(Debug)]
 pub struct ParsedArgs {
+    /// path to Windows cursor to be converted
     pub cursor_file: PathBuf,
+    /// if `true`, all logs are disabled
     pub quiet: bool,
+    /// used as [`simplelog::LevelFilter`]
     pub log_level: Level,
+    /// if `--log-file` flag is used, logs are written here
     pub log_file: Option<PathBuf>,
 }
 
