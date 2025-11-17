@@ -32,11 +32,13 @@ pub struct IconDir {
 #[brw(little, assert(_reserved == 0), assert(hotspot_x <= width as u16), assert(hotspot_y <= height as u16))]
 pub struct IconDirEntry {
     /// width of stored image
-    width: u8,
-    // height of stored image
-    height: u8,
+    pub width: u8,
+    /// height of stored image
+    pub height: u8,
     /// number of colors in palette; 0 if not used
-    color_count: u8,
+    ///
+    /// sort of useless, so it's underscore-prefixed
+    _color_count: u8,
     /// must be 0
     _reserved: u8,
     /// horizontal coordinates from left in pixels
@@ -47,9 +49,37 @@ pub struct IconDirEntry {
     pub hotspot_y: u16,
     /// image data size in bytes
     image_size: u32,
-    /// offset of image data (png/bmp)
-    /// from beginning of `.cur` file
+    /// offset of image data (`.png`/`.bmp`) from beginning of `.cur` file
+    ///
+    /// note that for `.bmp` specifically, this offset leads you to where
+    /// `BITMAPINFOHEADER` starts. raw data starts 40 bytes after that.
     pub image_offset: u32,
+}
+
+/// A hotspot. Or the click pixel. Or whatever else.
+#[derive(Debug)]
+#[allow(missing_docs)]
+pub struct Hotspot {
+    pub x: u16,
+    pub y: u16,
+}
+/// A height. And a width.
+#[derive(Debug)]
+#[allow(missing_docs)]
+pub struct Dimensions {
+    pub width: u8,
+    pub height: u8,
+}
+
+/// Stores an image blob, along with its dimensions and hotspot.
+#[derive(Debug)]
+pub struct CursorImage {
+    /// raw image data
+    pub blob: Vec<u8>,
+    /// coordinates of hotspot
+    pub hotspot: Hotspot,
+    /// height and width of image
+    pub dims: Dimensions,
 }
 
 /// Stores [`IconDir`], along with its corresponding `.cur` blob.
@@ -74,5 +104,52 @@ impl WinCursor {
             blob: bytes,
             icon_dir,
         })
+    }
+
+    /// Parses stored `blob` using [`Self::icon_dir`], along with
+    /// other relevant fields to (presumably) convert to Xcursor.
+    pub fn extract_images(&self) -> Vec<CursorImage> {
+        let mut images = Vec::with_capacity(self.icon_dir.entries.len());
+
+        for entry in &self.icon_dir.entries {
+            let size = entry.image_size as usize;
+            let offset = entry.image_offset as usize;
+
+            // check magic bytes at offset
+            // let magic = &self.blob[offset..(offset + 4)];
+
+            // adjust offset/size based on magic--we're skipping
+            // `BITMAPINFOHEADER` to go straight to image blob
+            // let (size, offset) = match magic {
+            //     // png magic
+            //     [0x89, 0x50, 0x4E, 0x47] => (size, offset),
+            //     // `BITMAPINFOHEADER` size decl.
+            //     [0x28, 0x00, 0x00, 0x00] => (size - 40, offset + 40),
+            //     // unknown
+            //     _ => panic!("Unexpected magic: {magic:?}"),
+            // };
+
+            let image_blob = self.blob[offset..(offset + size)].to_vec();
+
+            let hotspot = Hotspot {
+                x: entry.hotspot_x,
+                y: entry.hotspot_y,
+            };
+
+            let dims = Dimensions {
+                height: entry.height,
+                width: entry.width,
+            };
+
+            let image = CursorImage {
+                blob: image_blob,
+                hotspot,
+                dims,
+            };
+
+            images.push(image);
+        }
+
+        return images;
     }
 }

@@ -2,7 +2,7 @@
 //!
 //! Other modules should use [`ParsedArgs`], which is validated.
 
-use crate::errors::ArgParseError;
+use crate::errors::ArgError;
 
 use std::path::PathBuf;
 
@@ -17,6 +17,10 @@ pub struct Args {
     /// The path to the Windows cursor
     #[arg(value_name = "FILE")]
     cursor_file: String,
+
+    /// The directory to place the converted cursor
+    #[arg(short, long, value_name = "DIR", default_value_t = String::from("./"))]
+    out: String,
 
     /// Disables logs entirely
     #[arg(short, long, help_heading = "Logging")]
@@ -42,6 +46,8 @@ pub struct Args {
 pub struct ParsedArgs {
     /// path to Windows cursor to be converted
     pub cursor_file: PathBuf,
+    /// path to place converted (x)cursor
+    pub out: PathBuf,
     /// if `true`, all logs are disabled
     pub quiet: bool,
     /// used as [`simplelog::LevelFilter`]
@@ -60,10 +66,10 @@ pub struct ParsedArgs {
 pub fn validate_args(args: Args) -> Result<ParsedArgs> {
     let cursor_file = PathBuf::from(&args.cursor_file)
         .canonicalize()
-        .map_err(|_| ArgParseError::missing_file(None, &args.cursor_file))?;
+        .map_err(|_| ArgError::missing_file(None, &args.cursor_file))?;
 
     let cursor_file_ext = cursor_file.extension().ok_or_else(|| {
-        ErrReport::from(ArgParseError::invalid_file_ext(
+        ErrReport::from(ArgError::invalid_file_ext(
             None,
             &args.cursor_file,
             None,
@@ -71,9 +77,13 @@ pub fn validate_args(args: Args) -> Result<ParsedArgs> {
         ))
     })?;
 
+    let out = PathBuf::from(&args.out)
+        .canonicalize()
+        .map_err(|_| ArgError::missing_file(Some("-o or --out"), &args.out))?;
+
     // this isn't comprehensive--file headers are validated later
     if cursor_file_ext != "cur" {
-        return Err(ErrReport::from(ArgParseError::invalid_file_ext(
+        return Err(ErrReport::from(ArgError::invalid_file_ext(
             None,
             &args.cursor_file,
             Some(&cursor_file_ext.to_string_lossy()),
@@ -87,12 +97,13 @@ pub fn validate_args(args: Args) -> Result<ParsedArgs> {
         .map(|s| {
             PathBuf::from(&s)
                 .canonicalize()
-                .map_err(|_| ArgParseError::missing_file(Some("--log-file"), &s))
+                .map_err(|_| ArgError::missing_file(Some("--log-file"), &s))
         })
         .transpose()?;
 
     Ok(ParsedArgs {
         cursor_file,
+        out,
         quiet: args.quiet,
         log_level: args.log_level,
         log_file,
