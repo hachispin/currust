@@ -2,92 +2,80 @@
 //!
 //! Note that the `.cur` format follows little-endian byte ordering.
 
-use std::{fs, path::Path};
-
-use miette::{IntoDiagnostic, Result};
-use zerocopy::{
-    FromBytes, Immutable, KnownLayout,
-    little_endian::{U16 as u16_le, U32 as u32_le},
+use std::{
+    fs::{self, File}, io::Cursor, path::Path
 };
 
-#[repr(C, packed)]
-#[derive(FromBytes, KnownLayout, Immutable, Debug)]
-/// Partially models the byte layout of `ICONDIR`.
-///
-/// This does not contain `idEntries` due to it
-/// being variable-sized (with length `img_count`).
+use binrw::BinRead;
+use miette::{IntoDiagnostic, Result};
+
+/// Models the byte layout of `ICONDIR`.
 ///
 /// Reference: https://en.wikipedia.org/wiki/ICO_(file_format)#ICONDIR_structure
-struct IconDirHeader<'a> {
-    /// must be 0
-    _reserved: &'a u16_le,
-    /// 1 = ICO, 2 = CUR. other values are invalid
-    type_: &'a u16_le,
-    img_count: &'a u16_le,
+#[derive(BinRead, Debug)]
+#[br(little, magic=b"\x00\x00\x02\x00")] // contains reserved and type
+pub struct IconDir {
+    // `idReserved` and `idType` aren't here as
+    // they're considered part of the magic bytes.
+    // `binrw` starts reading *after* them.
+
+    /// the number of images
+    pub num_images: u16,
+    /// entries exist for each image, containing
+    /// info such as hotspot coordinates
+    #[br(count=num_images)]
+    pub entries: Vec<IconDirEntry>,
 }
 
-/// The full model of `ICONDIR`, including `idEntries`
-///
-/// Lifetime `'b` indicates that the blob these fields
-/// point to must be valid for as long as [`IconDir`] is.
-pub struct IconDir<'a> {
-    _reserved: &'a u16_le,
-    type_: &'a u16_le,
-    img_count: &'a u16_le,
-    img_entries: &'a [IconDirEntry<'a>],
-}
-
-// impl IconDir {
-//     /// Parses `bytes` and does any dirty work.
-//     ///
-//     /// Use this over [`IconDirHeader::read_from_bytes`].
-//     pub fn new(bytes: &[u8]) -> Result<Self> {
-//         let (header, entries) = IconDirHeader::read_from_prefix(bytes).into_diagnostic()?;
-
-//         let entry_size = size_of::<IconDirEntry>();
-//         assert_eq!(entry_size, 16);
-//         let end = usize::from(header.img_count) * entry_size;
-//         let entries: Vec<IconDirEntry> = Vec::with_capacity(usize::from(header.img_count));
-
-//         panic!();
-//     }
-// }
-
-#[repr(C, packed)]
-#[derive(FromBytes, KnownLayout, Immutable, Debug)]
 /// Models the byte layout of `ICONDIRENTRY`, which
-/// stores info regarding an image (one image only)
+/// stores info regarding an image (may be bmp/png)
 ///
 /// Reference: https://en.wikipedia.org/wiki/ICO_(file_format)#ICONDIRENTRY_structure
-pub struct IconDirEntry<'b> {
+#[derive(BinRead, Debug)]
+#[brw(little, assert(_reserved == 0), assert(hotspot_x <= width as u16), assert(hotspot_y <= height as u16))]
+pub struct IconDirEntry {
     /// width of stored image
     width: u8,
-    /// height of stored image
+    // height of stored image
     height: u8,
-    /// irrelevant really
+    /// number of colors in palette; 0 if not used
     color_count: u8,
     /// must be 0
     _reserved: u8,
-    // x-coordinate of cursor click pixel (i.e, hotspot)
-    hotspot_x: &'b u16_le,
-    /// y-coordinate of cursor click pixel (i.e, hotspot)
-    hotspot_y: &'b u16_le,
-    /// size of stored image in bytes
-    img_size: &'b u32_le,
-    /// offset from start of `.cur` blob where png/bmp data starts
-    img_offset: &'b u32_le,
+    /// horizontal coordinates from left in pixels
+    /// for cursor click pizel (i.e, hotspot)
+    pub hotspot_x: u16,
+    /// vertical coordinates from top in pixels
+    /// for cursor click pizel (i.e, hotspot)
+    pub hotspot_y: u16,
+    /// image data size in bytes
+    image_size: u32,
+    /// offset of image data (png/bmp)
+    /// from beginning of `.cur` file
+    pub image_offset: u32,
 }
 
-struct WinCursor<'blob> {
+/// Stores [`IconDir`], along with its corresponding `.cur` blob.
+///
+/// I could definitely refactor away some redundant
+/// copies here and there, but it's far from a priority.
+#[derive(Debug)]
+pub struct WinCursor {
+    /// raw owned bytes used for reading stored images
     blob: Vec<u8>,
-    /// lives as long as WinCursor so blob stays usable
-    icon_dir: IconDir<'blob>,
+    /// contains structured metadata
+    pub icon_dir: IconDir,
 }
 
-impl WinCursor<'_> {
-    pub fn new(fp: &Path) -> Result<Self> {
-        let bytes = fs::read(fp).into_diagnostic()?;
+impl WinCursor {
+    /// Creates a new [`WinCursor`].
+    pub fn new(cur: &Path) -> Result<Self> {
+        let bytes = fs::read(cur).into_diagnostic()?;
+        let icon_dir = IconDir::read(&mut Cursor::new(&bytes)).into_diagnostic()?;
 
-        todo!();
+        Ok(Self {
+            blob: bytes,
+            icon_dir,
+        })
     }
 }
