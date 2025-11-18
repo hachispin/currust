@@ -61,8 +61,8 @@ pub struct IconDirEntry {
 ///
 /// More specifically, this is for DIBs. (device independent bitmaps).
 ///
-/// References: 
-/// 
+/// References:
+///
 /// - <https://en.wikipedia.org/wiki/BMP_file_format#DIB_header_(bitmap_information_header)>
 /// - <https://learn.microsoft.com/en-us/previous-versions/ms969901(v=msdn.10)>
 ///
@@ -84,6 +84,14 @@ pub struct BitmapInfoHeader {
     compression_method: CompressionMethod,
     /// size of raw bitmap data; 0 can be used for [`CompressionMethod::RGB`] bitmaps
     image_size: u32,
+
+    /// default calculated size if `image_size` is set to 0
+    /// 
+    /// explanation can be found here:
+    /// <https://learn.microsoft.com/en-us/previous-versions/ms969901(v=msdn.10)#overview>
+    #[br(calc = (((((width * bits_per_pixel as i32) + 31) & !31) >> 3) * height).try_into().unwrap())]
+    image_size_default: u32,
+
     /// (signed) horizontal resolution of image (pixel per metre)
     horizontal_ppm: i32,
     /// (signed) vertical resolution of image (pixel per metre)
