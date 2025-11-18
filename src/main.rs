@@ -1,5 +1,3 @@
-use std::fs;
-
 use currust::{
     cli::{Args, validate_args},
     logging::init_logging,
@@ -9,7 +7,7 @@ use currust::{
 use log::debug;
 
 use clap::Parser;
-use miette::{IntoDiagnostic, Result};
+use miette::Result;
 
 fn main() -> Result<()> {
     miette::set_panic_hook();
@@ -18,15 +16,12 @@ fn main() -> Result<()> {
     debug!("args={args:?}");
 
     let cur = WinCursor::new(&args.cursor_file)?;
-    debug!("cur.icon_dir={:?}", cur.icon_dir);
-
-    todo!("Code below is non-functional!");
+    debug!("cur.icon_dir={:#?}", cur.icon_dir);
 
     let images = cur.extract_images();
 
-    for (i, image) in images.iter().enumerate() {
-        let p = args.out.join(format!("{i}"));
-        fs::write(p, &image.blob).into_diagnostic()?;
+    for image in images {
+        debug!("{image:#?}");
     }
 
     Ok(())

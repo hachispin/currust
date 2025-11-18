@@ -56,6 +56,62 @@ pub struct IconDirEntry {
     pub image_offset: u32,
 }
 
+/// Models the byte layout of a `BITMAPINFOHEADER`. This is needed
+/// for parsing `.bmp` files in memory, used in the `.cur` format.
+///
+/// More specifically, this is for DIBs. (device independent bitmaps).
+///
+/// Reference: <https://en.wikipedia.org/wiki/BMP_file_format#DIB_header_(bitmap_information_header)>
+///
+/// (_look at the "Windows BITMAPINFOHEADER" table_)
+#[derive(BinRead, Debug)]
+#[brw(little)]
+pub struct BitmapInfoHeader {
+    /// size of the header itself in bytes
+    header_size: u32,
+    /// (signed) bitmap width in pixels
+    width: i32,
+    /// (signed) bitmap height in pixels
+    height: i32,
+    /// number of color planes (must be 1)
+    color_planes: u16,
+    /// the color depth; typical values are 1, 4, 8, 16, 24, 32
+    bits_per_pixel: u16,
+    /// type of compression being used on image
+    compression_method: CompressionMethod,
+    /// size of raw bitmap data; 0 can be used for [`CompressionMethod::RGB`] bitmaps
+    image_size: u32,
+    /// (signed) horizontal resolution of image (pixel per metre)
+    horizontal_ppm: i32,
+    /// (signed) vertical resolution of image (pixel per metre)
+    vertical_ppm: i32,
+    /// number of colors in color palette; 0 defaults to 2^n
+    color_count: u32,
+    /// number of "important" colors used; generally useless
+    imp_color_count: u32,
+}
+
+/// A field in `BITMAPINFOHEADER` used to specify
+/// the compression method used for its image.
+///
+/// Reference: <https://en.wikipedia.org/wiki/BMP_file_format#DIB_header_(bitmap_information_header)>
+///
+/// (_look at the "Compression method" table_)
+#[derive(BinRead, Debug)]
+#[br(repr = u32)]
+enum CompressionMethod {
+    RGB = 0,
+    RLE8 = 1,
+    RLE4 = 2,
+    BITFIELDS = 3,
+    JPEG = 4,
+    PNG = 5,
+    ALPHABITFIELDS = 6,
+    CMYK = 11,
+    CMYKRLE8 = 12,
+    CMYKRLE4 = 13,
+}
+
 /// A hotspot. Or the click pixel. Or whatever else.
 #[derive(Debug)]
 #[allow(missing_docs)]
@@ -108,46 +164,16 @@ impl WinCursor {
 
     /// Parses stored `blob` using [`Self::icon_dir`], along with
     /// other relevant fields to (presumably) convert to Xcursor.
-    pub fn extract_images(&self) -> Vec<CursorImage> {
+    pub fn extract_images(&self) -> Vec<BitmapInfoHeader> {
         let mut images = Vec::with_capacity(self.icon_dir.entries.len());
 
         for entry in &self.icon_dir.entries {
             let size = entry.image_size as usize;
             let offset = entry.image_offset as usize;
 
-            // check magic bytes at offset
-            // let magic = &self.blob[offset..(offset + 4)];
+            let image_blob = &self.blob[offset..(offset + size)];
 
-            // adjust offset/size based on magic--we're skipping
-            // `BITMAPINFOHEADER` to go straight to image blob
-            // let (size, offset) = match magic {
-            //     // png magic
-            //     [0x89, 0x50, 0x4E, 0x47] => (size, offset),
-            //     // `BITMAPINFOHEADER` size decl.
-            //     [0x28, 0x00, 0x00, 0x00] => (size - 40, offset + 40),
-            //     // unknown
-            //     _ => panic!("Unexpected magic: {magic:?}"),
-            // };
-
-            let image_blob = self.blob[offset..(offset + size)].to_vec();
-
-            let hotspot = Hotspot {
-                x: entry.hotspot_x,
-                y: entry.hotspot_y,
-            };
-
-            let dims = Dimensions {
-                height: entry.height,
-                width: entry.width,
-            };
-
-            let image = CursorImage {
-                blob: image_blob,
-                hotspot,
-                dims,
-            };
-
-            images.push(image);
+            images.push(BitmapInfoHeader::read(&mut Cursor::new(image_blob)).unwrap());
         }
 
         return images;
