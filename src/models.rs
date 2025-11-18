@@ -29,7 +29,12 @@ pub struct IconDir {
 ///
 /// Reference: <https://en.wikipedia.org/wiki/ICO_(file_format)#ICONDIRENTRY_structure>
 #[derive(BinRead, Debug)]
-#[br(little, assert(_reserved == 0), assert(hotspot_x <= width as u16), assert(hotspot_y <= height as u16))]
+#[br(
+    little,
+    assert(_reserved == 0),
+    assert(hotspot_x <= width as u16),
+    assert(hotspot_y <= height as u16)
+)]
 pub struct IconDirEntry {
     /// width of stored image
     pub width: u8,
@@ -51,8 +56,7 @@ pub struct IconDirEntry {
     image_size: u32,
     /// offset of image data (`.png`/`.bmp`) from beginning of `.cur` file
     ///
-    /// note that for `.bmp` specifically, this offset leads you to where
-    /// `BITMAPINFOHEADER` starts. raw data starts 40 bytes after that.
+    /// note that for `.bmp` specifically, this leads you to `BITMAPINFOHEADER`
     pub image_offset: u32,
 }
 
@@ -68,7 +72,12 @@ pub struct IconDirEntry {
 ///
 /// ( _find the "BITMAPINFOHEADER" tables!_ )
 #[derive(BinRead, Debug)]
-#[br(little, assert(header_size == 40), assert(color_planes == 1), assert([1, 4, 8, 24].contains(&bits_per_pixel)))]
+#[br(
+    little,
+    assert(header_size == 40),
+    assert(color_planes == 1),
+    assert([1, 4, 8, 24].contains(&bits_per_pixel))
+)]
 pub struct BitmapInfoHeader {
     /// size of the header itself in bytes
     header_size: u32,
@@ -82,22 +91,34 @@ pub struct BitmapInfoHeader {
     bits_per_pixel: u16,
     /// type of compression being used on image
     compression_method: CompressionMethod,
-    /// size of raw bitmap data; 0 can be used for [`CompressionMethod::RGB`] bitmaps
+    /// size of raw bitmap data, if 0, use [`Self::image_size_default`]
     image_size: u32,
 
-    /// default calculated size if `image_size` is set to 0
+    /// default calculated size. this value **should only
+    /// be used if `image_size` is set to 0**
     /// 
     /// explanation can be found here:
     /// <https://learn.microsoft.com/en-us/previous-versions/ms969901(v=msdn.10)#overview>
-    #[br(calc = (((((width * bits_per_pixel as i32) + 31) & !31) >> 3) * height).try_into().unwrap())]
+    #[br(
+        calc = (((((width * bits_per_pixel as i32) + 31) & !31) >> 3) * height)
+        .try_into().unwrap())
+    ]
     image_size_default: u32,
 
     /// (signed) horizontal resolution of image (pixel per metre)
     horizontal_ppm: i32,
     /// (signed) vertical resolution of image (pixel per metre)
     vertical_ppm: i32,
-    /// number of colors in color palette; 0 defaults to 2^n
+    /// number of colors in color palette, if 0, use [`Self::color_count_default`]
     color_count: u32,
+
+    /// default color count. **should only be used
+    /// if [`Self::color_count`] is set to 0**
+    /// 
+    /// ref: <https://en.wikipedia.org/wiki/BMP_file_format#Color_table>
+    #[br(calc = 2u32.pow(bits_per_pixel as u32))]
+    color_count_default: u32,
+
     /// number of "important" colors used; generally useless
     imp_color_count: u32,
 }
