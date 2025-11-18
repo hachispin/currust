@@ -29,7 +29,7 @@ pub struct IconDir {
 ///
 /// Reference: <https://en.wikipedia.org/wiki/ICO_(file_format)#ICONDIRENTRY_structure>
 #[derive(BinRead, Debug)]
-#[brw(little, assert(_reserved == 0), assert(hotspot_x <= width as u16), assert(hotspot_y <= height as u16))]
+#[br(little, assert(_reserved == 0), assert(hotspot_x <= width as u16), assert(hotspot_y <= height as u16))]
 pub struct IconDirEntry {
     /// width of stored image
     pub width: u8,
@@ -61,11 +61,14 @@ pub struct IconDirEntry {
 ///
 /// More specifically, this is for DIBs. (device independent bitmaps).
 ///
-/// Reference: <https://en.wikipedia.org/wiki/BMP_file_format#DIB_header_(bitmap_information_header)>
+/// References: 
+/// 
+/// - <https://en.wikipedia.org/wiki/BMP_file_format#DIB_header_(bitmap_information_header)>
+/// - <https://learn.microsoft.com/en-us/previous-versions/ms969901(v=msdn.10)>
 ///
-/// (_look at the "Windows BITMAPINFOHEADER" table_)
+/// ( _find the "BITMAPINFOHEADER" tables!_ )
 #[derive(BinRead, Debug)]
-#[brw(little)]
+#[br(little, assert(header_size == 40), assert(color_planes == 1), assert([1, 4, 8, 24].contains(&bits_per_pixel)))]
 pub struct BitmapInfoHeader {
     /// size of the header itself in bytes
     header_size: u32,
@@ -75,7 +78,7 @@ pub struct BitmapInfoHeader {
     height: i32,
     /// number of color planes (must be 1)
     color_planes: u16,
-    /// the color depth; typical values are 1, 4, 8, 16, 24, 32
+    /// the color depth; must be 1, 4, 8, and 24
     bits_per_pixel: u16,
     /// type of compression being used on image
     compression_method: CompressionMethod,
@@ -96,7 +99,7 @@ pub struct BitmapInfoHeader {
 ///
 /// Reference: <https://en.wikipedia.org/wiki/BMP_file_format#DIB_header_(bitmap_information_header)>
 ///
-/// (_look at the "Compression method" table_)
+/// ( _find the "Compression method" table!_ )
 #[derive(BinRead, Debug)]
 #[br(repr = u32)]
 enum CompressionMethod {
@@ -112,7 +115,7 @@ enum CompressionMethod {
     CMYKRLE4 = 13,
 }
 
-/// A hotspot. Or the click pixel. Or whatever else.
+/// A (hotspot/click-pixel/whatever)'s coordinates.
 #[derive(Debug)]
 #[allow(missing_docs)]
 pub struct Hotspot {
