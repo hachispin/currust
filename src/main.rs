@@ -1,7 +1,7 @@
 use currust::{
     cli::{Args, validate_args},
     logging::init_logging,
-    models::WinCursor,
+    models::CursorImage,
 };
 
 use log::debug;
@@ -15,14 +15,7 @@ fn main() -> Result<()> {
     init_logging(&args)?;
     debug!("args={args:?}");
 
-    let cur = WinCursor::new(&args.cursor_file)?;
-    debug!("cur.icon_dir={:#?}", cur.icon_dir);
-
-    let images = cur.extract_images();
-
-    for image in images {
-        debug!("{image:#?}");
-    }
+    todo!();
 
     Ok(())
 }

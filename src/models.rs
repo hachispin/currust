@@ -2,6 +2,8 @@
 //!
 //! Note that the `.cur` format follows little-endian byte ordering.
 
+#![allow(unused)] // TODO: REMOVE THIS LATER PLEASE
+
 use std::{fs, io::Cursor, path::Path};
 
 use binrw::BinRead;
@@ -82,13 +84,13 @@ pub struct BitmapInfoHeader {
     /// size of the header itself in bytes
     header_size: u32,
     /// (signed) bitmap width in pixels
-    width: i32,
+    pub width: i32,
     /// (signed) bitmap height in pixels
-    height: i32,
+    pub height: i32,
     /// number of color planes (must be 1)
     color_planes: u16,
     /// the color depth; must be 1, 4, 8, and 24
-    bits_per_pixel: u16,
+    pub bits_per_pixel: u16,
     /// type of compression being used on image
     compression_method: CompressionMethod,
     /// size of raw bitmap data, if 0, use [`Self::image_size_default`]
@@ -96,7 +98,7 @@ pub struct BitmapInfoHeader {
 
     /// default calculated size. this value **should only
     /// be used if `image_size` is set to 0**
-    /// 
+    ///
     /// explanation can be found here:
     /// <https://learn.microsoft.com/en-us/previous-versions/ms969901(v=msdn.10)#overview>
     #[br(
@@ -106,21 +108,46 @@ pub struct BitmapInfoHeader {
     image_size_default: u32,
 
     /// (signed) horizontal resolution of image (pixel per metre)
-    horizontal_ppm: i32,
+    _horizontal_ppm: i32,
     /// (signed) vertical resolution of image (pixel per metre)
-    vertical_ppm: i32,
+    _vertical_ppm: i32,
     /// number of colors in color palette, if 0, use [`Self::color_count_default`]
     color_count: u32,
 
     /// default color count. **should only be used
     /// if [`Self::color_count`] is set to 0**
-    /// 
+    ///
     /// ref: <https://en.wikipedia.org/wiki/BMP_file_format#Color_table>
     #[br(calc = 2u32.pow(bits_per_pixel as u32))]
     color_count_default: u32,
 
     /// number of "important" colors used; generally useless
-    imp_color_count: u32,
+    _imp_color_count: u32,
+}
+
+impl BitmapInfoHeader {
+    /// Returns the canonical image size.
+    fn image_size(&self) -> u32 {
+        if self.image_size == 0 {
+            self.image_size_default
+        } else {
+            self.image_size
+        }
+    }
+
+    /// Returns the canonical color count.
+    fn color_count(&self) -> u32 {
+        if self.color_count == 0 {
+            self.color_count_default
+        } else {
+            self.color_count
+        }
+    }
+
+    /// Returns RGBA blob.
+    fn parse_rgba(&self) -> Result<Vec<u8>> {
+        todo!();
+    }
 }
 
 /// A field in `BITMAPINFOHEADER` used to specify
@@ -129,7 +156,7 @@ pub struct BitmapInfoHeader {
 /// Reference: <https://en.wikipedia.org/wiki/BMP_file_format#DIB_header_(bitmap_information_header)>
 ///
 /// ( _find the "Compression method" table!_ )
-#[derive(BinRead, Debug)]
+#[derive(BinRead, Debug, PartialEq)]
 #[br(repr = u32)]
 enum CompressionMethod {
     RGB = 0,
@@ -159,55 +186,55 @@ pub struct Dimensions {
     pub height: u8,
 }
 
-/// Stores an image blob, along with its dimensions and hotspot.
+/// Contains all required info for a cursor.
 #[derive(Debug)]
 pub struct CursorImage {
     /// raw image data
-    pub blob: Vec<u8>,
+    pub rgba: Vec<u8>,
     /// coordinates of hotspot
     pub hotspot: Hotspot,
     /// height and width of image
     pub dims: Dimensions,
 }
 
-/// Stores [`IconDir`], along with its corresponding `.cur` blob.
-///
-/// I could definitely refactor away some redundant
-/// copies here and there, but it's far from a priority.
-#[derive(Debug)]
-pub struct WinCursor {
-    /// raw owned bytes used for reading stored images
-    blob: Vec<u8>,
-    /// contains structured metadata
-    pub icon_dir: IconDir,
-}
-
-impl WinCursor {
-    /// Creates a new [`WinCursor`].
-    pub fn new(cur: &Path) -> Result<Self> {
+impl CursorImage {
+    /// Creates a [`CursorImage`] from `cur`, which 
+    /// should be a path to a valid `.cur` file.
+    pub fn from_cur(cur: &Path) -> Result<Vec<Self>> {
         let bytes = fs::read(cur).into_diagnostic()?;
         let icon_dir = IconDir::read(&mut Cursor::new(&bytes)).into_diagnostic()?;
+        let mut cursor_images = Vec::with_capacity(icon_dir.entries.len());
 
-        Ok(Self {
-            blob: bytes,
-            icon_dir,
-        })
-    }
-
-    /// Parses stored `blob` using [`Self::icon_dir`], along with
-    /// other relevant fields to (presumably) convert to Xcursor.
-    pub fn extract_images(&self) -> Vec<BitmapInfoHeader> {
-        let mut images = Vec::with_capacity(self.icon_dir.entries.len());
-
-        for entry in &self.icon_dir.entries {
-            let size = entry.image_size as usize;
+        for entry in &icon_dir.entries {
             let offset = entry.image_offset as usize;
+            let size = entry.image_size as usize;
 
-            let image_blob = &self.blob[offset..(offset + size)];
+            let hotspot = Hotspot {
+                x: entry.hotspot_x,
+                y: entry.hotspot_y,
+            };
 
-            images.push(BitmapInfoHeader::read(&mut Cursor::new(image_blob)).unwrap());
+            let dims = Dimensions {
+                height: entry.height,
+                width: entry.width,
+            };
+
+            let blob = &bytes[(offset)..(offset + size)];
+            let blob_magic = &blob[0..4];
+
+            // png, easy
+            if blob_magic == [0x89, 0x50, 0x4E, 0x47] {
+                let cursor_image = CursorImage {
+                    rgba: blob.to_vec(),
+                    hotspot,
+                    dims,
+                };
+
+                cursor_images.push(cursor_image);
+                continue;
+            }
         }
 
-        return images;
+        return Ok(cursor_images);
     }
 }
