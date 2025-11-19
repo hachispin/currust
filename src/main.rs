@@ -1,13 +1,14 @@
 use currust::{
     cli::{Args, validate_args},
     logging::init_logging,
-    models::CursorImage,
+    models::{CursorImage, WinCursor},
 };
 
 use log::debug;
 
+use image::{RgbaImage, ImageBuffer};
 use clap::Parser;
-use miette::Result;
+use miette::{IntoDiagnostic, Result};
 
 fn main() -> Result<()> {
     miette::set_panic_hook();
@@ -15,7 +16,18 @@ fn main() -> Result<()> {
     init_logging(&args)?;
     debug!("args={args:?}");
 
-    todo!();
+    let cur = WinCursor::new(&args.cursor_file)?;
+    let cur_image = CursorImage::from_cur(cur)?;
+
+    for i in cur_image {
+        debug!("{:?}", i);
+
+        let img: RgbaImage = ImageBuffer::from_raw(
+            i.width, i.height, i.rgba
+        ).unwrap();
+
+        img.save(&args.out.join("image.png")).into_diagnostic()?;
+    }
 
     Ok(())
 }

@@ -7,6 +7,7 @@
 use std::{fs, io::Cursor, path::Path};
 
 use binrw::BinRead;
+use log::{ParseLevelError, debug, warn};
 use miette::{IntoDiagnostic, Result};
 
 /// Models the byte layout of `ICONDIR`.
@@ -62,6 +63,53 @@ pub struct IconDirEntry {
     pub image_offset: u32,
 }
 
+/// stupd aggergaete
+#[derive(Debug)]
+struct DeviceIndependentBitmap {
+    blob: Vec<u8>,
+    header: BitmapInfoHeader,
+}
+
+/// cursor
+#[derive(Debug)]
+pub struct WinCursor {
+    blob: Vec<u8>,
+    header: IconDir,
+}
+
+impl WinCursor {
+    pub fn new(cur: &Path) -> Result<Self> {
+        let bytes = fs::read(cur).into_diagnostic()?;
+        let header = IconDir::read(&mut Cursor::new(&bytes)).into_diagnostic()?;
+
+        Ok(Self {
+            blob: bytes,
+            header,
+        })
+    }
+
+    fn extract_dibs(&self) -> Result<Vec<DeviceIndependentBitmap>> {
+        let mut dibs = Vec::with_capacity(self.header.entries.len());
+
+        for entry in &self.header.entries {
+            let offset = entry.image_offset as usize;
+            let size = entry.image_size as usize;
+            let dib_blob_range = offset..(offset + size);
+            let dib_blob = &self.blob[dib_blob_range];
+            let header = BitmapInfoHeader::read(&mut Cursor::new(&dib_blob)).into_diagnostic()?;
+
+            let dib = DeviceIndependentBitmap {
+                blob: dib_blob.to_vec(),
+                header,
+            };
+
+            dibs.push(dib);
+        }
+
+        Ok(dibs)
+    }
+}
+
 /// Models the byte layout of a `BITMAPINFOHEADER`. This is needed
 /// for parsing `.bmp` files in memory, used in the `.cur` format.
 ///
@@ -78,6 +126,8 @@ pub struct IconDirEntry {
     little,
     assert(header_size == 40),
     assert(color_planes == 1),
+    assert(width != 0),
+    assert(height != 0),
     assert([1, 4, 8, 24].contains(&bits_per_pixel))
 )]
 pub struct BitmapInfoHeader {
@@ -143,11 +193,6 @@ impl BitmapInfoHeader {
             self.color_count
         }
     }
-
-    /// Returns RGBA blob.
-    fn parse_rgba(&self) -> Result<Vec<u8>> {
-        todo!();
-    }
 }
 
 /// A field in `BITMAPINFOHEADER` used to specify
@@ -171,70 +216,119 @@ enum CompressionMethod {
     CMYKRLE4 = 13,
 }
 
-/// A (hotspot/click-pixel/whatever)'s coordinates.
-#[derive(Debug)]
-#[allow(missing_docs)]
-pub struct Hotspot {
-    pub x: u16,
-    pub y: u16,
-}
-/// A height. And a width.
-#[derive(Debug)]
-#[allow(missing_docs)]
-pub struct Dimensions {
-    pub width: u8,
-    pub height: u8,
-}
+/*************** PLAN ***************
 
-/// Contains all required info for a cursor.
+* I need something that can:
+
+    - take a `.cur` blob
+    - read ICONDIRENTRY
+    - go to each entry
+
+* and for each entry:
+
+    - read BITMAPINFOHEADER
+    - do some parsing
+    - return extracted RGBA
+
+* then, store all entries as a struct, storing:
+
+    - raw RGBA
+    - hotspot
+    - image dimensions
+
+***********************************/
+
 #[derive(Debug)]
 pub struct CursorImage {
-    /// raw image data
     pub rgba: Vec<u8>,
-    /// coordinates of hotspot
-    pub hotspot: Hotspot,
-    /// height and width of image
-    pub dims: Dimensions,
+    hotspot_x: i32,
+    hotspot_y: i32,
+    pub width: u32,
+    pub height: u32,
 }
 
 impl CursorImage {
-    /// Creates a [`CursorImage`] from `cur`, which 
-    /// should be a path to a valid `.cur` file.
-    pub fn from_cur(cur: &Path) -> Result<Vec<Self>> {
-        let bytes = fs::read(cur).into_diagnostic()?;
-        let icon_dir = IconDir::read(&mut Cursor::new(&bytes)).into_diagnostic()?;
-        let mut cursor_images = Vec::with_capacity(icon_dir.entries.len());
+    pub fn from_cur(cur: WinCursor) -> Result<Vec<CursorImage>> {
+        let dibs = cur.extract_dibs()?;
+        let mut images = Vec::with_capacity(dibs.len());
 
-        for entry in &icon_dir.entries {
-            let offset = entry.image_offset as usize;
-            let size = entry.image_size as usize;
+        // surely order is guaranteed... please
+        for (entry, dib) in cur.header.entries.iter().zip(dibs) {
+            let rgba = Self::extract_rgba(&dib);
 
-            let hotspot = Hotspot {
-                x: entry.hotspot_x,
-                y: entry.hotspot_y,
+            if dib.header.width != entry.width as i32 {
+                warn!("Mismatched widths: dib.header.width={}, entry.width={}", 
+                dib.header.width, entry.width);
+            }
+
+            let image = CursorImage {
+                rgba,
+                hotspot_x: entry.hotspot_x as i32,
+                hotspot_y: entry.hotspot_y as i32,
+                width: dib.header.width as u32,
+                height: (dib.header.height / 2) as u32,
             };
 
-            let dims = Dimensions {
-                height: entry.height,
-                width: entry.width,
-            };
+            images.push(image);
+        }
 
-            let blob = &bytes[(offset)..(offset + size)];
-            let blob_magic = &blob[0..4];
+        Ok(images)
+    }
 
-            // png, easy
-            if blob_magic == [0x89, 0x50, 0x4E, 0x47] {
-                let cursor_image = CursorImage {
-                    rgba: blob.to_vec(),
-                    hotspot,
-                    dims,
-                };
+    fn extract_rgba(dib: &DeviceIndependentBitmap) -> Vec<u8> {
+        assert_eq!(
+            dib.header.compression_method,
+            CompressionMethod::RGB,
+            "compression methods other than rgb (uncompressed) not implemented"
+        );
 
-                cursor_images.push(cursor_image);
-                continue;
+        assert_eq!(
+            dib.header.bits_per_pixel, 8,
+            "bits per pixel values other than 8 not implemented"
+        );
+
+        assert!(
+            dib.header.bits_per_pixel == 8,
+            "wrong rgba parse method used"
+        );
+        assert!(dib.header.width.is_positive()); // negative width is undefined
+        assert!(dib.header.color_count() != 0); // palette is required for bpp <= 8
+
+        let mut rgba = Vec::with_capacity(dib.blob.len());
+
+        let header_size = dib.header.header_size as usize;
+        let palette_offset = header_size;
+        let pixel_data_offset = header_size + dib.header.color_count() as usize * 4;
+
+        let row_size_unpadded_bits = dib.header.bits_per_pixel as usize * dib.header.width as usize;
+        let row_size_unpadded = row_size_unpadded_bits / 8;
+        let row_size = (row_size_unpadded_bits.div_ceil(32) * 4); // 4-byte alignment
+
+        let height = dib.header.height / 2;
+
+        // reverse if positive, normal if negative
+        let y_range: Vec<i32> = if height.is_positive() {
+            (0..height).rev().collect()
+        } else {
+            (0..height.abs()).collect()
+        };
+
+        for y in y_range {
+            let pixel_offset = row_size * y as usize;
+            let offset = pixel_data_offset + pixel_offset;
+
+            let row = &dib.blob[offset..(offset + row_size_unpadded)];
+
+            for i in row {
+                // *4 because of 4-byte padding
+                let color_offset = palette_offset + (*i as usize * 4);
+                let rev_pixel = &dib.blob[color_offset..(color_offset + 3)];
+
+                rgba.extend(rev_pixel.iter().rev()); // windows uses BGR, not RGB
+                rgba.push(255); // alpha channel
             }
         }
 
-        return Ok(cursor_images);
+        rgba
     }
 }
