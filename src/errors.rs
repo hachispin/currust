@@ -1,6 +1,6 @@
 //! Contains custom errors, derived from [`thiserror::Error`]
 
-use miette::{Diagnostic, NamedSource, SourceSpan};
+use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
 
 #[derive(Error, Debug, Diagnostic)]
@@ -10,32 +10,17 @@ use thiserror::Error;
 pub struct ArgError {
     error: String,
     #[source_code]
-    src: NamedSource<String>,
-    #[label("here!")]
-    pos: SourceSpan,
-    help: String,
-}
-
-#[derive(Error, Debug, Diagnostic)]
-#[error("{error}")]
-#[diagnostic(help("{help}"))]
-/// Used as a general error for problems while parsing
-/// raw bytes, such as magic bytes not matching.
-pub struct BlobError {
-    error: String,
-    #[source_code]
-    src: NamedSource<String>,
+    src: String,
     #[label("here!")]
     pos: SourceSpan,
     help: String,
 }
 
 impl ArgError {
-    /// Helper function for computing [`ArgError::src`] and [`ArgError::pos`].
-    /// The first item in the tuple is the `src`, and the second is the `pos`.
+    /// Helper function for computing [`ArgError::pos`] and generating [`ArgError::src`].
     ///
     /// Note: `flag` is [`Option<T>`] to account for positional arguments.
-    fn get_src_and_pos(flag: Option<&str>, value: &str) -> (NamedSource<String>, SourceSpan) {
+    fn get_src_and_pos(flag: Option<&str>, value: &str) -> (String, SourceSpan) {
         let src = if let Some(f) = flag {
             format!("flags: {f}\nvalue: {value}")
         } else {
@@ -48,7 +33,7 @@ impl ArgError {
             (0, src.len())
         };
 
-        (NamedSource::new("stdin", src), pos.into())
+        (src, pos.into())
     }
 
     /// Used when given a non-existent filepath.
