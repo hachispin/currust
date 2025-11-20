@@ -143,14 +143,16 @@ pub struct BitmapInfoHeader {
     pub bits_per_pixel: u16,
     /// type of compression being used on image
     compression_method: CompressionMethod,
-    /// size of raw bitmap data, if 0, use [`Self::image_size_default`]
+    /// size of the DIBs pixel array (i.e, XOR mask)
+    ///
+    /// NOTE: use the [`Self::image_size`] function
     image_size: u32,
 
-    /// default calculated size. this value **should only
-    /// be used if `image_size` is set to 0**
+    /// default calculated size, explanation can be found here:
     ///
-    /// explanation can be found here:
     /// <https://learn.microsoft.com/en-us/previous-versions/ms969901(v=msdn.10)#overview>
+    ///
+    /// NOTE: use the [`Self::image_size`] function
     #[br(
         calc = (((((width * bits_per_pixel as i32) + 31) & !31) >> 3) * height)
         .try_into().unwrap())
@@ -161,13 +163,16 @@ pub struct BitmapInfoHeader {
     _horizontal_ppm: i32,
     /// (signed) vertical resolution of image (pixel per metre)
     _vertical_ppm: i32,
-    /// number of colors in color palette, if 0, use [`Self::color_count_default`]
+    /// number of colors in color palette
+    ///
+    /// NOTE: use the [`Self::color_count`] function
     color_count: u32,
 
-    /// default color count. **should only be used
-    /// if [`Self::color_count`] is set to 0**
+    /// default color count
     ///
-    /// ref: <https://en.wikipedia.org/wiki/BMP_file_format#Color_table>
+    /// reference: <https://en.wikipedia.org/wiki/BMP_file_format#Color_table>
+    ///
+    /// NOTE: use the [`Self::color_count`] function
     #[br(calc = 2u32.pow(bits_per_pixel as u32))]
     color_count_default: u32,
 
@@ -216,28 +221,6 @@ enum CompressionMethod {
     CMYKRLE4 = 13,
 }
 
-/*************** PLAN ***************
-
-* I need something that can:
-
-    - take a `.cur` blob
-    - read ICONDIRENTRY
-    - go to each entry
-
-* and for each entry:
-
-    - read BITMAPINFOHEADER
-    - do some parsing
-    - return extracted RGBA
-
-* then, store all entries as a struct, storing:
-
-    - raw RGBA
-    - hotspot
-    - image dimensions
-
-***********************************/
-
 #[derive(Debug)]
 pub struct CursorImage {
     pub rgba: Vec<u8>,
@@ -257,8 +240,10 @@ impl CursorImage {
             let rgba = Self::extract_rgba(&dib);
 
             if dib.header.width != entry.width as i32 {
-                warn!("Mismatched widths: dib.header.width={}, entry.width={}", 
-                dib.header.width, entry.width);
+                warn!(
+                    "Mismatched widths: dib.header.width={}, entry.width={}",
+                    dib.header.width, entry.width
+                );
             }
 
             let image = CursorImage {
@@ -275,6 +260,7 @@ impl CursorImage {
         Ok(images)
     }
 
+    /// Extracts and returns a raw RGBA blob from the provided `dib`.
     fn extract_rgba(dib: &DeviceIndependentBitmap) -> Vec<u8> {
         assert_eq!(
             dib.header.compression_method,
@@ -296,36 +282,53 @@ impl CursorImage {
 
         let mut rgba = Vec::with_capacity(dib.blob.len());
 
+        // generally, from left to right, the order is:
+        // ╭──────────┬───────────┬──────────┬──────────╮
+        // │  HEADER  │  PALETTE  │ AND MASK │ XOR MASK │
+        // ╰──────────┴───────────┴──────────┴──────────╯
+
         let header_size = dib.header.header_size as usize;
         let palette_offset = header_size;
         let pixel_data_offset = header_size + dib.header.color_count() as usize * 4;
+        let transparency_offset = pixel_data_offset + dib.header.image_size() as usize;
 
         let row_size_unpadded_bits = dib.header.bits_per_pixel as usize * dib.header.width as usize;
         let row_size_unpadded = row_size_unpadded_bits / 8;
         let row_size = (row_size_unpadded_bits.div_ceil(32) * 4); // 4-byte alignment
 
-        let height = dib.header.height / 2;
+        let height = dib.header.height as usize / 2;
 
         // reverse if positive, normal if negative
-        let y_range: Vec<i32> = if height.is_positive() {
+        let row_indices: Vec<usize> = if dib.header.height.is_positive() {
             (0..height).rev().collect()
         } else {
-            (0..height.abs()).collect()
+            (0..height).collect()
         };
 
-        for y in y_range {
-            let pixel_offset = row_size * y as usize;
-            let offset = pixel_data_offset + pixel_offset;
+        for row_index in row_indices {
+            let row_offset = row_size * row_index;
+            let row_start = pixel_data_offset + row_offset;
+            let row = &dib.blob[row_start..(row_start + row_size_unpadded)];
 
-            let row = &dib.blob[offset..(offset + row_size_unpadded)];
+            for color_index in row.into_iter().map(|i| *i as usize) {
+                // The row, which contains palette indices:
+                // [0, 1, 2, ...]
+                //  │  │  ╰─────────────────╮
+                //  │  ╰────────╮           │
+                // [B, G, R, _, B, G, R, _, B, G, R, _, ...]
+                // ^ The palette, contiguous array of pixels
+                //
+                // Therefore, we need to multiply the indices by four.
+                // (as an aside, Windows stores pixels as BGR, not RGB.)
+                // (... as another aside, the 4th byte in pixels are reserved)
+                // (... seriously, what is going on?)
 
-            for i in row {
-                // *4 because of 4-byte padding
-                let color_offset = palette_offset + (*i as usize * 4);
-                let rev_pixel = &dib.blob[color_offset..(color_offset + 3)];
+                let palette_index = color_index * 4;
+                let pixel_start = palette_offset + palette_index;
+                let pixel = &dib.blob[pixel_start..(pixel_start + 3)];
 
-                rgba.extend(rev_pixel.iter().rev()); // windows uses BGR, not RGB
-                rgba.push(255); // alpha channel
+                rgba.extend(pixel.iter().rev());
+                rgba.push(255) // opaque alpha for now
             }
         }
 
