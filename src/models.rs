@@ -260,6 +260,19 @@ impl CursorImage {
         Ok(images)
     }
 
+    fn get_alpha_bits(alpha: &[u8]) -> Vec<bool> {
+        let mut alpha_bits = Vec::with_capacity(alpha.len() * 8);
+
+        for byte in alpha {
+            for i in 0..8 {
+                let bit = (byte & (1 << (7 - i)));
+                alpha_bits.push(bit != 0);
+            }
+        }
+
+        alpha_bits
+    }
+
     /// Extracts and returns a raw RGBA blob from the provided `dib`.
     fn extract_rgba(dib: &DeviceIndependentBitmap) -> Vec<u8> {
         assert_eq!(
@@ -283,20 +296,29 @@ impl CursorImage {
         let mut rgba = Vec::with_capacity(dib.blob.len());
 
         // generally, from left to right, the order is:
+        //
         // ╭──────────┬───────────┬──────────┬──────────╮
-        // │  HEADER  │  PALETTE  │ AND MASK │ XOR MASK │
+        // │  HEADER  │  PALETTE  │ XOR MASK │ AND MASK │
         // ╰──────────┴───────────┴──────────┴──────────╯
+        //
+        // The XOR mask is where pixel data is stored.
+        // The AND mask is where alpha data is stored
+        // (note: only fully opaque and fully transparent are supported)
 
         let header_size = dib.header.header_size as usize;
+        let width = dib.header.width as usize;
+        let height = dib.header.height as usize / 2;
+
         let palette_offset = header_size;
         let pixel_data_offset = header_size + dib.header.color_count() as usize * 4;
-        let transparency_offset = pixel_data_offset + dib.header.image_size() as usize;
 
         let row_size_unpadded_bits = dib.header.bits_per_pixel as usize * dib.header.width as usize;
         let row_size_unpadded = row_size_unpadded_bits / 8;
-        let row_size = (row_size_unpadded_bits.div_ceil(32) * 4); // 4-byte alignment
+        let row_size = row_size_unpadded_bits.div_ceil(32) * 4; // 4-byte alignment
 
-        let height = dib.header.height as usize / 2;
+        let alpha_offset = pixel_data_offset + (row_size * height);
+        let alpha_size = height * width.div_ceil(32) * 4; // 4-byte alignment for bits
+        let alpha_bits = Self::get_alpha_bits(&dib.blob[alpha_offset..(alpha_offset + alpha_size)]);
 
         // reverse if positive, normal if negative
         let row_indices: Vec<usize> = if dib.header.height.is_positive() {
@@ -310,7 +332,7 @@ impl CursorImage {
             let row_start = pixel_data_offset + row_offset;
             let row = &dib.blob[row_start..(row_start + row_size_unpadded)];
 
-            for color_index in row.into_iter().map(|i| *i as usize) {
+            for (i, color_index) in row.into_iter().map(|i| *i as usize).enumerate() {
                 // The row, which contains palette indices:
                 // [0, 1, 2, ...]
                 //  │  │  ╰─────────────────╮
@@ -327,8 +349,16 @@ impl CursorImage {
                 let pixel_start = palette_offset + palette_index;
                 let pixel = &dib.blob[pixel_start..(pixel_start + 3)];
 
-                rgba.extend(pixel.iter().rev());
-                rgba.push(255) // opaque alpha for now
+                rgba.extend(pixel.into_iter().rev());
+
+                // get position of current pixel
+                let alpha_index = row_index * dib.header.width as usize + i;
+
+                if alpha_bits[alpha_index] {
+                    rgba.push(0);
+                } else {
+                    rgba.push(255);
+                }
             }
         }
 
