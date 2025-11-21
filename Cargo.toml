@@ -8,7 +8,6 @@ description = "A tool to convert Windows cursors to Linux cursors."
 
 [dependencies]
 binrw = "0.15.0"
-bitvec = "1.0.1"
 clap = { version = "4.5.51", features = ["derive"] }
 image = "0.25.9"
 log = "0.4.28"
