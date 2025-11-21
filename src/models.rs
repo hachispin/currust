@@ -78,6 +78,7 @@ pub struct WinCursor {
 }
 
 impl WinCursor {
+    /// Reads the given path, `cur`, parsing the file as a Windows cursor.
     pub fn new(cur: &Path) -> Result<Self> {
         let bytes = fs::read(cur).into_diagnostic()?;
         let header = IconDir::read(&mut Cursor::new(&bytes)).into_diagnostic()?;
@@ -88,6 +89,7 @@ impl WinCursor {
         })
     }
 
+    /// Extracts all [`DeviceIndependentBitmap`] entries from [`Self::blob`].
     fn extract_dibs(&self) -> Result<Vec<DeviceIndependentBitmap>> {
         let mut dibs = Vec::with_capacity(self.header.entries.len());
 
@@ -221,16 +223,21 @@ enum CompressionMethod {
     CMYKRLE4 = 13,
 }
 
+/// Represents a generic cursor.
 #[derive(Debug)]
 pub struct CursorImage {
+    /// raw image data
     pub rgba: Vec<u8>,
     hotspot_x: i32,
     hotspot_y: i32,
+    /// width of stored image in [`Self::rgba`]
     pub width: u32,
+    /// height of stored image in [`Self::rgba`]
     pub height: u32,
 }
 
 impl CursorImage {
+    /// Converts `cur` to a vector of [`CursorImage`] structs.
     pub fn from_cur(cur: WinCursor) -> Result<Vec<CursorImage>> {
         let dibs = cur.extract_dibs()?;
         let mut images = Vec::with_capacity(dibs.len());
@@ -260,12 +267,14 @@ impl CursorImage {
         Ok(images)
     }
 
+    /// Splits all the given bytes in `alpha` into bits,
+    /// collecting them all (flattened) as [`Vec<bool>`]
     fn get_alpha_bits(alpha: &[u8]) -> Vec<bool> {
         let mut alpha_bits = Vec::with_capacity(alpha.len() * 8);
 
         for byte in alpha {
             for i in 0..8 {
-                let bit = (byte & (1 << (7 - i)));
+                let bit = byte & (1 << (7 - i));
                 alpha_bits.push(bit != 0);
             }
         }
@@ -297,12 +306,12 @@ impl CursorImage {
 
         // generally, from left to right, the order is:
         //
-        // ╭──────────┬───────────┬──────────┬──────────╮
-        // │  HEADER  │  PALETTE  │ XOR MASK │ AND MASK │
-        // ╰──────────┴───────────┴──────────┴──────────╯
+        // ╭──────────┬───────────┬────────────┬────────────╮
+        // │  HEADER  │  PALETTE  │  XOR MASK  │  AND MASK  │
+        // ╰──────────┴───────────┴────────────┴────────────╯
         //
         // The XOR mask is where pixel data is stored.
-        // The AND mask is where alpha data is stored
+        // The AND mask is where alpha data is stored.
         // (note: only fully opaque and fully transparent are supported)
 
         let header_size = dib.header.header_size as usize;
@@ -312,15 +321,27 @@ impl CursorImage {
         let palette_offset = header_size;
         let pixel_data_offset = header_size + dib.header.color_count() as usize * 4;
 
-        let row_size_unpadded_bits = dib.header.bits_per_pixel as usize * dib.header.width as usize;
-        let row_size_unpadded = row_size_unpadded_bits / 8;
-        let row_size = row_size_unpadded_bits.div_ceil(32) * 4; // 4-byte alignment
+        let row_size_unpadded = (dib.header.bits_per_pixel as usize * width) / 8;
+        let row_size = row_size_unpadded.next_multiple_of(4); // 4-byte alignment
 
-        let alpha_offset = pixel_data_offset + (row_size * height);
-        let alpha_size = height * width.div_ceil(32) * 4; // 4-byte alignment for bits
+        let alpha_offset = pixel_data_offset + dib.header.image_size() as usize;
+        let alpha_size = (height * width) / 8; // each byte stores 8 transparency flags
         let alpha_bits = Self::get_alpha_bits(&dib.blob[alpha_offset..(alpha_offset + alpha_size)]);
 
-        // reverse if positive, normal if negative
+        // Start reading rows from bottom if positive, else, start from the top
+        //
+        //     Positive:            Negative:
+        //                         ┌──┐┌──┐┌──┐
+        //  3 ...                1 ┿━━┿┿━━┿┿━━┿▶
+        //                         └──┘└──┘└──┘
+        //    ┌──┐┌──┐┌──┐         ┌──┐┌──┐┌──┐
+        //  2 ┿━━┿┿━━┿┿━━┿▶      2 ┿━━┿┿━━┿┿━━┿▶
+        //    └──┘└──┘└──┘         └──┘└──┘└──┘
+        //    ┌──┐┌──┐┌──┐
+        //  1 ┿━━┿┿━━┿┿━━┿▶      3 ...
+        //    └──┘└──┘└──┘
+        //
+        // Numbers here indicate the reading order; 1 is read first
         let row_indices: Vec<usize> = if dib.header.height.is_positive() {
             (0..height).rev().collect()
         } else {
@@ -351,7 +372,7 @@ impl CursorImage {
 
                 rgba.extend(pixel.into_iter().rev());
 
-                // get position of current pixel
+                // Get position of current pixel
                 let alpha_index = row_index * dib.header.width as usize + i;
 
                 if alpha_bits[alpha_index] {
