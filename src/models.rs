@@ -358,7 +358,7 @@ impl CursorImage {
         let row_size = row_size_unpadded.next_multiple_of(4); // 4-byte alignment
 
         // Same thing applies here; rows must be multiples of 4 bytes
-        let alpha_size = (row_size * height).next_multiple_of(4) / 8; // each byte stores 8 transparency flags        
+        let alpha_size = (row_size * height) / 8; // each byte stores 8 transparency flags        
         let alpha_bytes = &dib.blob[alpha_offset..(alpha_offset + alpha_size)];
         let alpha_bits = Self::get_alpha_bits(alpha_bytes);
 
