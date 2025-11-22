@@ -2,12 +2,10 @@
 //!
 //! Note that the `.cur` format follows little-endian byte ordering.
 
-#![allow(unused)] // TODO: REMOVE THIS LATER PLEASE
-
 use std::{fs, io::Cursor, path::Path};
 
 use binrw::BinRead;
-use log::{ParseLevelError, debug, warn};
+use log::{debug, warn};
 use miette::{IntoDiagnostic, Result};
 
 /// Models the byte layout of `ICONDIR`.
@@ -129,7 +127,8 @@ impl WinCursor {
 #[br(
     little,
     assert(header_size == 40),
-    assert(color_planes == 1),
+    assert(_color_planes == 1),
+    assert(_height != 0),
     assert(width != 0),
     assert([1, 4, 8, 24].contains(&bits_per_pixel))
     // ^ "biBitCount: Defines the color resolution (in bits per pixel) of 
@@ -145,7 +144,7 @@ pub struct BitmapInfoHeader {
     /// NOTE: Use the [`Self::height`] function
     _height: i32,
     /// Number of color planes; must be 1
-    color_planes: u16,
+    _color_planes: u16,
     /// Color depth; must be 1, 4, 8, and 24
     bits_per_pixel: u16,
     /// Type of compression being used on the image.
@@ -242,8 +241,10 @@ enum CompressionMethod {
 pub struct CursorImage {
     /// raw image data
     pub rgba: Vec<u8>,
-    hotspot_x: i32,
-    hotspot_y: i32,
+    /// x coordinates of click point
+    pub hotspot_x: i32,
+    /// y coordinates of click point
+    pub hotspot_y: i32,
     /// width of stored image in [`Self::rgba`]
     pub width: u32,
     /// height of stored image in [`Self::rgba`]
