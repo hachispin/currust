@@ -63,7 +63,7 @@ pub struct IconDirEntry {
     pub image_offset: u32,
 }
 
-/// stupd aggergaete
+/// Aggregate for DIB structure.
 #[derive(Debug)]
 struct DeviceIndependentBitmap {
     blob: Vec<u8>,
@@ -80,8 +80,11 @@ pub struct WinCursor {
 impl WinCursor {
     /// Reads the given path, `cur`, parsing the file as a Windows cursor.
     pub fn new(cur: &Path) -> Result<Self> {
+        debug!("Creating `WinCursor`, cur={}", cur.to_string_lossy());
         let bytes = fs::read(cur).into_diagnostic()?;
         let header = IconDir::read(&mut Cursor::new(&bytes)).into_diagnostic()?;
+
+        debug!("Parsed ICONDIR, header={header:?}");
 
         Ok(Self {
             blob: bytes,
@@ -91,6 +94,7 @@ impl WinCursor {
 
     /// Extracts all [`DeviceIndependentBitmap`] entries from [`Self::blob`].
     fn extract_dibs(&self) -> Result<Vec<DeviceIndependentBitmap>> {
+        debug!("Extracting DIBs from entries={:?}", self.header.entries);
         let mut dibs = Vec::with_capacity(self.header.entries.len());
 
         for entry in &self.header.entries {
@@ -120,46 +124,43 @@ impl WinCursor {
 /// References:
 ///
 /// - <https://en.wikipedia.org/wiki/BMP_file_format#DIB_header_(bitmap_information_header)>
-/// - <https://learn.microsoft.com/en-us/previous-versions/ms969901(v=msdn.10)>
-///
-/// ( _find the "BITMAPINFOHEADER" tables!_ )
+/// - <https://learn.microsoft.com/en-us/previous-versions/ms969901(v=msdn.10)#the-dib-header>
 #[derive(BinRead, Debug)]
 #[br(
     little,
     assert(header_size == 40),
     assert(color_planes == 1),
     assert(width != 0),
-    assert(height != 0),
     assert([1, 4, 8, 24].contains(&bits_per_pixel))
+    // ^ "biBitCount: Defines the color resolution (in bits per pixel) of 
+    //   the DIB. Only four values are valid for this field: 1, 4, 8, and 24."
 )]
 pub struct BitmapInfoHeader {
-    /// size of the header itself in bytes
+    /// Size of the header itself in bytes
     header_size: u32,
-    /// (signed) bitmap width in pixels
-    pub width: i32,
-    /// (signed) bitmap height in pixels
-    pub height: i32,
-    /// number of color planes (must be 1)
+    /// (signed) Bitmap width in pixels
+    width: i32,
+    /// (signed) Bitmap height in pixels
+    ///
+    /// NOTE: Use the [`Self::height`] function
+    _height: i32,
+    /// Number of color planes; must be 1
     color_planes: u16,
-    /// the color depth; must be 1, 4, 8, and 24
-    pub bits_per_pixel: u16,
-    /// type of compression being used on image
+    /// Color depth; must be 1, 4, 8, and 24
+    bits_per_pixel: u16,
+    /// Type of compression being used on the image.
     compression_method: CompressionMethod,
-    /// size of the DIBs pixel array (i.e, XOR mask)
-    ///
-    /// NOTE: use the [`Self::image_size`] function
-    image_size: u32,
+    /// NOTE: Use the [`Self::image_size`] function
+    _image_size: u32,
 
-    /// default calculated size, explanation can be found here:
+    /// Default calculated size.
     ///
-    /// <https://learn.microsoft.com/en-us/previous-versions/ms969901(v=msdn.10)#overview>
-    ///
-    /// NOTE: use the [`Self::image_size`] function
+    /// NOTE: Use the [`Self::image_size`] function.
     #[br(
-        calc = (((((width * bits_per_pixel as i32) + 31) & !31) >> 3) * height)
+        calc = (((((width * bits_per_pixel as i32) + 31) & !31) >> 3) * _height)
         .try_into().unwrap())
     ]
-    image_size_default: u32,
+    _image_size_default: u32,
 
     /// (signed) horizontal resolution of image (pixel per metre)
     _horizontal_ppm: i32,
@@ -172,8 +173,6 @@ pub struct BitmapInfoHeader {
 
     /// default color count
     ///
-    /// reference: <https://en.wikipedia.org/wiki/BMP_file_format#Color_table>
-    ///
     /// NOTE: use the [`Self::color_count`] function
     #[br(calc = 2u32.pow(bits_per_pixel as u32))]
     color_count_default: u32,
@@ -183,13 +182,26 @@ pub struct BitmapInfoHeader {
 }
 
 impl BitmapInfoHeader {
+    /// Returns the canonical image height, which
+    /// is half of the `height` field.
+    ///
+    /// This is because it includes the height of
+    /// both the XOR mask and the AND mask, and
+    /// since each pixel has their own masks, this
+    /// ends up being double the actual image's height.
+    fn height(&self) -> i32 {
+        self._height / 2
+    }
+
     /// Returns the canonical image size.
+    ///
+    /// Note that this **doesn't** use the [`Self::image_size`]
+    /// field because it's **unreliable** since some authors
+    /// choose to include the AND mask's size, some don't.
     fn image_size(&self) -> u32 {
-        if self.image_size == 0 {
-            self.image_size_default
-        } else {
-            self.image_size
-        }
+        // This is divided by two since the height is doubled.
+        // Refer to the [`Self::height`] function's documentation.
+        self._image_size_default / 2
     }
 
     /// Returns the canonical color count.
@@ -211,7 +223,9 @@ impl BitmapInfoHeader {
 #[derive(BinRead, Debug, PartialEq)]
 #[br(repr = u32)]
 enum CompressionMethod {
+    /// this is the only supported compression method
     RGB = 0,
+
     RLE8 = 1,
     RLE4 = 2,
     BITFIELDS = 3,
@@ -238,11 +252,10 @@ pub struct CursorImage {
 
 impl CursorImage {
     /// Converts `cur` to a vector of [`CursorImage`] structs.
-    pub fn from_cur(cur: WinCursor) -> Result<Vec<CursorImage>> {
+    pub fn from_win_cur(cur: WinCursor) -> Result<Vec<CursorImage>> {
         let dibs = cur.extract_dibs()?;
         let mut images = Vec::with_capacity(dibs.len());
 
-        // surely order is guaranteed... please
         for (entry, dib) in cur.header.entries.iter().zip(dibs) {
             let rgba = Self::extract_rgba(&dib);
 
@@ -258,7 +271,7 @@ impl CursorImage {
                 hotspot_x: entry.hotspot_x as i32,
                 hotspot_y: entry.hotspot_y as i32,
                 width: dib.header.width as u32,
-                height: (dib.header.height / 2) as u32,
+                height: dib.header.height() as u32,
             };
 
             images.push(image);
@@ -267,8 +280,13 @@ impl CursorImage {
         Ok(images)
     }
 
+    /// Helper function for [`Self::extract_rgba`].
+    ///
     /// Splits all the given bytes in `alpha` into bits,
-    /// collecting them all (flattened) as [`Vec<bool>`]
+    /// collecting them all (flattened) as [`Vec<bool>`],
+    ///
+    /// - `0` or `false` means it's fully opaque.
+    /// - `1` or `true` means it's fully transparent.
     fn get_alpha_bits(alpha: &[u8]) -> Vec<bool> {
         let mut alpha_bits = Vec::with_capacity(alpha.len() * 8);
 
@@ -283,28 +301,31 @@ impl CursorImage {
     }
 
     /// Extracts and returns a raw RGBA blob from the provided `dib`.
+    ///
+    /// Note that only [`CompressionMethod::RGB`] is supported.
     fn extract_rgba(dib: &DeviceIndependentBitmap) -> Vec<u8> {
+        debug!("Extracting RGBA from DIB, header={:?}", dib.header);
+
         assert_eq!(
             dib.header.compression_method,
             CompressionMethod::RGB,
-            "compression methods other than rgb (uncompressed) not implemented"
+            "{:?} not supported",
+            dib.header.compression_method,
         );
 
-        assert_eq!(
-            dib.header.bits_per_pixel, 8,
-            "bits per pixel values other than 8 not implemented"
-        );
-
-        assert!(
-            dib.header.bits_per_pixel == 8,
-            "wrong rgba parse method used"
-        );
         assert!(dib.header.width.is_positive()); // negative width is undefined
         assert!(dib.header.color_count() != 0); // palette is required for bpp <= 8
 
-        let mut rgba = Vec::with_capacity(dib.blob.len());
+        if dib.header.bits_per_pixel != 8 {
+            warn!(
+                "Unstable feature; extracting RGBA from bits_per_pixel={}",
+                dib.header.bits_per_pixel
+            );
+        }
 
-        // generally, from left to right, the order is:
+        let mut rgba = Vec::with_capacity(dib.header.image_size() as usize * 4);
+
+        // Generally, from left to right, the order is:
         //
         // ╭──────────┬───────────┬────────────┬────────────╮
         // │  HEADER  │  PALETTE  │  XOR MASK  │  AND MASK  │
@@ -312,23 +333,36 @@ impl CursorImage {
         //
         // The XOR mask is where pixel data is stored.
         // The AND mask is where alpha data is stored.
-        // (note: only fully opaque and fully transparent are supported)
+        //
+        // Further reading:
+        // https://en.wikipedia.org/wiki/ICO_(file_format)#File_structure
 
         let header_size = dib.header.header_size as usize;
         let width = dib.header.width as usize;
-        let height = dib.header.height as usize / 2;
+        let height = dib.header.height() as usize;
 
         let palette_offset = header_size;
         let pixel_data_offset = header_size + dib.header.color_count() as usize * 4;
+        let alpha_offset = pixel_data_offset + dib.header.image_size() as usize;
 
+        debug!(
+            "Calculated offsets: palette_offset={}, pixel_data_offset={}, alpha_offset={}, dib.blob.len={}",
+            palette_offset,
+            pixel_data_offset,
+            alpha_offset,
+            dib.blob.len()
+        );
+
+        // Each row must be a multiple of 4 bytes
         let row_size_unpadded = (dib.header.bits_per_pixel as usize * width) / 8;
         let row_size = row_size_unpadded.next_multiple_of(4); // 4-byte alignment
 
-        let alpha_offset = pixel_data_offset + dib.header.image_size() as usize;
-        let alpha_size = (height * width) / 8; // each byte stores 8 transparency flags
-        let alpha_bits = Self::get_alpha_bits(&dib.blob[alpha_offset..(alpha_offset + alpha_size)]);
+        // Same thing applies here; rows must be multiples of 4 bytes
+        let alpha_size = (row_size * height).next_multiple_of(4) / 8; // each byte stores 8 transparency flags        
+        let alpha_bytes = &dib.blob[alpha_offset..(alpha_offset + alpha_size)];
+        let alpha_bits = Self::get_alpha_bits(alpha_bytes);
 
-        // Start reading rows from bottom if positive, else, start from the top
+        // Start reading rows the from bottom if positive, else, start from the top
         //
         //     Positive:            Negative:
         //                         ┌──┐┌──┐┌──┐
@@ -342,7 +376,7 @@ impl CursorImage {
         //    └──┘└──┘└──┘
         //
         // Numbers here indicate the reading order; 1 is read first
-        let row_indices: Vec<usize> = if dib.header.height.is_positive() {
+        let row_indices: Vec<usize> = if dib.header.height().is_positive() {
             (0..height).rev().collect()
         } else {
             (0..height).collect()
@@ -373,12 +407,16 @@ impl CursorImage {
                 rgba.extend(pixel.into_iter().rev());
 
                 // Get position of current pixel
-                let alpha_index = row_index * dib.header.width as usize + i;
+                let alpha_index = if dib.header.height().is_positive() {
+                    row_index * dib.header.width as usize + i
+                } else {
+                    (height - row_index - 1) * dib.header.width as usize + (row.len() - i - 1)
+                };
 
                 if alpha_bits[alpha_index] {
-                    rgba.push(0);
+                    rgba.push(0); // transparent
                 } else {
-                    rgba.push(255);
+                    rgba.push(255); // opaque
                 }
             }
         }
