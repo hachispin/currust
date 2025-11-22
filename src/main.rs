@@ -17,11 +17,9 @@ fn main() -> Result<()> {
     debug!("args={args:?}");
 
     let cur = WinCursor::new(&args.cursor_file)?;
-    let cur_image = CursorImage::from_cur(cur)?;
+    let cur_image = CursorImage::from_win_cur(cur)?;
 
     for i in cur_image {
-        debug!("{:?}", i);
-
         let img: RgbaImage = ImageBuffer::from_raw(
             i.width, i.height, i.rgba
         ).unwrap();
