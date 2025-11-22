@@ -356,7 +356,7 @@ impl CursorImage {
 
         // Alias some variables for brevity
         let header_size = dib.header.header_size as usize;
-        let width = dib.header.width as usize;
+        let width = dib.header.width.abs() as usize;
         let height = dib.header.height().abs() as usize;
         let image_size = dib.header.image_size() as usize;
         let color_count = dib.header.color_count() as usize;
@@ -425,7 +425,7 @@ impl CursorImage {
                 let pixel = &dib.blob[pixel_start..(pixel_start + 3)];
 
                 rgba.extend(pixel.into_iter().rev());
-
+                
                 // Get position of current pixel
                 let alpha_index = if dib.header.height().is_positive() {
                     row_index * dib.header.width as usize + i
