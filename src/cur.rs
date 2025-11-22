@@ -14,13 +14,10 @@ use miette::{IntoDiagnostic, Result};
 #[derive(BinRead, Debug)]
 #[br(little, magic = b"\x00\x00\x02\x00")] // contains reserved and type
 pub struct IconDir {
-    // `idReserved` and `idType` aren't here as
-    // they're considered part of the magic bytes.
-    // `binrw` starts reading *after* them.
-    /// the number of images
+    /// The number of images.
     pub num_images: u16,
-    /// entries exist for each image, containing
-    /// info such as hotspot coordinates
+    /// Entries exist for each image, containing
+    /// cursor info such as hotspot coordinates
     #[br(count=num_images)]
     pub entries: Vec<IconDirEntry>,
 }
@@ -32,32 +29,32 @@ pub struct IconDir {
 #[derive(BinRead, Debug)]
 #[br(
     little,
-    assert(_reserved == 0),
-    assert(hotspot_x <= width as u16),
-    assert(hotspot_y <= height as u16)
+    assert(_reserved == 0, "Reserved field in `ICONDIR` must be 0."),
+    assert(hotspot_x <= width as u16, "Hotspot (x={hotspot_x}) outside dimensions (width={width})"),
+    assert(hotspot_y <= height as u16, "Hotspot (y={hotspot_y}) outside dimensions (height={width})")
 )]
 pub struct IconDirEntry {
-    /// width of stored image
+    /// Width of stored image.
     pub width: u8,
-    /// height of stored image
+    /// Height of stored image.
     pub height: u8,
-    /// number of colors in palette; 0 if not used
+    /// Number of colors in the palette; 0 if not used.
     ///
-    /// sort of useless, so it's underscore-prefixed
+    /// The color count in [`BitmapInfoHeader`] is more reliable.
     _color_count: u8,
-    /// must be 0
+    /// Must be 0.
     _reserved: u8,
-    /// horizontal coordinates from left in pixels
-    /// for cursor click pizel (i.e, hotspot)
+    /// Horizontal coordinates from the left side in
+    /// pixels for cursor click pizel (i.e, hotspot)
     pub hotspot_x: u16,
-    /// vertical coordinates from top in pixels
-    /// for cursor click pizel (i.e, hotspot)
+    /// Vertical coordinates from the top side in
+    /// pixels for cursor click pizel (i.e, hotspot)
     pub hotspot_y: u16,
-    /// image data size in bytes
+    /// Image data size in bytes.
     image_size: u32,
-    /// offset of image data (`.png`/`.bmp`) from beginning of `.cur` file
+    /// Offset of image data from the beginning of `.cur` blob.
     ///
-    /// note that for `.bmp` specifically, this leads you to `BITMAPINFOHEADER`
+    /// For `.bmp`, this leads you to `BITMAPINFOHEADER`
     pub image_offset: u32,
 }
 
@@ -68,7 +65,7 @@ struct DeviceIndependentBitmap {
     header: BitmapInfoHeader,
 }
 
-/// cursor
+/// Full representation of a Windows cursor.
 #[derive(Debug)]
 pub struct WinCursor {
     blob: Vec<u8>,
@@ -126,13 +123,15 @@ impl WinCursor {
 #[derive(BinRead, Debug)]
 #[br(
     little,
-    assert(header_size == 40),
-    assert(_color_planes == 1),
-    assert(_height != 0),
-    assert(width != 0),
-    assert([1, 4, 8, 24].contains(&bits_per_pixel))
-    // ^ "biBitCount: Defines the color resolution (in bits per pixel) of 
-    //   the DIB. Only four values are valid for this field: 1, 4, 8, and 24."
+    assert(header_size == 40, "`BITMAPINFOHEADER` size must be 40."),
+    assert(_color_planes == 1, "`color_planes` is a reserved field and must be 1."),
+    assert(_height != 0, "Bitmap height cannot be zero."),
+    assert(width != 0, "Bitmap width cannot be zero."),
+    assert([1, 4, 8, 24].contains(&bits_per_pixel),
+        "Invalid bit depth, bits_per_pixel={bits_per_pixel}"
+    )
+    // ^ The `.bmp` format supports other depths, but
+    //   these are the only depths supported for `.cur`
 )]
 pub struct BitmapInfoHeader {
     /// Size of the header itself in bytes
@@ -222,7 +221,7 @@ impl BitmapInfoHeader {
 #[derive(BinRead, Debug, PartialEq)]
 #[br(repr = u32)]
 enum CompressionMethod {
-    /// this is the only supported compression method
+    /// This is the only supported compression method.
     RGB = 0,
 
     RLE8 = 1,
@@ -239,15 +238,15 @@ enum CompressionMethod {
 /// Represents a generic cursor.
 #[derive(Debug)]
 pub struct CursorImage {
-    /// raw image data
+    /// Raw image data.
     pub rgba: Vec<u8>,
-    /// x coordinates of click point
+    /// X coordinates of click point.
     pub hotspot_x: i32,
-    /// y coordinates of click point
+    /// Y coordinates of click point.
     pub hotspot_y: i32,
-    /// width of stored image in [`Self::rgba`]
+    /// Width of the stored image in [`Self::rgba`]
     pub width: u32,
-    /// height of stored image in [`Self::rgba`]
+    /// Weight of the stored image in [`Self::rgba`]
     pub height: u32,
 }
 
@@ -314,8 +313,18 @@ impl CursorImage {
             dib.header.compression_method,
         );
 
-        assert!(dib.header.width.is_positive()); // negative width is undefined
-        assert!(dib.header.color_count() != 0); // palette is required for bpp <= 8
+        // Behaviour for negative width is undefined
+        assert!(
+            dib.header.width.is_positive(),
+            "expected positive width, instead got dib.header.width={}",
+            dib.header.width
+        );
+
+        // Palette is required for bpp <= 8
+        assert!(
+            dib.header.color_count() != 0,
+            "Missing palette; color count is zero"
+        );
 
         if dib.header.bits_per_pixel != 8 {
             warn!(
@@ -345,13 +354,15 @@ impl CursorImage {
         // Further reading:
         // https://en.wikipedia.org/wiki/ICO_(file_format)#File_structure
 
+        // Alias some variables for brevity
         let header_size = dib.header.header_size as usize;
         let width = dib.header.width as usize;
         let height = dib.header.height().abs() as usize;
         let image_size = dib.header.image_size() as usize;
+        let color_count = dib.header.color_count() as usize;
 
         let palette_offset = header_size;
-        let pixel_data_offset = header_size + dib.header.color_count() as usize * 4;
+        let pixel_data_offset = header_size + color_count * 4;
         let alpha_offset = pixel_data_offset + image_size;
 
         debug!(
