@@ -1,7 +1,7 @@
 use currust::{
     cli::{Args, validate_args},
     logging::init_logging,
-    models::{CursorImage, WinCursor},
+    cur::{CursorImage, WinCursor},
 };
 
 use log::debug;
