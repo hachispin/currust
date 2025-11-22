@@ -156,7 +156,7 @@ pub struct BitmapInfoHeader {
     ///
     /// NOTE: Use the [`Self::image_size`] function.
     #[br(
-        calc = (((((width * bits_per_pixel as i32) + 31) & !31) >> 3) * _height)
+        calc = (((((width * bits_per_pixel as i32) + 31) & !31) >> 3) * _height.abs())
         .try_into().unwrap())
     ]
     _image_size_default: u32,
@@ -272,7 +272,7 @@ impl CursorImage {
                 hotspot_x: entry.hotspot_x as i32,
                 hotspot_y: entry.hotspot_y as i32,
                 width: dib.header.width as u32,
-                height: dib.header.height() as u32,
+                height: dib.header.height().abs() as u32,
             };
 
             images.push(image);
@@ -324,6 +324,13 @@ impl CursorImage {
             );
         }
 
+        if dib.header.height().is_negative() {
+            warn!(
+                "Unstable feature; extracting RGBA from DIBs with height={}",
+                dib.header.height()
+            );
+        }
+
         let mut rgba = Vec::with_capacity(dib.header.image_size() as usize * 4);
 
         // Generally, from left to right, the order is:
@@ -340,11 +347,12 @@ impl CursorImage {
 
         let header_size = dib.header.header_size as usize;
         let width = dib.header.width as usize;
-        let height = dib.header.height() as usize;
+        let height = dib.header.height().abs() as usize;
+        let image_size = dib.header.image_size() as usize;
 
         let palette_offset = header_size;
         let pixel_data_offset = header_size + dib.header.color_count() as usize * 4;
-        let alpha_offset = pixel_data_offset + dib.header.image_size() as usize;
+        let alpha_offset = pixel_data_offset + image_size;
 
         debug!(
             "Calculated offsets: palette_offset={}, pixel_data_offset={}, alpha_offset={}, dib.blob.len={}",
@@ -359,7 +367,7 @@ impl CursorImage {
         let row_size = row_size_unpadded.next_multiple_of(4); // 4-byte alignment
 
         // Same thing applies here; rows must be multiples of 4 bytes
-        let alpha_size = (row_size * height) / 8; // each byte stores 8 transparency flags        
+        let alpha_size = image_size / 8; // each byte stores 8 transparency flags        
         let alpha_bytes = &dib.blob[alpha_offset..(alpha_offset + alpha_size)];
         let alpha_bits = Self::get_alpha_bits(alpha_bytes);
 
@@ -411,7 +419,8 @@ impl CursorImage {
                 let alpha_index = if dib.header.height().is_positive() {
                     row_index * dib.header.width as usize + i
                 } else {
-                    (height - row_index - 1) * dib.header.width as usize + (row.len() - i - 1)
+                    // -1 because sizes are one-indexed
+                    (image_size - 1) - (row_index * dib.header.width as usize + i)
                 };
 
                 if alpha_bits[alpha_index] {
