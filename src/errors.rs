@@ -37,14 +37,14 @@ impl ArgError {
     }
 
     /// Used when given a non-existent filepath.
-    pub fn missing_file(flag: Option<&str>, value: &str) -> Self {
+    pub fn path_doesnt_exist(flag: Option<&str>, value: &str) -> Self {
         let src_pos = Self::get_src_and_pos(flag, value);
 
         Self {
-            error: "file doesn't exist".to_string(),
+            error: "path doesn't exist".to_string(),
             src: src_pos.0,
             pos: src_pos.1,
-            help: format!("create this file or point to an existing file"),
+            help: format!("create this path or point to an existing path"),
         }
     }
 

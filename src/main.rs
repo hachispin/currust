@@ -6,8 +6,8 @@ use currust::{
 
 use log::debug;
 
-use image::{RgbaImage, ImageBuffer};
 use clap::Parser;
+use image::{ImageBuffer, RgbaImage};
 use miette::{IntoDiagnostic, Result};
 
 fn main() -> Result<()> {
@@ -16,15 +16,18 @@ fn main() -> Result<()> {
     init_logging(&args)?;
     debug!("args={args:?}");
 
-    let cur = WinCursor::new(&args.cursor_file)?;
-    let cur_image = CursorImage::from_win_cur(cur)?;
+    for (i, cursor_path) in args.cursor_paths.into_iter().enumerate() {
+        let cur = WinCursor::new(&cursor_path)?;
+        let cur_image = CursorImage::from_win_cur(cur)?;
 
-    for i in cur_image {
-        let img: RgbaImage = ImageBuffer::from_raw(
-            i.width, i.height, i.rgba
-        ).unwrap();
+        for (j, cursor_image) in cur_image.into_iter().enumerate() {
+            let img: RgbaImage =
+                ImageBuffer::from_raw(cursor_image.width, cursor_image.height, cursor_image.rgba)
+                    .unwrap();
 
-        img.save(&args.out.join("image.png")).into_diagnostic()?;
+            img.save(&args.out.join(format!("[Cursor {i}] {j}.png")))
+                .into_diagnostic()?;
+        }
     }
 
     Ok(())
