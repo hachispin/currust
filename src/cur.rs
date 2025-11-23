@@ -17,13 +17,13 @@ pub struct IconDir {
     /// The number of images.
     pub num_images: u16,
     /// Entries exist for each image, containing
-    /// cursor info such as hotspot coordinates
+    /// cursor info such as hotspot coordinates.
     #[br(count=num_images)]
     pub entries: Vec<IconDirEntry>,
 }
 
 /// Models the byte layout of `ICONDIRENTRY`, which
-/// stores info regarding an image (may be bmp/png)
+/// stores info regarding an image (may be bmp/png).
 ///
 /// Reference: <https://en.wikipedia.org/wiki/ICO_(file_format)#ICONDIRENTRY_structure>
 #[derive(BinRead, Debug)]
@@ -45,16 +45,16 @@ pub struct IconDirEntry {
     /// Must be 0.
     _reserved: u8,
     /// Horizontal coordinates from the left side in
-    /// pixels for cursor click pizel (i.e, hotspot)
+    /// pixels for cursor click pizel (i.e, hotspot).
     pub hotspot_x: u16,
     /// Vertical coordinates from the top side in
-    /// pixels for cursor click pizel (i.e, hotspot)
+    /// pixels for cursor click pizel (i.e, hotspot).
     pub hotspot_y: u16,
     /// Image data size in bytes.
     image_size: u32,
     /// Offset of image data from the beginning of `.cur` blob.
     ///
-    /// For `.bmp`, this leads you to `BITMAPINFOHEADER`
+    /// For `.bmp`, this leads you to `BITMAPINFOHEADER`.
     pub image_offset: u32,
 }
 
@@ -128,30 +128,31 @@ impl WinCursor {
     assert(_height != 0, "Bitmap height cannot be zero."),
     assert(width != 0, "Bitmap width cannot be zero."),
     assert([1, 4, 8, 24].contains(&bits_per_pixel),
-        "Invalid bit depth, bits_per_pixel={bits_per_pixel}"
-    )
+        "Invalid bit depth, bits_per_pixel={bits_per_pixel}")
     // ^ The `.bmp` format supports other depths, but
-    //   these are the only depths supported for `.cur`
+    //   these are the only depths supported for `.cur`.
 )]
 pub struct BitmapInfoHeader {
-    /// Size of the header itself in bytes
+    /// Size of the header itself in bytes.
     header_size: u32,
-    /// (signed) Bitmap width in pixels
+    /// (signed) Bitmap width in pixels.
     width: i32,
-    /// (signed) Bitmap height in pixels
+    /// (signed) Bitmap height in pixels.
     ///
-    /// NOTE: Use the [`Self::height`] function
+    /// NOTE: Use the [`Self::height`] function.
     _height: i32,
     /// Number of color planes; must be 1
     _color_planes: u16,
-    /// Color depth; must be 1, 4, 8, and 24
+    /// Color depth; must be 1, 4, 8, or 24
     bits_per_pixel: u16,
     /// Type of compression being used on the image.
     compression_method: CompressionMethod,
+    /// Image size in bytes.
+    ///
     /// NOTE: Use the [`Self::image_size`] function
     _image_size: u32,
 
-    /// Default calculated size.
+    /// Default calculated image size in bytes.
     ///
     /// NOTE: Use the [`Self::image_size`] function.
     #[br(
@@ -160,20 +161,20 @@ pub struct BitmapInfoHeader {
     ]
     _image_size_default: u32,
 
-    /// (signed) horizontal resolution of image (pixel per metre)
+    /// (signed) Horizontal resolution of image in pixels per metre.
     _horizontal_ppm: i32,
-    /// (signed) vertical resolution of image (pixel per metre)
+    /// (signed) Vertical resolution of image in pixels per metre.
     _vertical_ppm: i32,
-    /// number of colors in color palette
+    /// Number of colors in the color palette.
     ///
-    /// NOTE: use the [`Self::color_count`] function
-    color_count: u32,
+    /// NOTE: use the [`Self::color_count`] function.
+    _color_count: u32,
 
     /// default color count
     ///
     /// NOTE: use the [`Self::color_count`] function
     #[br(calc = 2u32.pow(bits_per_pixel as u32))]
-    color_count_default: u32,
+    _color_count_default: u32,
 
     /// number of "important" colors used; generally useless
     _imp_color_count: u32,
@@ -204,10 +205,10 @@ impl BitmapInfoHeader {
 
     /// Returns the canonical color count.
     fn color_count(&self) -> u32 {
-        if self.color_count == 0 {
-            self.color_count_default
+        if self._color_count == 0 {
+            self._color_count_default
         } else {
-            self.color_count
+            self._color_count
         }
     }
 }
@@ -425,7 +426,7 @@ impl CursorImage {
                 let pixel = &dib.blob[pixel_start..(pixel_start + 3)];
 
                 rgba.extend(pixel.into_iter().rev());
-                
+
                 // Get position of current pixel
                 let alpha_index = if dib.header.height().is_positive() {
                     row_index * dib.header.width as usize + i
