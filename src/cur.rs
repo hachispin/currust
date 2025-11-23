@@ -260,10 +260,26 @@ impl CursorImage {
         for (entry, dib) in cur.header.entries.iter().zip(dibs) {
             let rgba = Self::extract_rgba(&dib);
 
+            if dib.header.height() != entry.height as i32 {
+                warn!(
+                    "Conflicting heights: dib.header.height()={}, entry.height={}",
+                    dib.header.height(),
+                    entry.height
+                )
+            }
+
             if dib.header.width != entry.width as i32 {
                 warn!(
-                    "Mismatched widths: dib.header.width={}, entry.width={}",
+                    "Conflicting widths: dib.header.width={}, entry.width={}",
                     dib.header.width, entry.width
+                );
+            }
+
+            if dib.header.image_size() != entry.image_size {
+                warn!(
+                    "Conflicting image sizes: dib.header.image_size()={}, entry.image_size={}",
+                    dib.header.image_size(),
+                    entry.image_size
                 );
             }
 
