@@ -384,7 +384,16 @@ impl CursorImage {
             );
         }
 
-        let mut rgba = Vec::with_capacity(dib.header.image_size() as usize * 4);
+        let rgba_capacity = dib.header.image_size() as f64
+            * match dib.header.bits_per_pixel {
+                1 => 32.0, // 1 bit per pixel => 8 pixels per byte => 32 bytes
+                4 => 16.0, // ...
+                8 => 4.0,
+                24 => 4.0 / 3.0,
+                _ => unreachable!(),
+            };
+
+        let mut rgba = Vec::with_capacity(rgba_capacity.ceil() as usize);
 
         // Generally, from left to right, the order is:
         //
@@ -482,5 +491,4 @@ impl CursorImage {
 
         rgba
     }
-
 }
