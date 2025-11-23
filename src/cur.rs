@@ -251,6 +251,33 @@ pub struct CursorImage {
     pub height: u32,
 }
 
+/// Helper struct for [`CursorImage::extract_rgba`].
+#[derive(Debug)]
+struct Offsets {
+    palette: usize,
+    pixel_data: usize,
+    alpha: usize,
+}
+
+impl Offsets {
+    /// Calculates offsets from the given `header`.
+    fn from_header(header: &BitmapInfoHeader) -> Self {
+        let header_size = header.header_size as usize;
+        let image_size = header.image_size() as usize;
+        let color_count = header.color_count() as usize;
+
+        let palette_offset = header_size;
+        let pixel_data_offset = header_size + color_count * 4;
+        let alpha_offset = pixel_data_offset + image_size;
+
+        Self {
+            palette: palette_offset,
+            pixel_data: pixel_data_offset,
+            alpha: alpha_offset,
+        }
+    }
+}
+
 impl CursorImage {
     /// Converts `cur` to a vector of [`CursorImage`] structs.
     pub fn from_win_cur(cur: WinCursor) -> Result<Vec<CursorImage>> {
@@ -372,22 +399,16 @@ impl CursorImage {
         // https://en.wikipedia.org/wiki/ICO_(file_format)#File_structure
 
         // Alias some variables for brevity
-        let header_size = dib.header.header_size as usize;
         let width = dib.header.width.abs() as usize;
         let height = dib.header.height().abs() as usize;
         let image_size = dib.header.image_size() as usize;
-        let color_count = dib.header.color_count() as usize;
 
-        let palette_offset = header_size;
-        let pixel_data_offset = header_size + color_count * 4;
-        let alpha_offset = pixel_data_offset + image_size;
+        let offsets = Offsets::from_header(&dib.header);
 
         debug!(
-            "Calculated offsets: palette_offset={}, pixel_data_offset={}, alpha_offset={}, dib.blob.len={}",
-            palette_offset,
-            pixel_data_offset,
-            alpha_offset,
-            dib.blob.len()
+            "Calculated offsets (dib.blob.len={}): {:?}",
+            dib.blob.len(),
+            offsets,
         );
 
         // Each row must be a multiple of 4 bytes
@@ -396,7 +417,7 @@ impl CursorImage {
 
         // Same thing applies here; rows must be multiples of 4 bytes
         let alpha_size = image_size / 8; // each byte stores 8 transparency flags        
-        let alpha_bytes = &dib.blob[alpha_offset..(alpha_offset + alpha_size)];
+        let alpha_bytes = &dib.blob[offsets.alpha..(offsets.alpha + alpha_size)];
         let alpha_bits = Self::get_alpha_bits(alpha_bytes);
 
         // Start reading rows the from bottom if positive, else, start from the top
@@ -421,7 +442,7 @@ impl CursorImage {
 
         for row_index in row_indices {
             let row_offset = row_size * row_index;
-            let row_start = pixel_data_offset + row_offset;
+            let row_start = offsets.pixel_data + row_offset;
             let row = &dib.blob[row_start..(row_start + row_size_unpadded)];
 
             for (i, color_index) in row.into_iter().map(|i| *i as usize).enumerate() {
@@ -438,7 +459,7 @@ impl CursorImage {
                 // (... seriously, what is going on?)
 
                 let palette_index = color_index * 4;
-                let pixel_start = palette_offset + palette_index;
+                let pixel_start = offsets.palette + palette_index;
                 let pixel = &dib.blob[pixel_start..(pixel_start + 3)];
 
                 rgba.extend(pixel.into_iter().rev());
@@ -461,4 +482,5 @@ impl CursorImage {
 
         rgba
     }
+
 }
