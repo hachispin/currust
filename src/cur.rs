@@ -5,6 +5,7 @@
 use std::{fs, io::Cursor, path::Path};
 
 use binrw::BinRead;
+use bitvec::prelude::*;
 use log::{debug, warn};
 use miette::{IntoDiagnostic, Result};
 
@@ -324,26 +325,6 @@ impl CursorImage {
         Ok(images)
     }
 
-    /// Helper function for [`Self::extract_rgba`].
-    ///
-    /// Splits all the given bytes in `alpha` into bits,
-    /// collecting them all (flattened) as [`Vec<bool>`],
-    ///
-    /// - `0` or `false` means it's fully opaque.
-    /// - `1` or `true` means it's fully transparent.
-    fn get_alpha_bits(alpha: &[u8]) -> Vec<bool> {
-        let mut alpha_bits = Vec::with_capacity(alpha.len() * 8);
-
-        for byte in alpha {
-            for i in 0..8 {
-                let bit = byte & (1 << (7 - i));
-                alpha_bits.push(bit != 0);
-            }
-        }
-
-        alpha_bits
-    }
-
     /// Extracts and returns a raw RGBA blob from the provided `dib`.
     ///
     /// Note that only [`CompressionMethod::RGB`] is supported.
@@ -427,7 +408,7 @@ impl CursorImage {
         // Same thing applies here; rows must be multiples of 4 bytes
         let alpha_size = image_size / 8; // each byte stores 8 transparency flags        
         let alpha_bytes = &dib.blob[offsets.alpha..(offsets.alpha + alpha_size)];
-        let alpha_bits = Self::get_alpha_bits(alpha_bytes);
+        let alpha_bits = alpha_bytes.view_bits::<Msb0>();
 
         // Start reading rows the from bottom if positive, else, start from the top
         //
