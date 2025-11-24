@@ -9,9 +9,8 @@ description = "A tool to convert Windows cursors to Linux cursors."
 [dependencies]
 binrw = "0.15.0"
 clap = { version = "4.5.51", features = ["derive"] }
-image = "0.25.9"
 log = "0.4.28"
 miette = { version = "7.6.0", features = ["fancy"] }
-simplelog = "0.12.2"
+png = "0.18.0"
+simplelog = { version = "0.12.2", default-features = false, features = ["termcolor"] }
 thiserror = "2.0.17"
-time = "0.3.44"
