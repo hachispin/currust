@@ -1,14 +1,15 @@
+use std::{fs::File, io::BufWriter};
+
 use currust::{
     cli::{Args, validate_args},
-    logging::init_logging,
     cur::{CursorImage, WinCursor},
+    logging::init_logging,
 };
 
-use log::debug;
-
 use clap::Parser;
-use image::{ImageBuffer, RgbaImage};
+use log::debug;
 use miette::{IntoDiagnostic, Result};
+use png::{BitDepth, ColorType, Encoder};
 
 fn main() -> Result<()> {
     miette::set_panic_hook();
@@ -21,12 +22,16 @@ fn main() -> Result<()> {
         let cur_image = CursorImage::from_win_cur(cur)?;
 
         for (j, cursor_image) in cur_image.into_iter().enumerate() {
-            let img: RgbaImage =
-                ImageBuffer::from_raw(cursor_image.width, cursor_image.height, cursor_image.rgba)
-                    .unwrap();
+            let path = args.out.join(&format!("{i}-{j}.png"));
+            let file = File::create(path).into_diagnostic()?;
+            let ref mut w = BufWriter::new(file);
 
-            img.save(&args.out.join(format!("[Cursor {i}] {j}.png")))
-                .into_diagnostic()?;
+            let mut encoder = Encoder::new(w, cursor_image.width, cursor_image.height);
+            encoder.set_depth(BitDepth::Eight);
+            encoder.set_color(ColorType::Rgba);
+
+            let mut writer = encoder.write_header().into_diagnostic()?;
+            writer.write_image_data(&cursor_image.rgba).into_diagnostic()?;
         }
     }
 
