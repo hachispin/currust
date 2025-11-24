@@ -6,7 +6,7 @@ use std::{fs, io::Cursor, path::Path};
 
 use binrw::BinRead;
 use bitvec::prelude::*;
-use log::{debug, warn};
+use log::{debug, error, info, warn};
 use miette::{IntoDiagnostic, Result};
 
 /// Models the byte layout of `ICONDIR`.
@@ -325,6 +325,48 @@ impl CursorImage {
         Ok(images)
     }
 
+    /// Helper function for [`Self::extract_rgba`].
+    fn get_palette_indices(byte: u8, bits_per_pixel: u16, palette_offset: usize) -> Vec<usize> {
+        // [0, 1, 2, ...]
+        //  │  │  ╰─────────────────╮
+        //  │  ╰────────╮           │
+        // [B, G, R, _, B, G, R, _, B, G, R, _, ...]
+        // ^ The palette, contiguous array of pixels
+        //
+        // Therefore, we need to multiply the indices by four.
+        // (as an aside, Windows stores pixels as BGR, not RGB.)
+        // (... as another aside, the 4th byte in pixels are reserved)
+        // (... seriously, what is going on?)
+
+        if bits_per_pixel == 8 {
+            let index = byte as usize * 4 + palette_offset;
+            return vec![index];
+        }
+
+        if bits_per_pixel == 4 {
+            let (i, j) = byte.view_bits::<Msb0>().split_at(4);
+            let i = i.load::<u8>() as usize * 4 + palette_offset;
+            let j = j.load::<u8>() as usize * 4 + palette_offset;
+
+            return vec![i, j];
+        }
+
+        if bits_per_pixel == 1 {
+            let bits = byte.view_bits::<Msb0>();
+            let indices: Vec<usize> = bits
+                .iter()
+                .map(|b| *b as usize * 4 + palette_offset)
+                .collect();
+            return indices;
+        }
+
+        if bits_per_pixel == 24 {
+            todo!()
+        }
+
+        unreachable!()
+    }
+
     /// Extracts and returns a raw RGBA blob from the provided `dib`.
     ///
     /// Note that only [`CompressionMethod::RGB`] is supported.
@@ -392,6 +434,7 @@ impl CursorImage {
         let width = dib.header.width.abs() as usize;
         let height = dib.header.height().abs() as usize;
         let image_size = dib.header.image_size() as usize;
+        let bits_per_pixel = dib.header.bits_per_pixel;
 
         let offsets = Offsets::from_header(&dib.header);
 
@@ -406,7 +449,8 @@ impl CursorImage {
         let row_size = row_size_unpadded.next_multiple_of(4); // 4-byte alignment
 
         // Same thing applies here; rows must be multiples of 4 bytes
-        let alpha_size = image_size / 8; // each byte stores 8 transparency flags        
+        let pixels_per_byte = (8 / bits_per_pixel) as usize;
+        let alpha_size = (image_size / 8) * pixels_per_byte; // each byte stores 8 transparency flags        
         let alpha_bytes = &dib.blob[offsets.alpha..(offsets.alpha + alpha_size)];
         let alpha_bits = alpha_bytes.view_bits::<Msb0>();
 
@@ -430,42 +474,31 @@ impl CursorImage {
             (0..height).collect()
         };
 
+        dbg!(alpha_bits.len(), image_size);
+
         for row_index in row_indices {
             let row_offset = row_size * row_index;
             let row_start = offsets.pixel_data + row_offset;
             let row = &dib.blob[row_start..(row_start + row_size_unpadded)];
 
-            for (i, color_index) in row.into_iter().map(|i| *i as usize).enumerate() {
-                // The row, which contains palette indices:
-                // [0, 1, 2, ...]
-                //  │  │  ╰─────────────────╮
-                //  │  ╰────────╮           │
-                // [B, G, R, _, B, G, R, _, B, G, R, _, ...]
-                // ^ The palette, contiguous array of pixels
-                //
-                // Therefore, we need to multiply the indices by four.
-                // (as an aside, Windows stores pixels as BGR, not RGB.)
-                // (... as another aside, the 4th byte in pixels are reserved)
-                // (... seriously, what is going on?)
+            for (row_pos, color_byte) in row.into_iter().enumerate() {
+                let palette_indices =
+                    Self::get_palette_indices(*color_byte, bits_per_pixel, offsets.palette);
 
-                let palette_index = color_index * 4;
-                let pixel_start = offsets.palette + palette_index;
-                let pixel = &dib.blob[pixel_start..(pixel_start + 3)];
+                for (byte_pos, palette_index) in palette_indices.into_iter().enumerate() {
+                    let pixel = &dib.blob[palette_index..palette_index + 3];
+                    rgba.extend(pixel.into_iter().rev());
 
-                rgba.extend(pixel.into_iter().rev());
+                    let alpha_index = if dib.header.height().is_positive() {
+                        (row_offset + row_pos) * pixels_per_byte + byte_pos
+                    } else {
+                        // Untested but should work... in theory?
+                        alpha_bits.len() - ((row_offset + row_pos) * pixels_per_byte + byte_pos) - 1
+                    };
 
-                // Get position of current pixel
-                let alpha_index = if dib.header.height().is_positive() {
-                    row_index * dib.header.width as usize + i
-                } else {
-                    // -1 because sizes are one-indexed
-                    (image_size - 1) - (row_index * dib.header.width as usize + i)
-                };
+                    let alpha = if alpha_bits[alpha_index] { 0 } else { 255 };
 
-                if alpha_bits[alpha_index] {
-                    rgba.push(0); // transparent
-                } else {
-                    rgba.push(255); // opaque
+                    rgba.push(alpha);
                 }
             }
         }
