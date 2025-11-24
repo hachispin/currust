@@ -386,9 +386,9 @@ impl CursorImage {
 
         let rgba_capacity = dib.header.image_size() as f64
             * match dib.header.bits_per_pixel {
-                1 => 32.0, // 1 bit per pixel => 8 pixels per byte => 32 bytes
-                4 => 16.0, // ...
-                8 => 4.0,
+                1 => 32.0, // 1 bit per pixel => 8 RGBA pixels per byte => 32 RGBA bytes
+                4 => 8.0, // 4 bits per pixel => 2 RGBA pixels per byte => 8 RGBA bytes
+                8 => 4.0,  // ...
                 24 => 4.0 / 3.0,
                 _ => unreachable!(),
             };
