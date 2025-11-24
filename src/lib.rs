@@ -10,6 +10,6 @@ macro_rules! throw {
 }
 
 pub mod cli;
+pub mod cur;
 pub mod errors;
 pub mod logging;
-pub mod cur;

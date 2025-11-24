@@ -31,7 +31,9 @@ fn main() -> Result<()> {
             encoder.set_color(ColorType::Rgba);
 
             let mut writer = encoder.write_header().into_diagnostic()?;
-            writer.write_image_data(&cursor_image.rgba).into_diagnostic()?;
+            writer
+                .write_image_data(&cursor_image.rgba)
+                .into_diagnostic()?;
         }
     }
 
