@@ -6,7 +6,7 @@ use std::{fs, io::Cursor, path::Path};
 
 use binrw::BinRead;
 use bitvec::prelude::*;
-use log::{debug, error, info, warn};
+use log::{debug, warn};
 use miette::{IntoDiagnostic, Result};
 
 /// Models the byte layout of `ICONDIR`.
