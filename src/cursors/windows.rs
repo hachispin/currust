@@ -24,7 +24,7 @@ use miette::{IntoDiagnostic, Result};
 /// Reference: <https://en.wikipedia.org/wiki/ICO_(file_format)#ICONDIR_structure>
 #[derive(BinRead, Debug)]
 #[br(little, magic = b"\x00\x00\x02\x00")] // contains reserved and type
-pub struct IconDir {
+pub(super) struct IconDir {
     /// The number of images.
     pub num_images: u16,
     /// Entries exist for each image, containing
@@ -44,7 +44,7 @@ pub struct IconDir {
     assert(hotspot_x <= width as u16, "Hotspot (x={hotspot_x}) outside dimensions (width={width})"),
     assert(hotspot_y <= height as u16, "Hotspot (y={hotspot_y}) outside dimensions (height={width})")
 )]
-pub struct IconDirEntry {
+pub(super) struct IconDirEntry {
     /// Width of stored image.
     pub width: u8,
     /// Height of stored image.
@@ -71,20 +71,20 @@ pub struct IconDirEntry {
 
 /// Aggregate for DIB structure.
 #[derive(Debug)]
-pub struct DeviceIndependentBitmap {
+pub(super) struct DeviceIndependentBitmap {
     /// Raw bytes, which includes the image data and header.
-    pub blob: Vec<u8>,
+    pub(super) blob: Vec<u8>,
     /// Header of [`Self::blob`].
-    pub header: BitmapInfoHeader,
+    pub(super) header: BitmapInfoHeader,
 }
 
 /// Full representation of a Windows cursor.
 #[derive(Debug)]
 pub struct WinCursor {
     /// Raw bytes.
-    pub blob: Vec<u8>,
-    ///
-    pub header: IconDir,
+    pub(super) blob: Vec<u8>,
+    /// Header for image metadata.
+    pub(super) header: IconDir,
 }
 
 impl WinCursor {
@@ -103,7 +103,7 @@ impl WinCursor {
     }
 
     /// Extracts all [`DeviceIndependentBitmap`] entries from [`Self::blob`].
-    pub fn extract_dibs(&self) -> Result<Vec<DeviceIndependentBitmap>> {
+    pub(super) fn extract_dibs(&self) -> Result<Vec<DeviceIndependentBitmap>> {
         debug!("Extracting DIBs from entries={:?}", self.header.entries);
 
         if self.header.num_images > 1 {
@@ -150,7 +150,7 @@ impl WinCursor {
     // ^ The `.bmp` format supports other depths, but
     //   these are the only depths supported for `.cur`.
 )]
-pub struct BitmapInfoHeader {
+pub(super) struct BitmapInfoHeader {
     /// Size of the header itself in bytes.
     pub header_size: u32,
     /// (signed) Bitmap width in pixels.
@@ -206,7 +206,7 @@ impl BitmapInfoHeader {
     /// both the XOR mask and the AND mask, and
     /// since each pixel has their own masks, this
     /// ends up being double the actual image's height.
-    pub fn height(&self) -> i32 {
+    pub(super) fn height(&self) -> i32 {
         self._height / 2
     }
 
@@ -215,14 +215,14 @@ impl BitmapInfoHeader {
     /// Note that this **doesn't** use the [`Self::image_size`]
     /// field because it's **unreliable** since some authors
     /// choose to include the AND mask's size, some don't.
-    pub fn image_size(&self) -> u32 {
+    pub(super) fn image_size(&self) -> u32 {
         // This is divided by two since the height is doubled.
         // Refer to the [`Self::height`] function's documentation.
         self._image_size_default / 2
     }
 
     /// Returns the canonical color count.
-    pub fn color_count(&self) -> u32 {
+    pub(super) fn color_count(&self) -> u32 {
         if self._color_count == 0 {
             self._color_count_default
         } else {
@@ -237,7 +237,7 @@ impl BitmapInfoHeader {
 #[derive(BinRead, Debug, PartialEq, Clone, Copy)]
 #[br(repr = u16)]
 #[allow(missing_docs)]
-pub enum BitsPerPixel {
+pub(super) enum BitsPerPixel {
     One = 1,
     Four = 4,
     Eight = 8,
@@ -253,7 +253,7 @@ pub enum BitsPerPixel {
 #[derive(BinRead, Debug, PartialEq)]
 #[br(repr = u32)]
 #[allow(missing_docs)]
-pub enum CompressionMethod {
+pub(super) enum CompressionMethod {
     /// This is the only supported compression method.
     RGB = 0,
 
