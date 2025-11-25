@@ -16,7 +16,7 @@
 use std::{fs, io::Cursor, path::Path};
 
 use binrw::BinRead;
-use log::debug;
+use log::{debug, warn};
 use miette::{IntoDiagnostic, Result};
 
 /// Models the byte layout of `ICONDIR`.
@@ -105,6 +105,11 @@ impl WinCursor {
     /// Extracts all [`DeviceIndependentBitmap`] entries from [`Self::blob`].
     pub fn extract_dibs(&self) -> Result<Vec<DeviceIndependentBitmap>> {
         debug!("Extracting DIBs from entries={:?}", self.header.entries);
+
+        if self.header.num_images > 1 {
+            warn!("Unstable feature; parsing cursor with more than one stored image");
+        }
+
         let mut dibs = Vec::with_capacity(self.header.entries.len());
 
         for entry in &self.header.entries {
