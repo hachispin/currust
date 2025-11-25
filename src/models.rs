@@ -97,7 +97,11 @@ impl CursorImage {
     }
 
     /// Helper function for [`Self::extract_rgba`].
-    fn get_palette_indices(byte: u8, bits_per_pixel: u16, palette_offset: usize) -> Vec<usize> {
+    fn get_palette_indices(
+        byte: u8,
+        bits_per_pixel: BitsPerPixel,
+        palette_offset: usize,
+    ) -> Vec<usize> {
         // [0, 1, 2, ...]
         //  │  │  ╰─────────────────╮
         //  │  ╰────────╮           │
@@ -109,33 +113,32 @@ impl CursorImage {
         // (... as another aside, the 4th byte in pixels are reserved)
         // (... seriously, what is going on?)
 
-        if bits_per_pixel == 8 {
-            let index = byte as usize * 4 + palette_offset;
-            return vec![index];
+        match bits_per_pixel {
+            BitsPerPixel::TwentyFour => todo!(),
+
+            BitsPerPixel::Eight => {
+                let index = byte as usize * 4 + palette_offset;
+
+                vec![index]
+            }
+            BitsPerPixel::Four => {
+                let (i, j) = byte.view_bits::<Msb0>().split_at(4);
+                let i = i.load::<u8>() as usize * 4 + palette_offset;
+                let j = j.load::<u8>() as usize * 4 + palette_offset;
+
+                vec![i, j]
+            }
+
+            BitsPerPixel::One => {
+                let bits = byte.view_bits::<Msb0>();
+                let indices: Vec<usize> = bits
+                    .iter()
+                    .map(|b| *b as usize * 4 + palette_offset)
+                    .collect();
+
+                indices
+            }
         }
-
-        if bits_per_pixel == 4 {
-            let (i, j) = byte.view_bits::<Msb0>().split_at(4);
-            let i = i.load::<u8>() as usize * 4 + palette_offset;
-            let j = j.load::<u8>() as usize * 4 + palette_offset;
-
-            return vec![i, j];
-        }
-
-        if bits_per_pixel == 1 {
-            let bits = byte.view_bits::<Msb0>();
-            let indices: Vec<usize> = bits
-                .iter()
-                .map(|b| *b as usize * 4 + palette_offset)
-                .collect();
-            return indices;
-        }
-
-        if bits_per_pixel == 24 {
-            todo!()
-        }
-
-        unreachable!()
     }
 
     /// Extracts and returns a raw RGBA blob from the provided `dib`.
@@ -201,7 +204,7 @@ impl CursorImage {
         let width = dib.header.width.abs() as usize;
         let height = dib.header.height().abs() as usize;
         let image_size = dib.header.image_size() as usize;
-        let bits_per_pixel = dib.header.bits_per_pixel as u16;
+        let bits_per_pixel = dib.header.bits_per_pixel;
 
         let offsets = Offsets::from_header(&dib.header);
 
@@ -216,7 +219,7 @@ impl CursorImage {
         let row_size = row_size_unpadded.next_multiple_of(4); // 4-byte alignment
 
         // Same thing applies here; rows must be multiples of 4 bytes
-        let pixels_per_byte = (8 / bits_per_pixel) as usize;
+        let pixels_per_byte = (8 / bits_per_pixel as u16) as usize;
         let alpha_size = (image_size / 8) * pixels_per_byte; // each byte stores 8 transparency flags        
         let alpha_bytes = &dib.blob[offsets.alpha..(offsets.alpha + alpha_size)];
         let alpha_bits = alpha_bytes.view_bits::<Msb0>();
