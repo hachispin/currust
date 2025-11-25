@@ -115,6 +115,10 @@ fn validate_cursor_path(cursor_path_str: &str) -> Result<Vec<PathBuf>> {
 pub fn validate_args(args: Args) -> Result<ParsedArgs> {
     let cursor_files = validate_cursor_path(&args.cursor_paths)?;
 
+    if cursor_files.is_empty() {
+        throw!(ArgError::no_valid_files_in_dir(None, &args.cursor_paths));
+    }
+
     let out = PathBuf::from(&args.out)
         .canonicalize()
         .map_err(|_| ArgError::path_doesnt_exist(Some("-o or --out"), &args.out))?;

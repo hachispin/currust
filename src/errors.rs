@@ -44,7 +44,23 @@ impl ArgError {
             error: "path doesn't exist".to_string(),
             src: src_pos.0,
             pos: src_pos.1,
-            help: format!("create this path or point to an existing path"),
+            help: "create this path or point to an existing path".to_string(),
+        }
+    }
+
+    /// Used when a filepath is a directory that doesn't contain any valid files.
+    pub fn no_valid_files_in_dir(flag: Option<&str>, value: &str) -> Self {
+        let src_pos = Self::get_src_and_pos(flag, value);
+
+        Self {
+            error: "no valid cursors found in this directory".to_string(),
+            src: src_pos.0,
+            pos: src_pos.1,
+            help: concat!(
+                "point to a directory with valid cursors\n",
+                "note that this doesn't check inside subdirectories"
+            )
+            .to_string(),
         }
     }
 
