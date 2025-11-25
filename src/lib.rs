@@ -5,7 +5,7 @@
 
 macro_rules! throw {
     ($e:expr) => {
-        return Err(ErrReport::from($e));
+        return Err(ErrReport::from($e))
     };
 }
 
