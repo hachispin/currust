@@ -121,6 +121,7 @@ impl CursorImage {
 
                 vec![index]
             }
+
             BitsPerPixel::Four => {
                 let (i, j) = byte.view_bits::<Msb0>().split_at(4);
                 let i = i.load::<u8>() as usize * 4 + palette_offset;
@@ -243,8 +244,6 @@ impl CursorImage {
         } else {
             (0..height).collect()
         };
-
-        dbg!(alpha_bits.len(), image_size);
 
         for row_index in row_indices {
             let row_offset = row_size * row_index;
