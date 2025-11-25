@@ -102,6 +102,7 @@ impl CursorImage {
         bits_per_pixel: BitsPerPixel,
         palette_offset: usize,
     ) -> Vec<usize> {
+        // Palette indices stored in the XOR mask:
         // [0, 1, 2, ...]
         //  │  │  ╰─────────────────╮
         //  │  ╰────────╮           │
@@ -155,14 +156,14 @@ impl CursorImage {
             dib.header.compression_method,
         );
 
-        // Behaviour for negative width is undefined
+        // Behaviour for negative width is undefined.
         assert!(
             dib.header.width.is_positive(),
             "expected positive width, instead got dib.header.width={}",
             dib.header.width
         );
 
-        // Palette is required for bpp <= 8
+        // Palette is required for bpp <= 8.
         assert!(
             dib.header.color_count() != 0,
             "Missing palette; color count is zero"
@@ -192,8 +193,9 @@ impl CursorImage {
         // Generally, from left to right, the order is:
         //
         // ╭──────────┬───────────┬────────────┬────────────╮
-        // │  HEADER  │  PALETTE  │  XOR MASK  │  AND MASK  │
+        // │  HEADER  │  PALETTE* │  XOR MASK  │  AND MASK  │
         // ╰──────────┴───────────┴────────────┴────────────╯
+        // * only included if bpp (bits per pixel) <= 8
         //
         // The XOR mask is where pixel data is stored.
         // The AND mask is where alpha data is stored.
@@ -215,13 +217,13 @@ impl CursorImage {
             offsets,
         );
 
-        // Each row must be a multiple of 4 bytes
+        // Each row must be a multiple of 4 bytes.
         let row_size_unpadded = (dib.header.bits_per_pixel as usize * width) / 8;
         let row_size = row_size_unpadded.next_multiple_of(4); // 4-byte alignment
 
-        // Same thing applies here; rows must be multiples of 4 bytes
+        // Same thing applies here; rows must be multiples of 4 bytes.
         let pixels_per_byte = (8 / bits_per_pixel as u16) as usize;
-        let alpha_size = (image_size / 8) * pixels_per_byte; // each byte stores 8 transparency flags        
+        let alpha_size = (image_size / 8) * pixels_per_byte; // each byte stores 8 transparency flags
         let alpha_bytes = &dib.blob[offsets.alpha..(offsets.alpha + alpha_size)];
         let alpha_bits = alpha_bytes.view_bits::<Msb0>();
 
@@ -250,12 +252,16 @@ impl CursorImage {
             let row_start = offsets.pixel_data + row_offset;
             let row = &dib.blob[row_start..(row_start + row_size_unpadded)];
 
-            for (row_pos, color_byte) in row.into_iter().enumerate() {
+            // For each byte in the row, get its palette indices.
+            // Note that padding bytes are avoided, since
+            // the row only goes up to `row_size_unpadded`.
+            for (row_pos, color_byte) in row.iter().enumerate() {
                 let palette_indices =
                     Self::get_palette_indices(*color_byte, bits_per_pixel, offsets.palette);
 
+                // Lookup each palette index, find the pixel's transparency AND mask, push RGBA.
                 for (byte_pos, palette_index) in palette_indices.into_iter().enumerate() {
-                    let pixel = &dib.blob[palette_index..palette_index + 3];
+                    let pixel = &dib.blob[palette_index..(palette_index + 3)];
                     rgba.extend(pixel.into_iter().rev());
 
                     let alpha_index = if dib.header.height().is_positive() {
@@ -265,9 +271,7 @@ impl CursorImage {
                         alpha_bits.len() - ((row_offset + row_pos) * pixels_per_byte + byte_pos) - 1
                     };
 
-                    let alpha = if alpha_bits[alpha_index] { 0 } else { 255 };
-
-                    rgba.push(alpha);
+                    rgba.push(if alpha_bits[alpha_index] { 0 } else { 255 });
                 }
             }
         }

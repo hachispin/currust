@@ -183,13 +183,13 @@ pub struct BitmapInfoHeader {
     /// NOTE: use the [`Self::color_count`] function.
     _color_count: u32,
 
-    /// default color count
+    /// Default color count.
     ///
-    /// NOTE: use the [`Self::color_count`] function
+    /// NOTE: use the [`Self::color_count`] function.
     #[br(calc = 2u32.pow(bits_per_pixel as u32))]
     _color_count_default: u32,
 
-    /// number of "important" colors used; generally useless
+    /// Number of "important" colors used; generally useless.
     _imp_color_count: u32,
 }
 
