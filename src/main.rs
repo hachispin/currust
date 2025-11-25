@@ -2,9 +2,8 @@ use std::{fs::File, io::BufWriter};
 
 use currust::{
     cli::{Args, validate_args},
-    cur::WinCursor,
+    cursors::{common::CursorImage, windows::WinCursor},
     logging::init_logging,
-    models::CursorImage,
 };
 
 use clap::Parser;

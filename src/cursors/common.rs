@@ -1,6 +1,7 @@
-//! Contains any common structs.
+//! Contains the [`CursorImage`] struct, which is
+//! used as a medium between Windows and Linux cursors.
 
-use crate::cur::{
+use super::windows::{
     BitmapInfoHeader, BitsPerPixel, CompressionMethod, DeviceIndependentBitmap, WinCursor,
 };
 

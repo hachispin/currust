@@ -10,7 +10,6 @@ macro_rules! throw {
 }
 
 pub mod cli;
-pub mod cur;
+pub mod cursors;
 pub mod errors;
 pub mod logging;
-pub mod models;
