@@ -2,8 +2,9 @@ use std::{fs::File, io::BufWriter};
 
 use currust::{
     cli::{Args, validate_args},
-    cur::{CursorImage, WinCursor},
+    cur::WinCursor,
     logging::init_logging,
+    models::CursorImage,
 };
 
 use clap::Parser;
@@ -19,9 +20,9 @@ fn main() -> Result<()> {
 
     for (i, cursor_path) in args.cursor_paths.into_iter().enumerate() {
         let cur = WinCursor::new(&cursor_path)?;
-        let cur_image = CursorImage::from_win_cur(cur)?;
+        let cursor_images = CursorImage::from_win_cur(cur)?;
 
-        for (j, cursor_image) in cur_image.into_iter().enumerate() {
+        for (j, cursor_image) in cursor_images.into_iter().enumerate() {
             let path = args.out.join(&format!("{i}-{j}.png"));
             let file = File::create(path).into_diagnostic()?;
             let ref mut w = BufWriter::new(file);
