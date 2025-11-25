@@ -128,8 +128,6 @@ impl WinCursor {
     assert(_color_planes == 1, "`color_planes` is a reserved field and must be 1."),
     assert(_height != 0, "Bitmap height cannot be zero."),
     assert(width != 0, "Bitmap width cannot be zero."),
-    assert([1, 4, 8, 24].contains(&bits_per_pixel),
-        "Invalid bit depth, bits_per_pixel={bits_per_pixel}")
     // ^ The `.bmp` format supports other depths, but
     //   these are the only depths supported for `.cur`.
 )]
@@ -144,8 +142,8 @@ pub struct BitmapInfoHeader {
     _height: i32,
     /// Number of color planes; must be 1
     _color_planes: u16,
-    /// Color depth; must be 1, 4, 8, or 24
-    bits_per_pixel: u16,
+    /// Also known as color depth; must be 1, 4, 8, or 24
+    bits_per_pixel: BitsPerPixel,
     /// Type of compression being used on the image.
     compression_method: CompressionMethod,
     /// Image size in bytes.
@@ -212,6 +210,18 @@ impl BitmapInfoHeader {
             self._color_count
         }
     }
+}
+
+/// A field in `BITMAPINFOHEADER`, specifying bit depth.
+/// 
+/// Reference: <https://en.wikipedia.org/wiki/BMP_file_format#DIB_header_(bitmap_information_header)>
+#[derive(BinRead, Debug, PartialEq, Clone, Copy)]
+#[br(repr = u16)]
+enum BitsPerPixel {
+    One = 1,
+    Four = 4,
+    Eight = 8,
+    TwentyFour = 24,
 }
 
 /// A field in `BITMAPINFOHEADER` used to specify
@@ -393,11 +403,8 @@ impl CursorImage {
             "Missing palette; color count is zero"
         );
 
-        if dib.header.bits_per_pixel != 8 {
-            warn!(
-                "Unstable feature; extracting RGBA from bits_per_pixel={}",
-                dib.header.bits_per_pixel
-            );
+        if dib.header.bits_per_pixel == BitsPerPixel::TwentyFour {
+            todo!("Extracting RGBA from 24bpp images isn't implemented yet");
         }
 
         if dib.header.height().is_negative() {
@@ -409,11 +416,10 @@ impl CursorImage {
 
         let rgba_capacity = dib.header.image_size() as f64
             * match dib.header.bits_per_pixel {
-                1 => 32.0, // 1 bit per pixel => 8 RGBA pixels per byte => 32 RGBA bytes
-                4 => 8.0,  // 4 bits per pixel => 2 RGBA pixels per byte => 8 RGBA bytes
-                8 => 4.0,  // ...
-                24 => 4.0 / 3.0,
-                _ => unreachable!(),
+                BitsPerPixel::One => 32.0, // 1 bit per pixel => 8 RGBA pixels per byte => 32 RGBA bytes
+                BitsPerPixel::Four => 8.0,  // 4 bits per pixel => 2 RGBA pixels per byte => 8 RGBA bytes
+                BitsPerPixel::Eight => 4.0,  // ...
+                BitsPerPixel::TwentyFour => 4.0 / 3.0,
             };
 
         let mut rgba = Vec::with_capacity(rgba_capacity.ceil() as usize);
@@ -434,7 +440,7 @@ impl CursorImage {
         let width = dib.header.width.abs() as usize;
         let height = dib.header.height().abs() as usize;
         let image_size = dib.header.image_size() as usize;
-        let bits_per_pixel = dib.header.bits_per_pixel;
+        let bits_per_pixel = dib.header.bits_per_pixel as u16;
 
         let offsets = Offsets::from_header(&dib.header);
 
