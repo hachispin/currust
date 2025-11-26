@@ -6,7 +6,7 @@ use super::windows::{
 };
 
 use bitvec::prelude::*;
-use log::{debug, warn};
+use log::{debug, info, warn};
 use miette::Result;
 
 /// Represents a generic cursor.
@@ -76,7 +76,7 @@ impl CursorImage {
             }
 
             if dib.header.image_size() != entry.image_size {
-                warn!(
+                info!(
                     "Conflicting image sizes: dib.header.image_size()={}, entry.image_size={}",
                     dib.header.image_size(),
                     entry.image_size
