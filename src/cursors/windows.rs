@@ -41,8 +41,8 @@ pub(super) struct IconDir {
 #[br(
     little,
     assert(_reserved == 0, "Reserved field in `ICONDIR` must be 0."),
-    assert(hotspot_x <= width as u16, "Hotspot (x={hotspot_x}) outside dimensions (width={width})"),
-    assert(hotspot_y <= height as u16, "Hotspot (y={hotspot_y}) outside dimensions (height={width})")
+    assert(hotspot_x <= u16::from(width), "Hotspot (x={hotspot_x}) outside dimensions (width={width})"),
+    assert(hotspot_y <= u16::from(height), "Hotspot (y={hotspot_y}) outside dimensions (height={width})")
 )]
 pub(super) struct IconDirEntry {
     /// Width of stored image.
@@ -89,6 +89,11 @@ pub struct WinCursor {
 
 impl WinCursor {
     /// Reads the given path, `cur`, parsing the file as a Windows cursor.
+    /// 
+    /// ## Errors
+    /// 
+    /// Errors can occur if the given `cur` is failed to be 
+    /// read by [`fs`], or is failed to be parsed by [`binrw`].
     pub fn new(cur: &Path) -> Result<Self> {
         debug!("Creating `WinCursor`, cur={}", cur.to_string_lossy());
         let bytes = fs::read(cur).into_diagnostic()?;
@@ -145,7 +150,7 @@ impl WinCursor {
     little,
     assert(header_size == 40, "`BITMAPINFOHEADER` size must be 40."),
     assert(_color_planes == 1, "`color_planes` is a reserved field and must be 1."),
-    assert(_height != 0, "Bitmap height cannot be zero."),
+    assert(raw_height != 0, "Bitmap height cannot be zero."),
     assert(width != 0, "Bitmap width cannot be zero."),
     // ^ The `.bmp` format supports other depths, but
     //   these are the only depths supported for `.cur`.
@@ -158,7 +163,7 @@ pub(super) struct BitmapInfoHeader {
     /// (signed) Bitmap height in pixels.
     ///
     /// NOTE: Use the [`Self::height`] function.
-    _height: i32,
+    raw_height: i32,
     /// Number of color planes; must be 1
     _color_planes: u16,
     /// Also known as color depth; must be 1, 4, 8, or 24
@@ -174,10 +179,10 @@ pub(super) struct BitmapInfoHeader {
     ///
     /// NOTE: Use the [`Self::image_size`] function.
     #[br(
-        calc = (((((width * bits_per_pixel as i32) + 31) & !31) >> 3) * _height.abs())
+        calc = (((((width * bits_per_pixel as i32) + 31) & !31) >> 3) * raw_height.abs())
         .try_into().unwrap())
     ]
-    _image_size_default: u32,
+    raw_image_size_default: u32,
 
     /// (signed) Horizontal resolution of image in pixels per metre.
     _horizontal_ppm: i32,
@@ -186,13 +191,13 @@ pub(super) struct BitmapInfoHeader {
     /// Number of colors in the color palette.
     ///
     /// NOTE: use the [`Self::color_count`] function.
-    _color_count: u32,
+    raw_color_count: u32,
 
     /// Default color count.
     ///
     /// NOTE: use the [`Self::color_count`] function.
     #[br(calc = 2u32.pow(bits_per_pixel as u32))]
-    _color_count_default: u32,
+    raw_color_count_default: u32,
 
     /// Number of "important" colors used; generally useless.
     _imp_color_count: u32,
@@ -207,7 +212,7 @@ impl BitmapInfoHeader {
     /// since each pixel has their own masks, this
     /// ends up being double the actual image's height.
     pub(super) fn height(&self) -> i32 {
-        self._height / 2
+        self.raw_height / 2
     }
 
     /// Returns the canonical image size.
@@ -218,15 +223,15 @@ impl BitmapInfoHeader {
     pub(super) fn image_size(&self) -> u32 {
         // This is divided by two since the height is doubled.
         // Refer to the [`Self::height`] function's documentation.
-        self._image_size_default / 2
+        self.raw_image_size_default / 2
     }
 
     /// Returns the canonical color count.
     pub(super) fn color_count(&self) -> u32 {
-        if self._color_count == 0 {
-            self._color_count_default
+        if self.raw_color_count == 0 {
+            self.raw_color_count_default
         } else {
-            self._color_count
+            self.raw_color_count
         }
     }
 }
@@ -255,15 +260,15 @@ pub(super) enum BitsPerPixel {
 #[allow(missing_docs)]
 pub(super) enum CompressionMethod {
     /// This is the only supported compression method.
-    RGB = 0,
+    Rgb = 0,
 
-    RLE8 = 1,
-    RLE4 = 2,
-    BITFIELDS = 3,
-    JPEG = 4,
-    PNG = 5,
-    ALPHABITFIELDS = 6,
-    CMYK = 11,
-    CMYKRLE8 = 12,
-    CMYKRLE4 = 13,
+    Rle8 = 1,
+    Rle4 = 2,
+    Bitfields = 3,
+    Jpeg = 4,
+    Png = 5,
+    AlphaBitfields = 6,
+    Cmyk = 11,
+    CmykRle8 = 12,
+    CmykRle4 = 13,
 }

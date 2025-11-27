@@ -1,8 +1,8 @@
 //! Contains structs that model byte layouts of
 //! the [Xcursor](https://man.archlinux.org/man/Xcursor.3) format.
-//! 
+//!
 //! The Xcursor format generally follows this structure:
-//! 
+//!
 //! 1) File header that contains a list of [`TableOfContents`]
 //! 2) Each [`TableOfContents`] describes a chunk.
 //! 3) Each chunk describes either an image or a comment.
@@ -13,9 +13,13 @@
 use binrw::BinWrite;
 
 /// Converts the bytes in `rgba` to ARGB format in-place.
-pub fn to_argb(rgba: &mut Vec<u8>) {
+/// 
+/// ## Panics
+/// 
+/// Panics if the length of `rgba` is not a multiple of four.
+pub fn to_argb(rgba: &mut [u8]) {
     assert!(
-        rgba.len() % 4 == 0,
+        !rgba.len().is_multiple_of(4),
         "invalid RGBA, each pixel should have 4 channels"
     );
 
@@ -53,7 +57,7 @@ struct TableOfContents {
 struct ChunkHeader {
     header_size: u32,
     /// Must match corresponding TOC type.
-    type_: u32, 
+    type_: u32,
     /// Must match corresponding TOC subtype.
     subtype: u32,
     version: u32,
@@ -76,5 +80,5 @@ struct ImageChunk {
     hotspot_x: u32,
     hotspot_y: u32,
     delay: u32,
-    argb: Vec<u8>
+    argb: Vec<u8>,
 }

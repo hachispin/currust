@@ -53,22 +53,27 @@ impl Offsets {
 
 impl CursorImage {
     /// Converts `cur` to a vector of [`CursorImage`] structs.
-    pub fn from_win_cur(cur: WinCursor) -> Result<Vec<CursorImage>> {
+    ///
+    /// ## Errors
+    ///
+    /// The only error which can be emitted here is
+    /// propagated from [`WinCursor::extract_dibs`].
+    pub fn from_win_cur(cur: &WinCursor) -> Result<Vec<CursorImage>> {
         let dibs = cur.extract_dibs()?;
         let mut images = Vec::with_capacity(dibs.len());
 
         for (entry, dib) in cur.header.entries.iter().zip(dibs) {
             let rgba = Self::extract_rgba(&dib);
 
-            if dib.header.height() != entry.height as i32 {
+            if dib.header.height() != i32::from(entry.height) {
                 warn!(
                     "Conflicting heights: dib.header.height()={}, entry.height={}",
                     dib.header.height(),
                     entry.height
-                )
+                );
             }
 
-            if dib.header.width != entry.width as i32 {
+            if dib.header.width != i32::from(entry.width) {
                 warn!(
                     "Conflicting widths: dib.header.width={}, entry.width={}",
                     dib.header.width, entry.width
@@ -85,10 +90,10 @@ impl CursorImage {
 
             let image = CursorImage {
                 rgba,
-                hotspot_x: entry.hotspot_x as i32,
-                hotspot_y: entry.hotspot_y as i32,
-                width: dib.header.width as u32,
-                height: dib.header.height().abs() as u32,
+                hotspot_x: i32::from(entry.hotspot_x),
+                hotspot_y: i32::from(entry.hotspot_y),
+                width: dib.header.width.unsigned_abs(),
+                height: dib.header.height().unsigned_abs(),
             };
 
             images.push(image);
@@ -136,7 +141,7 @@ impl CursorImage {
                 let bits = byte.view_bits::<Msb0>();
                 let indices: Vec<usize> = bits
                     .iter()
-                    .map(|b| *b as usize * 4 + palette_offset)
+                    .map(|b| usize::from(*b) * 4 + palette_offset)
                     .collect();
 
                 indices
@@ -152,7 +157,7 @@ impl CursorImage {
 
         assert_eq!(
             dib.header.compression_method,
-            CompressionMethod::RGB,
+            CompressionMethod::Rgb,
             "{:?} not supported",
             dib.header.compression_method,
         );
@@ -181,7 +186,7 @@ impl CursorImage {
             );
         }
 
-        let rgba_capacity = dib.header.image_size() as f64
+        let rgba_capacity = f64::from(dib.header.image_size())
             * match dib.header.bits_per_pixel {
                 BitsPerPixel::One => 32.0, // 1 bit per pixel => 8 RGBA pixels per byte => 32 RGBA bytes
                 BitsPerPixel::Four => 8.0, // 4 bits per pixel => 2 RGBA pixels per byte => 8 RGBA bytes
@@ -189,6 +194,7 @@ impl CursorImage {
                 BitsPerPixel::TwentyFour => 4.0 / 3.0,
             };
 
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let mut rgba = Vec::with_capacity(rgba_capacity.ceil() as usize);
 
         // Generally, from left to right, the order is:
@@ -205,8 +211,8 @@ impl CursorImage {
         // https://en.wikipedia.org/wiki/ICO_(file_format)#File_structure
 
         // Alias some variables for brevity
-        let width = dib.header.width.abs() as usize;
-        let height = dib.header.height().abs() as usize;
+        let width = dib.header.width.unsigned_abs() as usize;
+        let height = dib.header.height().unsigned_abs() as usize;
         let image_size = dib.header.image_size() as usize;
         let bits_per_pixel = dib.header.bits_per_pixel;
 
@@ -263,7 +269,7 @@ impl CursorImage {
                 // Lookup each palette index, find the pixel's transparency AND mask, push RGBA.
                 for (byte_pos, palette_index) in palette_indices.into_iter().enumerate() {
                     let pixel = &dib.blob[palette_index..(palette_index + 3)];
-                    rgba.extend(pixel.into_iter().rev());
+                    rgba.extend(pixel.iter().rev());
 
                     let alpha_index = if dib.header.height().is_positive() {
                         (row_offset + row_pos) * pixels_per_byte + byte_pos

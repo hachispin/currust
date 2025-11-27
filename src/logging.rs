@@ -10,6 +10,10 @@ use miette::{IntoDiagnostic, Result};
 use simplelog::{self, ColorChoice, ConfigBuilder, TermLogger, TerminalMode, WriteLogger};
 
 /// Initializes logging based on the given `args`.
+/// 
+/// ## Errors
+/// 
+/// From `SetLoggerError` if the `*Logger::init()` functions fail.
 pub fn init_logging(args: &ParsedArgs) -> Result<()> {
     if args.quiet {
         return Ok(());

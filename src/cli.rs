@@ -98,7 +98,7 @@ fn validate_cursor_path(cursor_path_str: &str) -> Result<Vec<PathBuf>> {
 
         match f.extension() {
             Some(v) if v == "cur" => cursor_paths.push(f),
-            _ => continue,
+            _ => (),
         }
     }
 
@@ -108,10 +108,18 @@ fn validate_cursor_path(cursor_path_str: &str) -> Result<Vec<PathBuf>> {
 /// Validates the given `args`, this includes:
 ///
 /// - validating input files exist and are valid (e.g, ending in `.cur`)
-/// - converting types (e.g, from [`String`] to [`PathBuf`])
-///      for construction of [`ParsedArgs`]
+/// - converting types (e.g, from [`String`] to [`PathBuf`]) for construction of [`ParsedArgs`]
 /// - resolving paths
-///
+/// 
+/// ## Errors
+/// 
+/// Errors can occur for a multitude of reasons, which include:
+/// 
+/// - a path is to a directory with no valid (cursor) files
+/// - the path provided doesn't exist at all
+/// - the path is to a file with no `.cur` extension
+/// 
+/// Most errors here are covered under [`ArgError`].
 pub fn validate_args(args: Args) -> Result<ParsedArgs> {
     let cursor_files = validate_cursor_path(&args.cursor_paths)?;
 

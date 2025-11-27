@@ -37,6 +37,7 @@ impl ArgError {
     }
 
     /// Used when given a non-existent filepath.
+    #[must_use]
     pub fn path_doesnt_exist(flag: Option<&str>, value: &str) -> Self {
         let src_pos = Self::get_src_and_pos(flag, value);
 
@@ -49,6 +50,7 @@ impl ArgError {
     }
 
     /// Used when a filepath is a directory that doesn't contain any valid files.
+    #[must_use]
     pub fn no_valid_files_in_dir(flag: Option<&str>, value: &str) -> Self {
         let src_pos = Self::get_src_and_pos(flag, value);
 
@@ -65,6 +67,7 @@ impl ArgError {
     }
 
     /// Used when receiving a file with the wrong/no file extension
+    #[must_use]
     pub fn invalid_file_ext(
         flag: Option<&str>,
         value: &str,

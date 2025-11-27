@@ -19,12 +19,12 @@ fn main() -> Result<()> {
 
     for (i, cursor_path) in args.cursor_paths.into_iter().enumerate() {
         let cur = WinCursor::new(&cursor_path)?;
-        let cursor_images = CursorImage::from_win_cur(cur)?;
+        let cursor_images = CursorImage::from_win_cur(&cur)?;
 
         for (j, cursor_image) in cursor_images.into_iter().enumerate() {
-            let path = args.out.join(&format!("{i}-{j}.png"));
+            let path = args.out.join(format!("{i}-{j}.png"));
             let file = File::create(path).into_diagnostic()?;
-            let ref mut w = BufWriter::new(file);
+            let w = &mut BufWriter::new(file);
 
             let mut encoder = Encoder::new(w, cursor_image.width, cursor_image.height);
             encoder.set_depth(BitDepth::Eight);
