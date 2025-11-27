@@ -235,7 +235,7 @@ impl BitmapInfoHeader {
 ///
 /// Reference: <https://en.wikipedia.org/wiki/BMP_file_format#DIB_header_(bitmap_information_header)>
 #[derive(BinRead, Debug, PartialEq, Clone, Copy)]
-#[br(repr = u16)]
+#[br(little, repr = u16)]
 #[allow(missing_docs)]
 pub(super) enum BitsPerPixel {
     One = 1,
@@ -251,7 +251,7 @@ pub(super) enum BitsPerPixel {
 ///
 /// ( _find the "Compression method" table!_ )
 #[derive(BinRead, Debug, PartialEq)]
-#[br(repr = u32)]
+#[br(little, repr = u32)]
 #[allow(missing_docs)]
 pub(super) enum CompressionMethod {
     /// This is the only supported compression method.
