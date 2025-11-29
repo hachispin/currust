@@ -12,14 +12,16 @@
 
 use binrw::BinWrite;
 
+use crate::cursors::common::CursorImage;
+
 /// Converts the bytes in `rgba` to ARGB format in-place.
-/// 
+///
 /// ## Panics
-/// 
+///
 /// Panics if the length of `rgba` is not a multiple of four.
 pub fn to_argb(rgba: &mut [u8]) {
     assert!(
-        !rgba.len().is_multiple_of(4),
+        rgba.len().is_multiple_of(4),
         "invalid RGBA, each pixel should have 4 channels"
     );
 
