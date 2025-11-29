@@ -152,8 +152,6 @@ impl WinCursor {
     assert(_color_planes == 1, "`color_planes` is a reserved field and must be 1."),
     assert(raw_height != 0, "Bitmap height cannot be zero."),
     assert(width != 0, "Bitmap width cannot be zero."),
-    // ^ The `.bmp` format supports other depths, but
-    //   these are the only depths supported for `.cur`.
 )]
 pub(super) struct BitmapInfoHeader {
     /// Size of the header itself in bytes.
@@ -238,6 +236,9 @@ impl BitmapInfoHeader {
 
 /// A field in `BITMAPINFOHEADER`, specifying bit depth.
 ///
+/// The `.bmp` format supports other depths, but
+/// these are the only depths supported for `.cur`.
+/// 
 /// Reference: <https://en.wikipedia.org/wiki/BMP_file_format#DIB_header_(bitmap_information_header)>
 #[derive(BinRead, Debug, PartialEq, Clone, Copy)]
 #[br(little, repr = u16)]
