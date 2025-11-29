@@ -5,8 +5,10 @@
 //!
 //! 1) File header that contains a list of [`TableOfContents`]
 //! 2) Each [`TableOfContents`] describes a chunk.
-//! 3) Each chunk describes either an image or a comment.
+//! 3) Each chunk describes either an image or a comment*.
 //! 4) Image chunks contain packed ARGB pixels.
+//!
+//! * Modeling for comment chunks is left out on purpose.
 
 #![allow(unused)] // REMOVE ME LATER
 
@@ -32,55 +34,59 @@ pub fn to_argb(rgba: &mut [u8]) {
     }
 }
 
-/// The header for the Xcursor file format.
 #[derive(BinWrite)]
 #[bw(little, magic = b"Xcur")]
 struct XcursorHeader {
-    /// The size of this header.
     header_size: u32,
-    /// The file version number.
     version: u32,
-    /// The number of [`TableOfContents`] entries.
     num_toc: u32,
-    /// A list of [`TableOfContents`].
-    toc_entries: Vec<TableOfContents>,
+    tocs: TableOfContents,
 }
 
+/// The fields here are specific to image chunks,
+/// since I don't plan on adding comment chunk support.
+///
+/// Only the [`Self::position`] field is useful here,
+/// everything else is redundant/duplicated in the chunk.
 #[derive(BinWrite)]
-#[bw(little)]
+#[bw(little, assert(*_type == 0xfffd_0002))]
 struct TableOfContents {
-    type_: u32,
-    subtype: u32,
+    _type: u32,
+    /// Also known as the subtype.
+    _nominal_size: u32,
     position: u32,
 }
 
+/// Prefer using the fields here over the
+/// ones stored in [`TableOfContents`].
 #[derive(BinWrite)]
-#[bw(little)]
-struct ChunkHeader {
+#[bw(
+    little,
+    assert(*header_size == 36),
+    assert(*_type == 0xfffd_0002)
+)]
+struct ImageChunkHeader {
     header_size: u32,
-    /// Must match corresponding TOC type.
-    type_: u32,
-    /// Must match corresponding TOC subtype.
-    subtype: u32,
+    _type: u32,
+    /// Also known as the subtype.
+    nominal_size: u32,
     version: u32,
-}
-
-#[derive(BinWrite)]
-#[bw(little)]
-struct CommentChunk {
-    header: ChunkHeader,
-    length: u32,
-    /* string: String */
-}
-
-#[derive(BinWrite)]
-#[bw(little)]
-struct ImageChunk {
-    header: ChunkHeader,
     width: u32,
     height: u32,
     hotspot_x: u32,
     hotspot_y: u32,
     delay: u32,
+}
+
+#[derive(BinWrite)]
+#[bw(little, assert(argb.len() == (header.width * header.height * 4) as usize))]
+struct ImageChunk {
+    header: ImageChunkHeader,
     argb: Vec<u8>,
+}
+
+impl ImageChunk {
+    fn from_cursor_image() {
+        todo!();
+    }
 }
