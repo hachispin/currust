@@ -89,10 +89,10 @@ pub struct WinCursor {
 
 impl WinCursor {
     /// Reads the given path, `cur`, parsing the file as a Windows cursor.
-    /// 
+    ///
     /// ## Errors
-    /// 
-    /// Errors can occur if the given `cur` is failed to be 
+    ///
+    /// Errors can occur if the given `cur` is failed to be
     /// read by [`fs`], or is failed to be parsed by [`binrw`].
     pub fn new(cur: &Path) -> Result<Self> {
         debug!("Creating `WinCursor`, cur={}", cur.to_string_lossy());
