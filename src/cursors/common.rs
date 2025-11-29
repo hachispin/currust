@@ -15,9 +15,9 @@ pub struct CursorImage {
     /// Raw image data.
     pub rgba: Vec<u8>,
     /// X coordinates of click point.
-    pub hotspot_x: i32,
+    pub hotspot_x: u32,
     /// Y coordinates of click point.
-    pub hotspot_y: i32,
+    pub hotspot_y: u32,
     /// Width of the stored image in [`Self::rgba`]
     pub width: u32,
     /// Weight of the stored image in [`Self::rgba`]
@@ -90,8 +90,8 @@ impl CursorImage {
 
             let image = CursorImage {
                 rgba,
-                hotspot_x: i32::from(entry.hotspot_x),
-                hotspot_y: i32::from(entry.hotspot_y),
+                hotspot_x: u32::from(entry.hotspot_x),
+                hotspot_y: u32::from(entry.hotspot_y),
                 width: dib.header.width.unsigned_abs(),
                 height: dib.header.height().unsigned_abs(),
             };
