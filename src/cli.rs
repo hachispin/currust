@@ -15,7 +15,7 @@ use simplelog::Level;
 #[command(version, about, long_about=None)]
 pub struct Args {
     /// The path to a Windows cursor or a directory of cursors
-    #[arg(value_name = "FILE")]
+    #[arg(value_name = "PATH")]
     cursor_paths: String,
 
     /// The directory to place the converted cursor
@@ -102,6 +102,10 @@ fn validate_cursor_path(cursor_path_str: &str) -> Result<Vec<PathBuf>> {
         }
     }
 
+    if cursor_paths.is_empty() {
+        throw!(ArgError::no_valid_files_in_dir(None, cursor_path_str));
+    }
+
     Ok(cursor_paths)
 }
 
@@ -110,22 +114,18 @@ fn validate_cursor_path(cursor_path_str: &str) -> Result<Vec<PathBuf>> {
 /// - validating input files exist and are valid (e.g, ending in `.cur`)
 /// - converting types (e.g, from [`String`] to [`PathBuf`]) for construction of [`ParsedArgs`]
 /// - resolving paths
-/// 
+///
 /// ## Errors
-/// 
+///
 /// Errors can occur for a multitude of reasons, which include:
-/// 
+///
 /// - a path is to a directory with no valid (cursor) files
 /// - the path provided doesn't exist at all
 /// - the path is to a file with no `.cur` extension
-/// 
+///
 /// Most errors here are covered under [`ArgError`].
 pub fn validate_args(args: Args) -> Result<ParsedArgs> {
     let cursor_files = validate_cursor_path(&args.cursor_paths)?;
-
-    if cursor_files.is_empty() {
-        throw!(ArgError::no_valid_files_in_dir(None, &args.cursor_paths));
-    }
 
     let out = PathBuf::from(&args.out)
         .canonicalize()
