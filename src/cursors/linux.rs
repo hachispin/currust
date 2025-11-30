@@ -12,7 +12,10 @@
 
 #![allow(unused)] // REMOVE ME LATER
 
+use std::{fs::File, io::Cursor, path::Path};
+
 use binrw::BinWrite;
+use miette::{Result, IntoDiagnostic};
 
 use crate::cursors::common::CursorImage;
 
@@ -86,7 +89,42 @@ struct ImageChunk {
 }
 
 impl ImageChunk {
-    fn from_cursor_image() {
+    /// Consumes the `cursor` to construct an [`ImageChunk`].
+    fn from_cursor_image(cursor: CursorImage) -> Self {
+        let header = ImageChunkHeader {
+            header_size: 36,
+            _type: 0xfffd_0002,
+            nominal_size: cursor.height * cursor.width,
+            version: 1,
+            width: cursor.width,
+            height: cursor.height,
+            hotspot_x: cursor.hotspot_x,
+            hotspot_y: cursor.hotspot_y,
+            delay: 0,
+        };
+
+        let mut argb = cursor.rgba;
+        to_argb(&mut argb);
+
+        Self {
+            header,
+            argb,
+        }
+    }
+}
+
+#[derive(BinWrite)]
+struct Xcursor {
+    header: XcursorHeader,
+    blob: Vec<u8>,
+}
+
+impl Xcursor {
+    fn from_cursor_image(cursor: &[CursorImage]) {
+        todo!();
+    }
+
+    fn save() {
         todo!();
     }
 }
