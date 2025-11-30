@@ -3,6 +3,7 @@
 #![warn(missing_docs)]
 #![warn(rust_2018_idioms)]
 
+/// Shorthand for returning an error (for [`miette::Result`])
 macro_rules! throw {
     ($e:expr) => {
         return Err(ErrReport::from($e))

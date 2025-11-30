@@ -21,7 +21,9 @@ use miette::{IntoDiagnostic, Result};
 
 /// Models the byte layout of `ICONDIR`.
 ///
-/// Reference: <https://en.wikipedia.org/wiki/ICO_(file_format)#ICONDIR_structure>
+/// ## References
+/// 
+/// <https://en.wikipedia.org/wiki/ICO_(file_format)#ICONDIR_structure>
 #[derive(BinRead, Debug)]
 #[br(little, magic = b"\x00\x00\x02\x00")] // contains reserved and type
 pub(super) struct IconDir {
@@ -36,7 +38,9 @@ pub(super) struct IconDir {
 /// Models the byte layout of `ICONDIRENTRY`, which
 /// stores info regarding an image (may be bmp/png).
 ///
-/// Reference: <https://en.wikipedia.org/wiki/ICO_(file_format)#ICONDIRENTRY_structure>
+/// ## References
+/// 
+/// <https://en.wikipedia.org/wiki/ICO_(file_format)#ICONDIRENTRY_structure>
 #[derive(BinRead, Debug)]
 #[br(
     little,
@@ -141,7 +145,7 @@ impl WinCursor {
 ///
 /// More specifically, this is for DIBs. (device independent bitmaps).
 ///
-/// References:
+/// ## References
 ///
 /// - <https://en.wikipedia.org/wiki/BMP_file_format#DIB_header_(bitmap_information_header)>
 /// - <https://learn.microsoft.com/en-us/previous-versions/ms969901(v=msdn.10)#the-dib-header>
@@ -239,7 +243,9 @@ impl BitmapInfoHeader {
 /// The `.bmp` format supports other depths, but
 /// these are the only depths supported for `.cur`.
 /// 
-/// Reference: <https://en.wikipedia.org/wiki/BMP_file_format#DIB_header_(bitmap_information_header)>
+/// ## References 
+/// 
+/// <https://en.wikipedia.org/wiki/BMP_file_format#DIB_header_(bitmap_information_header)>
 #[derive(BinRead, Debug, PartialEq, Clone, Copy)]
 #[br(little, repr = u16)]
 #[allow(missing_docs)]
@@ -253,9 +259,9 @@ pub(super) enum BitsPerPixel {
 /// A field in `BITMAPINFOHEADER` used to specify
 /// the compression method used for its image.
 ///
-/// Reference: <https://en.wikipedia.org/wiki/BMP_file_format#DIB_header_(bitmap_information_header)>
-///
-/// ( _find the "Compression method" table!_ )
+/// ## References
+/// 
+/// <https://en.wikipedia.org/wiki/BMP_file_format#DIB_header_(bitmap_information_header)>
 #[derive(BinRead, Debug, PartialEq)]
 #[br(little, repr = u32)]
 #[allow(missing_docs)]
