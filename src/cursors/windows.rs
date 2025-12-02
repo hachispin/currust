@@ -22,7 +22,7 @@ use miette::{IntoDiagnostic, Result};
 /// Models the byte layout of `ICONDIR`.
 ///
 /// ## References
-/// 
+///
 /// <https://en.wikipedia.org/wiki/ICO_(file_format)#ICONDIR_structure>
 #[derive(BinRead, Debug)]
 #[br(little, magic = b"\x00\x00\x02\x00")] // contains reserved and type
@@ -39,7 +39,7 @@ pub(super) struct IconDir {
 /// stores info regarding an image (may be bmp/png).
 ///
 /// ## References
-/// 
+///
 /// <https://en.wikipedia.org/wiki/ICO_(file_format)#ICONDIRENTRY_structure>
 #[derive(BinRead, Debug)]
 #[br(
@@ -242,9 +242,9 @@ impl BitmapInfoHeader {
 ///
 /// The `.bmp` format supports other depths, but
 /// these are the only depths supported for `.cur`.
-/// 
-/// ## References 
-/// 
+///
+/// ## References
+///
 /// <https://en.wikipedia.org/wiki/BMP_file_format#DIB_header_(bitmap_information_header)>
 #[derive(BinRead, Debug, PartialEq, Clone, Copy)]
 #[br(little, repr = u16)]
@@ -260,7 +260,7 @@ pub(super) enum BitsPerPixel {
 /// the compression method used for its image.
 ///
 /// ## References
-/// 
+///
 /// <https://en.wikipedia.org/wiki/BMP_file_format#DIB_header_(bitmap_information_header)>
 #[derive(BinRead, Debug, PartialEq)]
 #[br(little, repr = u32)]
@@ -278,4 +278,66 @@ pub(super) enum CompressionMethod {
     Cmyk = 11,
     CmykRle8 = 12,
     CmykRle4 = 13,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Asserts for [`IconDirEntry`] fields.
+    ///
+    /// Only one cursor is tested here.
+    #[test]
+    #[allow(clippy::used_underscore_binding)]
+    fn icon_dir_entry_fields() {
+        let test_path = Path::new("./test_data/1bbp.cur").canonicalize().unwrap();
+        let cur = WinCursor::new(&test_path).unwrap();
+        let header = cur.header;
+        let entry = header.entries.first().unwrap();
+
+        assert_eq!(header.num_images, 1);
+        assert_eq!(entry.width, 32);
+        assert_eq!(entry.height, 32);
+        assert_eq!(entry._color_count, 0);
+        assert_eq!(entry._reserved, 0);
+        assert_eq!(entry.hotspot_x, 0);
+        assert_eq!(entry.hotspot_y, 0);
+        assert_eq!(entry.image_size, 304);
+        assert_eq!(entry.image_offset, 22);
+    }
+
+    /// Asserts for [`BitmapInfoHeader`] fields.
+    ///
+    /// Only one cursor is tested here.
+    #[test]
+    #[allow(clippy::used_underscore_binding)]
+    fn bitmap_info_header_fields() {
+        let test_path = Path::new("./test_data/4bbp.cur").canonicalize().unwrap();
+        let cur = WinCursor::new(&test_path).unwrap();
+        let dibs = cur.extract_dibs().unwrap();
+        let dib = dibs.first().unwrap();
+        let header = &dib.header;
+
+        // There should only be one image in the cursor being tested.
+        assert_eq!(cur.header.num_images, 1);
+        assert_eq!(dibs.len(), 1);
+
+        assert_eq!(header.header_size, 40);
+        assert_eq!(header.width, 32);
+        assert_eq!(header.raw_height, 64);
+        assert_eq!(header._color_planes, 1);
+        assert_eq!(header.bits_per_pixel, BitsPerPixel::Four);
+        assert_eq!(header.compression_method, CompressionMethod::Rgb);
+        assert_eq!(header._image_size, 640);
+        assert_eq!(header.raw_image_size_default, 1024);
+        assert_eq!(header._horizontal_ppm, 0);
+        assert_eq!(header._vertical_ppm, 0);
+        assert_eq!(header.raw_color_count, 0);
+        assert_eq!(header.raw_color_count_default, 16);
+        assert_eq!(header._imp_color_count, 0);
+
+        assert_eq!(header.height(), 32);
+        assert_eq!(header.image_size(), 512);
+        assert_eq!(header.color_count(), 16);
+    }
 }
