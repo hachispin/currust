@@ -286,3 +286,47 @@ impl CursorImage {
         rgba
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::path::Path;
+
+    /// Runs [`CursorImage::extract_rgba`] for 1, 4, and 8 bit depths.
+    ///
+    /// This asserts:
+    ///
+    /// - extracted RGBA bytes
+    /// - height and width
+    /// - other [`CursorImage`] fields
+    ///
+    /// RGBA data is debug formatted and compared to expected debug format strings.
+    #[test]
+    fn test_extract_rgba() {
+        const ONE_BPP_RGBA: &str = include_str!(concat!(project_root!(), "/test_data/1bpp_rgba"));
+        const FOUR_BPP_RGBA: &str = include_str!(concat!(project_root!(), "/test_data/4bpp_rgba"));
+        const EIGHT_BPP_RGBA: &str = include_str!(concat!(project_root!(), "/test_data/8bpp_rgba"));
+        const EXPECTED_RGBAS: [&str; 3] = [ONE_BPP_RGBA, FOUR_BPP_RGBA, EIGHT_BPP_RGBA];
+
+        let test_cur_paths = &[
+            Path::new(concat!(project_root!(), "/test_data/1bpp.cur")),
+            Path::new(concat!(project_root!(), "/test_data/4bpp.cur")),
+            Path::new(concat!(project_root!(), "/test_data/8bpp.cur")),
+        ];
+
+        for (cur_path, expected_rgba) in test_cur_paths.iter().zip(EXPECTED_RGBAS) {
+            let cur_path = cur_path.canonicalize().unwrap();
+            let cur = WinCursor::new(&cur_path).unwrap();
+            let cursor_images = CursorImage::from_win_cur(&cur).unwrap();
+
+            assert_eq!(cursor_images.len(), 1);
+            assert_eq!(cur.header.num_images, 1);
+
+            let cursor_image = cursor_images.first().unwrap();
+            let rgba_str = format!("{:?}", cursor_image.rgba);
+
+            assert_eq!(rgba_str, expected_rgba);
+        }
+    }
+}
