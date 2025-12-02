@@ -290,7 +290,10 @@ mod tests {
     #[test]
     #[allow(clippy::used_underscore_binding)]
     fn icon_dir_entry_fields() {
-        let test_path = Path::new("./test_data/1bbp.cur").canonicalize().unwrap();
+        let test_path = Path::new(concat!(project_root!(), "/test_data/1bpp.cur"))
+            .canonicalize()
+            .unwrap();
+
         let cur = WinCursor::new(&test_path).unwrap();
         let header = cur.header;
         let entry = header.entries.first().unwrap();
@@ -312,7 +315,10 @@ mod tests {
     #[test]
     #[allow(clippy::used_underscore_binding)]
     fn bitmap_info_header_fields() {
-        let test_path = Path::new("./test_data/4bbp.cur").canonicalize().unwrap();
+        let test_path = Path::new(concat!(project_root!(), "/test_data/4bpp.cur"))
+            .canonicalize()
+            .unwrap();
+
         let cur = WinCursor::new(&test_path).unwrap();
         let dibs = cur.extract_dibs().unwrap();
         let dib = dibs.first().unwrap();
