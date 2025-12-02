@@ -230,24 +230,11 @@ impl CursorImage {
 
         // Same thing applies here; rows must be multiples of 4 bytes.
         let pixels_per_byte = (8 / bits_per_pixel as u16) as usize;
-        let alpha_size = (image_size / 8) * pixels_per_byte; // each byte stores 8 transparency flags
+        let alpha_size = (image_size / 8) * pixels_per_byte;
         let alpha_bytes = &dib.blob[offsets.alpha..(offsets.alpha + alpha_size)];
         let alpha_bits = alpha_bytes.view_bits::<Msb0>();
 
         // Start reading rows the from bottom if positive, else, start from the top
-        //
-        //     Positive:            Negative:
-        //                         ┌──┐┌──┐┌──┐
-        //  3 ...                1 ┿━━┿┿━━┿┿━━┿▶
-        //                         └──┘└──┘└──┘
-        //    ┌──┐┌──┐┌──┐         ┌──┐┌──┐┌──┐
-        //  2 ┿━━┿┿━━┿┿━━┿▶      2 ┿━━┿┿━━┿┿━━┿▶
-        //    └──┘└──┘└──┘         └──┘└──┘└──┘
-        //    ┌──┐┌──┐┌──┐
-        //  1 ┿━━┿┿━━┿┿━━┿▶      3 ...
-        //    └──┘└──┘└──┘
-        //
-        // Numbers here indicate the reading order; 1 is read first
         let row_indices: Vec<usize> = if dib.header.height().is_positive() {
             (0..height).rev().collect()
         } else {
@@ -294,12 +281,6 @@ mod tests {
     use std::path::Path;
 
     /// Runs [`CursorImage::extract_rgba`] for 1, 4, and 8 bit depths.
-    ///
-    /// This asserts:
-    ///
-    /// - extracted RGBA bytes
-    /// - height and width
-    /// - other [`CursorImage`] fields
     ///
     /// RGBA data is debug formatted and compared to expected debug format strings.
     #[test]
