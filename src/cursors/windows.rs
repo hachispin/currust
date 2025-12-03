@@ -217,7 +217,8 @@ impl BitmapInfoHeader {
         self.raw_height / 2
     }
 
-    /// Returns the canonical image size.
+    /// Returns the canonical image size, which
+    /// should be **the size of the XOR mask**.
     ///
     /// Note that this **doesn't** use the [`Self::image_size`]
     /// field because it's **unreliable** since some authors

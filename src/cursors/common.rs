@@ -224,12 +224,16 @@ impl CursorImage {
             offsets,
         );
 
-        // Each row must be a multiple of 4 bytes.
+        // Each row must be aligned to 4 bytes.
         let row_size_unpadded = (dib.header.bits_per_pixel as usize * width) / 8;
-        let row_size = row_size_unpadded.next_multiple_of(4); // 4-byte alignment
+        let row_size = row_size_unpadded.next_multiple_of(4);
 
         // Same thing applies here; rows must be multiples of 4 bytes.
         let pixels_per_byte = (8 / bits_per_pixel as u16) as usize;
+
+        // Each pixel has a transparency bit stored in the AND mask.
+        // Bytes in XOR mask * pixels_per_byte = number of pixels.
+        // Divide by 8 since each byte stores 8 transparency flags.
         let alpha_size = (image_size / 8) * pixels_per_byte;
         let alpha_bytes = &dib.blob[offsets.alpha..(offsets.alpha + alpha_size)];
         let alpha_bits = alpha_bytes.view_bits::<Msb0>();
