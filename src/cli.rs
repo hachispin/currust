@@ -7,7 +7,8 @@ use crate::errors::ArgError;
 use std::path::PathBuf;
 
 use clap::Parser;
-use miette::{ErrReport, IntoDiagnostic, Result};
+use log::warn;
+use miette::{Context, ErrReport, IntoDiagnostic, Result};
 use simplelog::Level;
 
 /// Represents received CLI arguments.
@@ -90,16 +91,26 @@ fn validate_cursor_path(cursor_path_str: &str) -> Result<Vec<PathBuf>> {
     }
 
     // If the input is a directory,
-    let files = cursor_path.read_dir().into_diagnostic()?;
+    let files = cursor_path
+        .read_dir()
+        .into_diagnostic()
+        .with_context(|| format!("Failed to read directory {}", cursor_path.display()))?;
+
     let mut cursor_paths = Vec::new();
 
     for f in files {
-        let f = f.into_diagnostic()?.path();
+        let f = match f {
+            Ok(v) => v.path(),
+            Err(e) => {
+                warn!("Failed to read `DirEntry`: {e}");
+                continue;
+            },
+        };
 
-        match f.extension() {
-            Some(v) if v == "cur" => cursor_paths.push(f),
-            _ => (),
+        if let Some(ext) = f.extension() && ext == "cur" {
+            cursor_paths.push(f);
         }
+
     }
 
     if cursor_paths.is_empty() {
