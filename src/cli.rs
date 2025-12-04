@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use log::warn;
-use miette::{Context, ErrReport, IntoDiagnostic, Result, bail};
+use miette::{Context, IntoDiagnostic, Result, bail};
 use simplelog::Level;
 
 /// Represents received CLI arguments.
@@ -70,12 +70,12 @@ fn validate_cursor_path(cursor_path_str: &str) -> Result<Vec<PathBuf>> {
     // If the input is a single file,
     if cursor_path.is_file() {
         let cursor_file_ext = cursor_path.extension().ok_or_else(|| {
-            ErrReport::from(ArgError::invalid_file_ext(
+            ArgError::invalid_file_ext(
                 None,
                 cursor_path_str,
                 None,
                 "cur",
-            ))
+            )
         })?;
 
         if cursor_file_ext != "cur" {
