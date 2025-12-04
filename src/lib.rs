@@ -7,13 +7,6 @@
 #[allow(unused_imports)]
 use std::env;
 
-/// Shorthand for returning an error (for [`miette::Result`])
-macro_rules! throw {
-    ($e:expr) => {
-        return Err(ErrReport::from($e))
-    };
-}
-
 /// The project root.
 ///
 /// This is only used for tests and shouldn't be used anywhere

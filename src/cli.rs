@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use log::warn;
-use miette::{Context, ErrReport, IntoDiagnostic, Result};
+use miette::{Context, ErrReport, IntoDiagnostic, Result, bail};
 use simplelog::Level;
 
 /// Represents received CLI arguments.
@@ -79,7 +79,7 @@ fn validate_cursor_path(cursor_path_str: &str) -> Result<Vec<PathBuf>> {
         })?;
 
         if cursor_file_ext != "cur" {
-            throw!(ArgError::invalid_file_ext(
+            bail!(ArgError::invalid_file_ext(
                 None,
                 cursor_path_str,
                 cursor_file_ext.to_str(),
@@ -114,7 +114,7 @@ fn validate_cursor_path(cursor_path_str: &str) -> Result<Vec<PathBuf>> {
     }
 
     if cursor_paths.is_empty() {
-        throw!(ArgError::no_valid_files_in_dir(None, cursor_path_str));
+        bail!(ArgError::no_valid_files_in_dir(None, cursor_path_str));
     }
 
     Ok(cursor_paths)
