@@ -22,7 +22,7 @@ pub struct Args {
     #[arg(value_name = "PATH")]
     cursor_paths: String,
 
-    /// The directory to place the converted cursor
+    /// The directory to place the converted cursor(s)
     #[arg(short, long, value_name = "DIR", default_value_t = String::from("./"))]
     out: String,
 
@@ -36,7 +36,10 @@ pub struct Args {
     #[arg(long, value_name = "LEVEL", default_value_t = Level::Warn, help_heading = "Logging")]
     log_level: Level,
 
-    /// Writes logs to FILE instead of the terminal
+    /// Appends logs to FILE instead of the terminal
+    /// 
+    /// If FILE doesn't exist, it's created as
+    /// long as it's parent directory exists
     #[arg(long, value_name = "FILE", help_heading = "Logging")]
     log_file: Option<String>,
 }
