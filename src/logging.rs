@@ -3,10 +3,10 @@
 
 use crate::cli::ParsedArgs;
 
-use std::fs::File;
+use std::fs::OpenOptions;
 
 use log::LevelFilter;
-use miette::{IntoDiagnostic, Result};
+use miette::{Context, IntoDiagnostic, Result};
 use simplelog::{self, ColorChoice, ConfigBuilder, TermLogger, TerminalMode, WriteLogger};
 
 /// Initializes logging based on the given `args`.
@@ -28,7 +28,12 @@ pub fn init_logging(args: &ParsedArgs) -> Result<()> {
 
     // write to file if specified, else terminal
     if let Some(f) = &args.log_file {
-        let stream = File::create(f).into_diagnostic()?;
+        let stream = OpenOptions::new()
+            .append(true)
+            .open(f)
+            .into_diagnostic()
+            .with_context(|| format!("`File::create` failed on path {}", f.display()))?;
+
         WriteLogger::init(filter, config, stream).into_diagnostic()?;
     } else {
         TermLogger::init(filter, config, TerminalMode::Mixed, ColorChoice::Auto)

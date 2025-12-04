@@ -4,7 +4,10 @@
 
 use crate::errors::ArgError;
 
-use std::path::PathBuf;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use clap::Parser;
 use log::warn;
@@ -69,14 +72,9 @@ fn validate_cursor_path(cursor_path_str: &str) -> Result<Vec<PathBuf>> {
 
     // If the input is a single file,
     if cursor_path.is_file() {
-        let cursor_file_ext = cursor_path.extension().ok_or_else(|| {
-            ArgError::invalid_file_ext(
-                None,
-                cursor_path_str,
-                None,
-                "cur",
-            )
-        })?;
+        let cursor_file_ext = cursor_path
+            .extension()
+            .ok_or_else(|| ArgError::invalid_file_ext(None, cursor_path_str, None, "cur"))?;
 
         if cursor_file_ext != "cur" {
             bail!(ArgError::invalid_file_ext(
@@ -104,13 +102,14 @@ fn validate_cursor_path(cursor_path_str: &str) -> Result<Vec<PathBuf>> {
             Err(e) => {
                 warn!("Failed to read `DirEntry`: {e}");
                 continue;
-            },
+            }
         };
 
-        if let Some(ext) = f.extension() && ext == "cur" {
+        if let Some(ext) = f.extension()
+            && ext == "cur"
+        {
             cursor_paths.push(f);
         }
-
     }
 
     if cursor_paths.is_empty() {
@@ -118,6 +117,44 @@ fn validate_cursor_path(cursor_path_str: &str) -> Result<Vec<PathBuf>> {
     }
 
     Ok(cursor_paths)
+}
+
+/// Helper function for [`validate_args`].
+///
+/// If the log file is `Some(_)` and the path's
+/// parent directories exist, create the log file.
+fn handle_log_file(log_file: Option<String>) -> Result<Option<PathBuf>> {
+    let Some(log_file) = log_file else {
+        return Ok(None);
+    };
+
+    let log_path = Path::new(&log_file);
+
+    let Some(parent) = log_path.parent() else {
+        bail!("No parent found for log output path {}", log_path.display());
+    };
+
+    // Turn inputs like "foo.log" => "./foo.log" for canon. to work
+    let parent = if parent == "" {
+        Path::new("./").join(parent)
+    } else {
+        parent.to_path_buf()
+    };
+
+    parent.canonicalize().into_diagnostic().with_context(|| {
+        format!(
+            "Failed to canonicalize parent dir of log file {}",
+            parent.display()
+        )
+    })?;
+
+    if !log_path.exists() {
+        fs::write(log_path, "")
+            .into_diagnostic()
+            .with_context(|| format!("Failed to create log file {}", log_path.display()))?;
+    }
+
+    Ok(Some(log_path.to_path_buf()))
 }
 
 /// Validates the given `args`, this includes:
@@ -142,15 +179,7 @@ pub fn validate_args(args: Args) -> Result<ParsedArgs> {
         .canonicalize()
         .map_err(|_| ArgError::path_doesnt_exist(Some("-o or --out"), &args.out))?;
 
-    // map `Option<String>` to Option<PathBuf>, canonicalizing `Some(PathBuf)`
-    let log_file = args
-        .log_file
-        .map(|s| {
-            PathBuf::from(&s)
-                .canonicalize()
-                .map_err(|_| ArgError::path_doesnt_exist(Some("--log-file"), &s))
-        })
-        .transpose()?;
+    let log_file = handle_log_file(args.log_file)?;
 
     Ok(ParsedArgs {
         cursor_paths: cursor_files,
