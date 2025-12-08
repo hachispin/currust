@@ -11,7 +11,7 @@ use std::env;
 ///
 /// This is only used for tests and shouldn't be used anywhere
 /// else, since this env var doesn't exist in binaries.
-/// 
+///
 /// Also, this is a macro and not a `const &str` for
 /// compile-time concatenation (with `concat!()`).
 #[allow(unused_macros)]

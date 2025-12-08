@@ -37,7 +37,7 @@ pub struct Args {
     log_level: Level,
 
     /// Appends logs to FILE instead of the terminal
-    /// 
+    ///
     /// If FILE doesn't exist, it's created as
     /// long as its parent directory exists
     #[arg(long, value_name = "FILE", help_heading = "Logging")]
