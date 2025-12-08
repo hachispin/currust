@@ -17,7 +17,7 @@ use std::{fs, io::Cursor, path::Path};
 
 use binrw::BinRead;
 use log::{debug, warn};
-use miette::{IntoDiagnostic, Result};
+use miette::{Context, IntoDiagnostic, Result};
 
 /// Models the byte layout of `ICONDIR`.
 ///
@@ -100,8 +100,13 @@ impl WinCursor {
     /// read by [`fs`], or is failed to be parsed by [`binrw`].
     pub fn new(cur: &Path) -> Result<Self> {
         debug!("Creating `WinCursor`, cur={}", cur.to_string_lossy());
-        let bytes = fs::read(cur).into_diagnostic()?;
-        let header = IconDir::read(&mut Cursor::new(&bytes)).into_diagnostic()?;
+        let bytes = fs::read(cur)
+            .into_diagnostic()
+            .with_context(|| format!("Failed to read bytes from {}", cur.display()))?;
+
+        let header = IconDir::read(&mut Cursor::new(&bytes))
+            .into_diagnostic()
+            .context("Failed to parse bytes as `IconDir`")?;
 
         debug!("Parsed ICONDIR, header={header:?}");
 
@@ -126,7 +131,10 @@ impl WinCursor {
             let size = entry.image_size as usize;
             let dib_blob_range = offset..(offset + size);
             let dib_blob = &self.blob[dib_blob_range];
-            let header = BitmapInfoHeader::read(&mut Cursor::new(&dib_blob)).into_diagnostic()?;
+
+            let header = BitmapInfoHeader::read(&mut Cursor::new(&dib_blob))
+                .into_diagnostic()
+                .context("Failed to parse bytes as `BitmapInfoHeader`")?;
 
             let dib = DeviceIndependentBitmap {
                 blob: dib_blob.to_vec(),
