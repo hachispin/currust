@@ -176,7 +176,8 @@ impl CursorImage {
         );
 
         if dib.header.bits_per_pixel == BitsPerPixel::TwentyFour {
-            todo!("Extracting RGBA from 24bpp images isn't implemented yet");
+            warn!("Unstable feature; extracting RGBA from 24-bit cursors");
+            return Self::extract_rgba_24bpp(dib);
         }
 
         if dib.header.height().is_negative() {
@@ -191,7 +192,7 @@ impl CursorImage {
                 BitsPerPixel::One => 32.0, // 1 bit per pixel => 8 RGBA pixels per byte => 32 RGBA bytes
                 BitsPerPixel::Four => 8.0, // 4 bits per pixel => 2 RGBA pixels per byte => 8 RGBA bytes
                 BitsPerPixel::Eight => 4.0, // ...
-                BitsPerPixel::TwentyFour => 4.0 / 3.0,
+                BitsPerPixel::TwentyFour => unreachable!(),
             };
 
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -276,6 +277,28 @@ impl CursorImage {
 
         rgba
     }
+
+    fn extract_rgba_24bpp(dib: &DeviceIndependentBitmap) -> Vec<u8> {
+        let image_size = dib.header.image_size() as usize;
+
+        // Capacity might be wrong here
+        let mut rgba = Vec::with_capacity(image_size * 3);
+        let pixel_data_offset = dib.header.header_size as usize;
+        let num_pixels = image_size / 3; // sketchy
+
+        let alpha_offset = pixel_data_offset + image_size;
+        let alpha_bits = dib.blob[alpha_offset..(alpha_offset + num_pixels)].view_bits::<Msb0>();
+
+        let pixel_data = &dib.blob[pixel_data_offset..(pixel_data_offset + image_size)];
+        assert!(pixel_data.len().is_multiple_of(3));
+
+        for (i, pixel) in pixel_data.chunks_exact(3).enumerate() {
+            rgba.extend(pixel.iter().rev());            
+            rgba.push(u8::from(alpha_bits[i]));
+        }
+
+        rgba
+    }
 }
 
 #[cfg(test)]
@@ -294,7 +317,7 @@ mod tests {
         const EIGHT_BPP_RGBA: &str = include_str!(concat!(project_root!(), "/test_data/8bpp_rgba"));
         const EXPECTED_RGBAS: [&str; 3] = [ONE_BPP_RGBA, FOUR_BPP_RGBA, EIGHT_BPP_RGBA];
 
-        let test_cur_paths = &[
+        let test_cur_paths = [
             Path::new(concat!(project_root!(), "/test_data/1bpp.cur")),
             Path::new(concat!(project_root!(), "/test_data/4bpp.cur")),
             Path::new(concat!(project_root!(), "/test_data/8bpp.cur")),
