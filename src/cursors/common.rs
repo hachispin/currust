@@ -162,19 +162,6 @@ impl CursorImage {
             dib.header.compression_method,
         );
 
-        // Behaviour for negative width is undefined.
-        assert!(
-            dib.header.width.is_positive(),
-            "expected positive width, instead got dib.header.width={}",
-            dib.header.width
-        );
-
-        // Palette is required for bpp <= 8.
-        assert!(
-            dib.header.color_count() != 0,
-            "Missing palette; color count is zero"
-        );
-
         if dib.header.bits_per_pixel == BitsPerPixel::TwentyFour {
             warn!("Unstable feature; extracting RGBA from 24-bit cursors");
             return Self::extract_rgba_24bpp(dib);

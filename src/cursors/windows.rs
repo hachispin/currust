@@ -164,6 +164,7 @@ impl WinCursor {
     assert(_color_planes == 1, "`color_planes` is a reserved field and must be 1."),
     assert(raw_height != 0, "Bitmap height cannot be zero."),
     assert(width != 0, "Bitmap width cannot be zero."),
+    assert(width.is_negative(), "Bitmap width cannot be negative."),
 )]
 pub(super) struct BitmapInfoHeader {
     /// Size of the header itself in bytes.
