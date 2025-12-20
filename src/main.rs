@@ -1,7 +1,7 @@
 use currust::cli::{Args, ParsedArgs};
 
-use clap::Parser;
 use anyhow::Result;
+use clap::Parser;
 
 fn main() -> Result<()> {
     let raw_args = Args::parse();

@@ -40,8 +40,8 @@ impl ParsedArgs {
                 .with_context(|| format!("failed to read dir {path_str}"))?;
 
             for entry in entries {
-                let entry = entry
-                    .with_context(|| format!("failed to read an entry of dir {path_str}"))?;
+                let entry =
+                    entry.with_context(|| format!("failed to read an entry of dir {path_str}"))?;
 
                 let entry_path = entry.path(); // binding
 
@@ -74,7 +74,7 @@ impl ParsedArgs {
     /// Parses `args` for types that don't implement deserializers.
     ///
     /// ## Errors
-    /// 
+    ///
     /// If the input path is to a directory that doesn't contain
     /// CUR files, or to a file that lacks the `.cur` extension.
     pub fn from_args(args: &Args) -> Result<Self> {
