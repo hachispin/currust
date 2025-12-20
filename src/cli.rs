@@ -1,7 +1,7 @@
 //! Module for [`clap`] code.
 //!
 //! This contains the [`Args`] struct, which has the [`Parser`]
-//! trait, and the [`ParsedArgs`] struct, which is just plain old data.
+//! trait, and the [`ParsedArgs`] struct, which is just plain old data.s
 
 use std::path::PathBuf;
 
@@ -55,7 +55,7 @@ impl ParsedArgs {
                 }
             }
 
-            bail!("no CUR files found in {path_str}, note that subdirectories aren't checked");
+            bail!("no CUR files found in {path_str}, note that sub-directories aren't checked");
         } else if path.is_file() {
             if let Some(ext) = path.extension()
                 && ext == "cur"
@@ -66,11 +66,12 @@ impl ParsedArgs {
             bail!("provided file {path_str} is not a CUR file");
         }
 
-        // since metadata errors are coerced to false in is_*() methods,
+        // metadata errors are coerced to false in the `.is_*()`
+        // methods. try passing `/dev/null` for instance
         bail!("couldn't coerce {path_str} as a dir or file")
     }
 
-    /// Parses `args`.
+    /// Parses `args` for types that don't implement deserializers.
     ///
     /// ## Errors
     /// 
