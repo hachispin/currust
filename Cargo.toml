@@ -9,4 +9,4 @@ authors = ["hachispin"]
 anyhow = "1.0.100"
 clap = { version = "4.5.53", features = ["derive"] }
 ico = "0.5.0"
-x11rb = { version = "0.13.2", features = ["cursor"] }
+x11 = { version = "2.21.0", features = ["xcursor"] }
