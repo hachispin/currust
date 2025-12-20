@@ -72,10 +72,14 @@ fn u8_to_u32(u8_vec: Vec<u8>) -> Vec<u32> {
 ///
 /// NOTE: [`XcursorImage::pixels`] is heap-allocated!
 unsafe fn pack(cursor: &CursorImage) -> XcursorImage {
-    let pixels_argb = to_argb(&cursor.rgba);
-    let pixels_argb_u32 = u8_to_u32(pixels_argb);
-    let mut pixels_heap = Box::new(pixels_argb_u32);
-    let pixels = pixels_heap.as_mut_ptr();
+    // xcursor wants an ARGB u32 array
+    let pixels_xcur = u8_to_u32(to_argb(&cursor.rgba));
+
+    // heap alloc and pass pointer to XcursorImage
+    let boxed_pixels = Box::new(pixels_xcur);
+    let boxed_pixels_ptr = Box::into_raw(boxed_pixels);
+    let pixels = unsafe { (*boxed_pixels_ptr).as_mut_ptr() };
+    // ^ must be freed!
 
     let nominal_size = cursor.width.max(cursor.height);
 
