@@ -89,7 +89,7 @@ unsafe fn pack(cursor: &CursorImage) -> XcursorImage {
         delay: STATIC_DELAY,
         width: cursor.width,
         height: cursor.height,
-        xhot: cursor.hotsopt_x,
+        xhot: cursor.hotspot_x,
         yhot: cursor.hotspot_y,
         pixels,
     }
