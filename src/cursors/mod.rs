@@ -2,4 +2,4 @@
 
 pub mod common;
 pub mod cur;
-pub mod xcur;
+pub mod xcursor;
