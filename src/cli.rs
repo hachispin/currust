@@ -10,12 +10,14 @@ use clap::Parser;
 
 /// Raw arguments from CLI. Has the [`Parser`] trait.
 #[derive(Parser)]
+#[command(version, about, long_about = None)]
 pub struct Args {
     /// The path to a CUR file, or a directory containing CUR files.
     path: String,
 }
 
 /// Parsed CLI arguments.
+#[derive(Debug)]
 pub struct ParsedArgs {
     /// The path to a CUR file, or a directory that contains CUR files.
     pub path: PathBuf,
@@ -23,9 +25,9 @@ pub struct ParsedArgs {
 
 impl ParsedArgs {
     /// Helper function for validating [`Args::path`].
-    fn validate_cur_path(path: String) -> Result<PathBuf> {
+    fn validate_cur_path(path: &str) -> Result<PathBuf> {
         // for triage purposes
-        let path_str = path.clone();
+        let path_str = path.to_string();
 
         let path = PathBuf::from(&path)
             .canonicalize()
@@ -69,8 +71,13 @@ impl ParsedArgs {
     }
 
     /// Parses `args`.
-    fn from_args(args: Args) -> Result<Self> {
-        let path = Self::validate_cur_path(args.path)?;
+    ///
+    /// ## Errors
+    /// 
+    /// If the input path is to a directory that doesn't contain
+    /// CUR files, or to a file that lacks the `.cur` extension.
+    pub fn from_args(args: &Args) -> Result<Self> {
+        let path = Self::validate_cur_path(&args.path)?;
 
         Ok(Self { path })
     }
