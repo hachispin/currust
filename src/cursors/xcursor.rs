@@ -84,13 +84,15 @@ fn u8_to_u32(u8_vec: &[u8]) -> Vec<u32> {
 ///
 /// If [`XcursorImageCreate`] returns `NULL`.
 unsafe fn construct_images(cursor: &CursorImage) -> Result<*mut XcursorImage> {
-    let pixels = u8_to_u32(&to_pre_argb(&cursor.rgba));
-    let nominal_size = cursor.width.max(cursor.height);
-    let width: i32 = cursor.width.try_into().unwrap();
-    let height: i32 = cursor.height.try_into().unwrap();
+    let pixels = u8_to_u32(&to_pre_argb(cursor.rgba()));
+    let dims = cursor.dimensions();
 
-    // `XcursorImageCreate()` allocates the `pixels` field
-    let image = unsafe { XcursorImageCreate(height, width) };
+    let (width_i32, height_i32) = (dims.0.try_into().unwrap(), dims.1.try_into().unwrap());
+    let (xhot, yhot) = cursor.hotspot();
+    let nominal_size = dims.0.max(dims.1);
+
+    // `XcursorImageCreate()` allocates the `pixels` field and sets width, height
+    let image = unsafe { XcursorImageCreate(height_i32, width_i32) };
 
     if image.is_null() {
         bail!("`XcursorImageCreate()` returned null");
@@ -99,13 +101,13 @@ unsafe fn construct_images(cursor: &CursorImage) -> Result<*mut XcursorImage> {
     // set fields
     unsafe {
         (*image).size = nominal_size;
-        // (*image).width = cursor.width;    These should be set...
-        // (*image).height = cursor.height;  Right?
-        (*image).xhot = cursor.hotspot_x;
-        (*image).yhot = cursor.hotspot_y;
+        // (*image).width = cursor.width;    these should be set,
+        // (*image).height = cursor.height;  otherwise... X_X
+        (*image).xhot = xhot;
+        (*image).yhot = yhot;
         (*image).delay = STATIC_DELAY;
 
-        let num_pixels: usize = (width * height).try_into().unwrap();
+        let num_pixels: usize = (dims.0 * dims.1).try_into().unwrap();
         std::ptr::copy_nonoverlapping(pixels.as_ptr(), (*image).pixels, num_pixels);
     }
 
