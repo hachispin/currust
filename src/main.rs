@@ -12,7 +12,7 @@ fn main() -> Result<()> {
 
     println!("Parsed args: {args:?}");
 
-    let my_cursors = read_cur("Text.cur")?;
+    let my_cursors = read_cur(args.path)?;
     save_as_xcursor(&my_cursors, "left_ptr")?;
 
     Ok(())
