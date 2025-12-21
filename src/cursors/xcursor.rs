@@ -198,10 +198,12 @@ unsafe fn save_images(path: &str, images: *const XcursorImages) -> Result<()> {
 /// If `path` has no `&str` representation, or errors
 /// from the `unsafe` helper functions are propagated.
 pub fn save_as_xcursor<P: AsRef<Path>>(cursor: &[CursorImage], path: P) -> Result<()> {
-    let path = path
-        .as_ref()
-        .to_str()
-        .ok_or(anyhow::anyhow!("failed to convert path to &str"))?;
+    let path = path.as_ref();
+
+    let path_str = path.to_str().ok_or(anyhow::anyhow!(
+        "failed to convert path={} to &str",
+        path.display()
+    ))?;
 
     let mut images_vec = Vec::with_capacity(cursor.len());
 
@@ -215,7 +217,7 @@ pub fn save_as_xcursor<P: AsRef<Path>>(cursor: &[CursorImage], path: P) -> Resul
     let images = unsafe { bundle_images(images_ptr, cursor.len())? };
 
     unsafe {
-        save_images(path, images)?;
+        save_images(path_str, images)?;
         XcursorImagesDestroy(images);
     };
 
