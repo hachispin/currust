@@ -200,6 +200,7 @@ pub fn save_as_xcursor<P: AsRef<Path>>(cursor: &[CursorImage], path: P) -> Resul
         .as_ref()
         .to_str()
         .ok_or(anyhow::anyhow!("failed to convert path to &str"))?;
+
     let mut images_vec = Vec::with_capacity(cursor.len());
 
     for c in cursor {
@@ -207,9 +208,8 @@ pub fn save_as_xcursor<P: AsRef<Path>>(cursor: &[CursorImage], path: P) -> Resul
         images_vec.push(image);
     }
 
-    // prevent reallocs. i'm paranoid
-    let images_arr = images_vec.as_mut_slice();
-    let images_ptr = images_arr.as_mut_ptr();
+    // `images_vec` must not realloc after this or UB happens
+    let images_ptr = images_vec.as_mut_ptr();
     let images = unsafe { bundle_images(images_ptr, cursor.len())? };
 
     unsafe {
