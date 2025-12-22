@@ -8,7 +8,7 @@ require a substantial amount of manual work, this project aims to be as **easy t
 
 ## Goals
 
-- [ ] Modify [`.cur`](https://en.wikipedia.org/wiki/ICO_(file_format)) files to valid Xcursor
+- [x] Modify [`.cur`](https://en.wikipedia.org/wiki/ICO_(file_format)) files to valid Xcursor
 - [ ] Map cursor names to Xcursor equivalents, similar to [win2xcur-batch](https://github.com/khayalhus/win2xcur-batch)
 - [ ] Generate [`.theme`](https://specifications.freedesktop.org/icon-theme/latest/#file_formats) files
 - [ ] Produced theme directory works when placed in `/usr/share/icons`
