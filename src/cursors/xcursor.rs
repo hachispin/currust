@@ -30,6 +30,7 @@ const STATIC_DELAY: u32 = 0;
 #[allow(clippy::cast_possible_truncation)]
 #[inline]
 const fn pre_alpha_formula(color: u32, alpha: u32) -> u8 {
+    // +128 rounds to closest integer instead of floor
     ((color * alpha + 128) / 255) as u8
 }
 
@@ -45,13 +46,11 @@ fn to_pre_argb(rgba: &[u8]) -> Vec<u8> {
     let mut argb = Vec::with_capacity(rgba.len());
 
     for pixel in rgba.as_chunks::<4>().0 {
-        let [r, g, b, a] = pixel.map(u32::from); // prevent overflow
-        let [r_pre, g_pre, b_pre] = [r, g, b].map(|c| pre_alpha_formula(c, a));
+        // prevent overflow
+        let [r, g, b, a] = pixel.map(u32::from);
 
-        argb.push(a as u8);
-        argb.push(r_pre);
-        argb.push(g_pre);
-        argb.push(b_pre);
+        argb.push(pixel[3]); // push alpha first for ARGB
+        argb.extend([r, g, b].map(|c| pre_alpha_formula(c, a)));
     }
 
     argb
@@ -68,7 +67,7 @@ fn u8_to_u32(u8_vec: &[u8]) -> Vec<u32> {
         "u8_vec length must be a multiple of four for conversion to `Vec<u32>`"
     );
 
-    let mut u32_vec = Vec::with_capacity(u8_vec.len().div_ceil(4));
+    let mut u32_vec = Vec::with_capacity(u8_vec.len() / 4);
 
     for split_quad in u8_vec.as_chunks::<4>().0 {
         let quad = u32::from_be_bytes(*split_quad);
@@ -87,7 +86,7 @@ unsafe fn construct_images(cursor: &CursorImage) -> Result<*mut XcursorImage> {
     let pixels = u8_to_u32(&to_pre_argb(cursor.rgba()));
     let dims = cursor.dimensions();
 
-    let (width_i32, height_i32) = (dims.0.try_into().unwrap(), dims.1.try_into().unwrap());
+    let (width_i32, height_i32) = (dims.0.try_into()?, dims.1.try_into()?);
     let (xhot, yhot) = cursor.hotspot();
     let nominal_size = dims.0.max(dims.1);
 
@@ -107,7 +106,7 @@ unsafe fn construct_images(cursor: &CursorImage) -> Result<*mut XcursorImage> {
         (*image).yhot = yhot;
         (*image).delay = STATIC_DELAY;
 
-        let num_pixels: usize = (dims.0 * dims.1).try_into().unwrap();
+        let num_pixels: usize = (dims.0 * dims.1).try_into()?;
         std::ptr::copy_nonoverlapping(pixels.as_ptr(), (*image).pixels, num_pixels);
     }
 
@@ -126,7 +125,7 @@ unsafe fn bundle_images(
     images: *mut *mut XcursorImage,
     num_images: usize,
 ) -> Result<*mut XcursorImages> {
-    let num_images_i32: i32 = num_images.try_into().unwrap();
+    let num_images_i32: i32 = num_images.try_into()?;
     let xcur_images = unsafe { XcursorImagesCreate(num_images_i32) };
 
     if xcur_images.is_null() {
@@ -172,7 +171,7 @@ unsafe fn save_images(path: &str, images: *const XcursorImages) -> Result<()> {
 
     let result = unsafe { XcursorFileSaveImages(file, images) };
 
-    // xcursorlib uses 0 as errro state. trust.
+    // xcursorlib uses 0 as error state
     if result == 0 {
         // we're already failing so it's
         // not like it can get any worse...
