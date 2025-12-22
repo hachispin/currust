@@ -82,7 +82,7 @@ impl CursorImage {
 
     /// Returns a reference to the stored RGBA.
     #[must_use]
-    pub const fn rgba(&self) -> &Vec<u8> {
+    pub fn rgba(&self) -> &[u8] {
         &self.rgba
     }
 }
