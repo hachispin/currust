@@ -7,18 +7,17 @@
 //! 3) Save them using [`XcursorFileSaveImages`].
 //! 4) Cleanup with [`XcursorImagesDestroy`].
 //!
-//! You can `man xcursor` to read documentation 
+//! You can `man xcursor` to read documentation
 //! for the exposed C functions (from xcursorlib).
 
 use crate::cursors::common::CursorImage;
 
-use std::{ffi::CString, path::Path};
+use std::ffi::CString;
 
 use anyhow::{Context, Result, bail};
 use libc::{fclose, fopen};
 use x11::xcursor::{
     XcursorFileSaveImages, XcursorImage, XcursorImageCreate, XcursorImages, XcursorImagesCreate,
-    XcursorImagesDestroy,
 };
 
 /// A delay value of zero is used for static (i.e, non-animated) Xcursors.
@@ -80,7 +79,7 @@ fn u8_to_u32(u8_vec: &[u8]) -> Vec<u32> {
 /// ## Errors
 ///
 /// If [`XcursorImageCreate`] returns `NULL`.
-unsafe fn construct_images(cursor: &CursorImage) -> Result<*mut XcursorImage> {
+pub(super) unsafe fn construct_images(cursor: &CursorImage) -> Result<*mut XcursorImage> {
     let pixels = u8_to_u32(&to_pre_argb(cursor.rgba()));
     let dims = cursor.dimensions();
 
@@ -119,7 +118,7 @@ unsafe fn construct_images(cursor: &CursorImage) -> Result<*mut XcursorImage> {
 /// ## Errors
 ///
 /// If [`XcursorImagesCreate`] returns `NULL`, or if [`TryInto`] conversions fail.
-unsafe fn bundle_images(
+pub(super) unsafe fn bundle_images(
     images: *mut *mut XcursorImage,
     num_images: usize,
 ) -> Result<*mut XcursorImages> {
@@ -155,7 +154,7 @@ fn errno() -> std::io::Error {
 /// - If [`XcursorFileSaveImages`] fails (returns zero)
 ///
 /// [`errno`] is read upon failure and displayed in [`bail`] messages.
-unsafe fn save_images(path: &str, images: *const XcursorImages) -> Result<()> {
+pub(super) unsafe fn save_images(path: &str, images: *const XcursorImages) -> Result<()> {
     let path_c = CString::new(path)
         .with_context(|| format!("failed to create `CString` for path={path}"))?;
 
@@ -184,39 +183,6 @@ unsafe fn save_images(path: &str, images: *const XcursorImages) -> Result<()> {
         let err = errno();
         bail!("`fclose()` failed: errno={err}");
     }
-
-    Ok(())
-}
-
-/// Saves `cursor` to `path` in Xcursor format.
-///
-/// ## Errors
-///
-/// If `path` has no `&str` representation, or errors
-/// from the `unsafe` helper functions are propagated.
-pub fn save_as_xcursor<P: AsRef<Path>>(cursor: &[CursorImage], path: P) -> Result<()> {
-    let path = path.as_ref();
-
-    let path_str = path.to_str().ok_or(anyhow::anyhow!(
-        "failed to convert path={} to &str",
-        path.display()
-    ))?;
-
-    let mut images_vec = Vec::with_capacity(cursor.len());
-
-    for c in cursor {
-        let image = unsafe { construct_images(c)? };
-        images_vec.push(image);
-    }
-
-    // `images_vec` must not realloc after this or UB happens
-    let images_ptr = images_vec.as_mut_ptr();
-    let images = unsafe { bundle_images(images_ptr, cursor.len())? };
-
-    unsafe {
-        save_images(path_str, images)?;
-        XcursorImagesDestroy(images);
-    };
 
     Ok(())
 }

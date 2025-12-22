@@ -1,6 +1,6 @@
 use currust::{
     cli::{Args, ParsedArgs},
-    cursors::{xcursor::save_as_xcursor, cur::read_cur},
+    cursors::common::GenericCursor,
 };
 
 use anyhow::Result;
@@ -12,8 +12,8 @@ fn main() -> Result<()> {
 
     println!("Parsed args: {args:?}");
 
-    let my_cursors = read_cur(args.path)?;
-    save_as_xcursor(&my_cursors, "left_ptr")?;
+    let my_cursor = GenericCursor::from_cur_path(args.path)?;
+    my_cursor.save_as_xcursor("left_ptr")?;
 
     Ok(())
 }
