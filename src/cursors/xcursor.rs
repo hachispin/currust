@@ -105,8 +105,6 @@ pub(super) unsafe fn construct_images(cursor: &CursorImage) -> Result<*mut Xcurs
 
         let num_pixels: usize = (dims.0 * dims.1).try_into()?;
         std::ptr::copy_nonoverlapping(pixels.as_ptr(), (*image).pixels, num_pixels);
-
-        dbg!(*image);
     }
 
     Ok(image) // this isn't dangling trust me
