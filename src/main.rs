@@ -12,8 +12,14 @@ fn main() -> Result<()> {
 
     println!("Parsed args: {args:?}");
 
-    let my_cursor = GenericCursor::from_cur_path(args.path)?;
-    my_cursor.save_as_xcursor("left_ptr")?;
+    for cur_path in &args.cur_paths {
+        let filename = cur_path.file_stem().unwrap();
+
+        let cursor = GenericCursor::from_cur_path(cur_path)?;
+        cursor.save_as_xcursor(filename)?;
+    }
+
+    println!("Success!");
 
     Ok(())
 }

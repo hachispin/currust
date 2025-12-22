@@ -3,7 +3,7 @@
 //! This contains the [`Args`] struct, which has the [`Parser`]
 //! trait, and the [`ParsedArgs`] struct, which is just plain old data.s
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use clap::Parser;
@@ -19,13 +19,44 @@ pub struct Args {
 /// Parsed CLI arguments.
 #[derive(Debug)]
 pub struct ParsedArgs {
-    /// The path to a CUR file, or a directory that contains CUR files.
-    pub path: PathBuf,
+    /// All files in the specified directory that are CUR files.
+    pub cur_paths: Vec<PathBuf>,
 }
 
 impl ParsedArgs {
+    /// Returns all the files in `dir` that point
+    /// to CUR files. (files with CUR extension)
+    fn extract_curs(cur_dir: &Path) -> Result<Vec<PathBuf>> {
+        assert!(
+            cur_dir.is_dir(),
+            "passed `cur_dir` to `extract_curs()` must be a dir"
+        );
+
+        let mut cur_paths = Vec::new();
+        let cur_dir_display = cur_dir.display();
+        let entries = cur_dir
+            .read_dir()
+            .with_context(|| format!("failed to read entries of cur_dir={cur_dir_display}"))?;
+
+        for entry in entries {
+            let entry = entry.with_context(|| {
+                format!("`entries` iterator over cur_dir={cur_dir_display} yielded bad item")
+            })?;
+
+            let entry_path = entry.path();
+
+            if let Some(ext) = entry_path.extension()
+                && ext == "cur"
+            {
+                cur_paths.push(entry_path);
+            }
+        }
+
+        Ok(cur_paths)
+    }
+
     /// Helper function for validating [`Args::path`].
-    fn validate_cur_path(path: &str) -> Result<PathBuf> {
+    fn validate_cur_path(path: &str) -> Result<Vec<PathBuf>> {
         // for triage purposes
         let path_str = path.to_string();
 
@@ -33,26 +64,11 @@ impl ParsedArgs {
             .canonicalize()
             .with_context(|| format!("failed to canonicalize path {path_str}"))?;
 
-        // checks if a CUR file is contained (non-recursively)
         if path.is_dir() {
-            let entries = path
-                .read_dir()
-                .with_context(|| format!("failed to read dir {path_str}"))?;
+            let cur_paths = Self::extract_curs(&path)?;
 
-            for entry in entries {
-                let entry =
-                    entry.with_context(|| format!("failed to read an entry of dir {path_str}"))?;
-
-                let entry_path = entry.path(); // binding
-
-                // skip files with no extension
-                let Some(ext) = entry_path.extension() else {
-                    continue;
-                };
-
-                if ext == "cur" {
-                    return Ok(path);
-                }
+            if !cur_paths.is_empty() {
+                return Ok(cur_paths)
             }
 
             bail!("no CUR files found in {path_str}, note that sub-directories aren't checked");
@@ -60,7 +76,7 @@ impl ParsedArgs {
             if let Some(ext) = path.extension()
                 && ext == "cur"
             {
-                return Ok(path);
+                return Ok(vec![path]);
             }
 
             bail!("provided file {path_str} is not a CUR file");
@@ -73,6 +89,9 @@ impl ParsedArgs {
 
     /// Parses `args` for types that don't implement deserializers.
     ///
+    /// This may also do extra work, like extracting
+    /// all paths to CUR for the provided path.
+    ///
     /// ## Errors
     ///
     /// If the input path is to a directory that doesn't contain
@@ -80,6 +99,6 @@ impl ParsedArgs {
     pub fn from_args(args: &Args) -> Result<Self> {
         let path = Self::validate_cur_path(&args.path)?;
 
-        Ok(Self { path })
+        Ok(Self { cur_paths: path })
     }
 }
