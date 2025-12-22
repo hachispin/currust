@@ -9,6 +9,8 @@
 //!
 //! You can `man xcursor` to read documentation
 //! for the exposed C functions (from xcursorlib).
+//!
+//! Rely on the `man` pages for parameter ordering.
 
 use crate::cursors::common::CursorImage;
 
@@ -88,7 +90,7 @@ pub(super) unsafe fn construct_images(cursor: &CursorImage) -> Result<*mut Xcurs
     let nominal_size = dims.0.max(dims.1);
 
     // `XcursorImageCreate()` allocates the `pixels` field and sets width, height
-    let image = unsafe { XcursorImageCreate(height_i32, width_i32) };
+    let image = unsafe { XcursorImageCreate(width_i32, height_i32) };
 
     if image.is_null() {
         bail!("`XcursorImageCreate()` returned null");
@@ -97,14 +99,14 @@ pub(super) unsafe fn construct_images(cursor: &CursorImage) -> Result<*mut Xcurs
     // set fields
     unsafe {
         (*image).size = nominal_size;
-        // (*image).width = cursor.width;    these should be set,
-        // (*image).height = cursor.height;  otherwise... X_X
         (*image).xhot = xhot;
         (*image).yhot = yhot;
         (*image).delay = STATIC_DELAY;
 
         let num_pixels: usize = (dims.0 * dims.1).try_into()?;
         std::ptr::copy_nonoverlapping(pixels.as_ptr(), (*image).pixels, num_pixels);
+
+        dbg!(*image);
     }
 
     Ok(image) // this isn't dangling trust me
@@ -142,6 +144,7 @@ pub(super) unsafe fn bundle_images(
 }
 
 /// Alias for `std::io::Error::last_os_error()`
+#[inline]
 fn errno() -> std::io::Error {
     std::io::Error::last_os_error()
 }
