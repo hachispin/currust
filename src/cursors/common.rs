@@ -204,6 +204,7 @@ impl GenericCursor {
                     XcursorImageDestroy(image);
                 }
             }
+
             anyhow::anyhow!("`bundle_images()` failed: {e}")
         })?;
 
@@ -213,6 +214,12 @@ impl GenericCursor {
         }
 
         Ok(())
+    }
+
+    #[must_use]
+    /// Trivial accessor for `images` field.
+    pub fn images(&self) -> &[CursorImage] {
+        &self.images
     }
 }
 
