@@ -14,13 +14,27 @@
 
 use crate::cursors::common::CursorImage;
 
-use std::ffi::CString;
+use std::{
+    ffi::{CStr, CString},
+    ptr::NonNull,
+};
 
 use anyhow::{Context, Result, bail};
 use libc::{fclose, fopen};
 use x11::xcursor::{
     XcursorFileSaveImages, XcursorImage, XcursorImageCreate, XcursorImages, XcursorImagesCreate,
+    XcursorImagesDestroy,
 };
+
+/// Macro for converting `ptr` (1st param) to [`NonNull<T>`], propagating
+/// with [`anyhow::anyhow`] with the given `msg` (2nd param) if null.
+///
+/// This works with format strings.
+macro_rules! denullify {
+    ($ptr:expr, $($msg:tt)*) => {
+        NonNull::new($ptr).ok_or_else(|| anyhow::anyhow!($($msg)*))?
+    };
+}
 
 /// A delay value of zero is used for static (i.e, non-animated) Xcursors.
 const STATIC_DELAY: u32 = 0;
@@ -31,6 +45,43 @@ const STATIC_DELAY: u32 = 0;
 const fn pre_alpha_formula(color: u32, alpha: u32) -> u8 {
     // +128 rounds to closest integer instead of floor
     ((color * alpha + 128) / 255) as u8
+}
+
+/// [`XcursorImages`] with [`Drop`] trait that calls
+/// the [`XcursorImagesDestroy`] destructor for RAII.
+pub(super) struct XcursorImagesHandle {
+    inner: NonNull<XcursorImages>,
+}
+
+impl XcursorImagesHandle {
+    // /// Constructor for `*mut XcursorImages`.
+    // ///
+    // /// Use the infallible [`From`] trait if you
+    // /// already have a `NonNull<XcursorImages>`.
+    // fn new(ptr: *mut XcursorImages) -> Option<Self> {
+    //     NonNull::new(ptr).map(|inner| Self { inner })
+    // }
+
+    /// Equivalent to `self.inner.as_ptr()`.
+    fn as_ptr(&self) -> *mut XcursorImages {
+        self.inner.as_ptr()
+    }
+}
+
+impl From<NonNull<XcursorImages>> for XcursorImagesHandle {
+    fn from(non_null_images: NonNull<XcursorImages>) -> Self {
+        Self {
+            inner: non_null_images,
+        }
+    }
+}
+
+impl Drop for XcursorImagesHandle {
+    fn drop(&mut self) {
+        unsafe {
+            XcursorImagesDestroy(self.inner.as_ptr());
+        }
+    }
 }
 
 /// Converts RGBA packed pixels to pre-multipled ARGB.
@@ -81,7 +132,7 @@ fn u8_to_u32(u8_vec: &[u8]) -> Vec<u32> {
 /// ## Errors
 ///
 /// If [`XcursorImageCreate`] returns `NULL`.
-pub(super) unsafe fn construct_images(cursor: &CursorImage) -> Result<*mut XcursorImage> {
+pub(super) unsafe fn construct_images(cursor: &CursorImage) -> Result<NonNull<XcursorImage>> {
     let pixels = u8_to_u32(&to_pre_argb(cursor.rgba()));
     let dims = cursor.dimensions();
 
@@ -91,20 +142,19 @@ pub(super) unsafe fn construct_images(cursor: &CursorImage) -> Result<*mut Xcurs
 
     // `XcursorImageCreate()` allocates the `pixels` field and sets width, height
     let image = unsafe { XcursorImageCreate(width_i32, height_i32) };
-
-    if image.is_null() {
-        bail!("`XcursorImageCreate()` returned null");
-    }
+    let mut image = denullify!(image, "`XcursorImageCreate()` returned null");
 
     // set fields
-    unsafe {
-        (*image).size = nominal_size;
-        (*image).xhot = xhot;
-        (*image).yhot = yhot;
-        (*image).delay = STATIC_DELAY;
+    let num_pixels: usize = (dims.0 * dims.1).try_into()?;
+    let image_mut = unsafe { image.as_mut() };
 
-        let num_pixels: usize = (dims.0 * dims.1).try_into()?;
-        std::ptr::copy_nonoverlapping(pixels.as_ptr(), (*image).pixels, num_pixels);
+    image_mut.size = nominal_size;
+    image_mut.xhot = xhot;
+    image_mut.yhot = yhot;
+    image_mut.delay = STATIC_DELAY;
+
+    unsafe {
+        std::ptr::copy_nonoverlapping(pixels.as_ptr(), image_mut.pixels, num_pixels);
     }
 
     Ok(image) // this isn't dangling trust me
@@ -112,8 +162,8 @@ pub(super) unsafe fn construct_images(cursor: &CursorImage) -> Result<*mut Xcurs
 
 /// Takes an array of [`XcursorImage`], grouping them as [`XcursorImages`].
 ///
-/// NOTE: The returned [`XcursorImages`] must be freed with [`XcursorImagesDestroy`].
-/// The stored images are freed by this function, so there's no need to manage that.
+/// NOTE: The returned [`XcursorImagesHandle`] implements [`Drop`].
+/// In other words, don't worry about it :)
 ///
 /// ## Errors
 ///
@@ -121,24 +171,22 @@ pub(super) unsafe fn construct_images(cursor: &CursorImage) -> Result<*mut Xcurs
 pub(super) unsafe fn bundle_images(
     images: *mut *mut XcursorImage,
     num_images: usize,
-) -> Result<*mut XcursorImages> {
+) -> Result<XcursorImagesHandle> {
     let num_images_i32: i32 = num_images.try_into()?;
     let xcur_images = unsafe { XcursorImagesCreate(num_images_i32) };
+    let mut xcur_images = denullify!(xcur_images, "`XcursorImagesCreate() returned null`");
 
-    if xcur_images.is_null() {
-        bail!("`XcursorImagesCreate()` returned null");
-    }
+    let xcur_images_mut = unsafe { xcur_images.as_mut() };
+    // `name` is only used for loading xcursor
+    // from themes. we aren't doing that so...
+    xcur_images_mut.name = std::ptr::null_mut();
+    xcur_images_mut.nimage = num_images_i32;
 
     unsafe {
-        // `name` is only used for loading xcursor
-        // from themes. we aren't doing that so...
-        (*xcur_images).name = std::ptr::null_mut();
-        (*xcur_images).nimage = num_images_i32;
-
-        std::ptr::copy_nonoverlapping(images, (*xcur_images).images, num_images);
+        std::ptr::copy_nonoverlapping(images, xcur_images_mut.images, num_images);
     }
 
-    Ok(xcur_images)
+    Ok(xcur_images.into())
 }
 
 /// Alias for `std::io::Error::last_os_error()`
@@ -155,30 +203,26 @@ fn errno() -> std::io::Error {
 /// - If [`XcursorFileSaveImages`] fails (returns zero)
 ///
 /// [`errno`] is read upon failure and displayed in [`bail`] messages.
-pub(super) unsafe fn save_images(path: &str, images: *const XcursorImages) -> Result<()> {
+pub(super) unsafe fn save_images(path: &str, images: &XcursorImagesHandle) -> Result<()> {
+    const WRITE_BINARY: &CStr = c"wb";
+
     let path_c = CString::new(path)
         .with_context(|| format!("failed to create `CString` for path={path}"))?;
 
-    let mode = CString::new("wb").unwrap();
-    let file = unsafe { fopen(path_c.as_ptr(), mode.as_ptr()) };
-
-    if file.is_null() {
-        let err = errno();
-        bail!("`fopen()` failed for path={path}: errno={err}");
-    }
-
-    let result = unsafe { XcursorFileSaveImages(file, images) };
+    let file = unsafe { fopen(path_c.as_ptr(), WRITE_BINARY.as_ptr()) };
+    let file = denullify!(file, "`fopen()` failed for path={path}: errno={}", errno());
+    let file_ptr = file.as_ptr();
+    let result = unsafe { XcursorFileSaveImages(file.as_ptr(), images.as_ptr()) };
 
     // xcursorlib uses 0 as error state
     if result == 0 {
-        // we're already failing so it's
-        // not like it can get any worse...
-        let _ = unsafe { fclose(file) };
+        // we're already failing so it's not like it can get any worse...
+        let _ = unsafe { fclose(file_ptr) };
         let err = errno();
         bail!("`XcursorFileSaveImages()` failed: errno={err}");
     }
 
-    let result = unsafe { fclose(file) };
+    let result = unsafe { fclose(file_ptr) };
 
     if result != 0 {
         let err = errno();
