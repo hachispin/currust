@@ -1,9 +1,4 @@
-//! This is cursed af. Basically C at this point.
-//!
-//! Nearly everything here is `unsafe` so...
-//!
-//! Use [this](https://man.archlinux.org/man/Xcursor.3.en)
-//! as your lifeline. Good luck :)
+//! Contains `unsafe` code for handling Xcursor.
 //!
 //! Basic flow for each Xcursor:
 //!
@@ -11,6 +6,9 @@
 //! 2) Bundle them into an [`XcursorImages`] struct.
 //! 3) Save them using [`XcursorFileSaveImages`].
 //! 4) Cleanup with [`XcursorImagesDestroy`].
+//!
+//! You can `man xcursor` to read documentation 
+//! for the exposed C functions (from xcursorlib).
 
 use crate::cursors::common::CursorImage;
 
@@ -120,7 +118,7 @@ unsafe fn construct_images(cursor: &CursorImage) -> Result<*mut XcursorImage> {
 ///
 /// ## Errors
 ///
-/// If [`XcursorImagesCreate`] returns `NULL`.
+/// If [`XcursorImagesCreate`] returns `NULL`, or if [`TryInto`] conversions fail.
 unsafe fn bundle_images(
     images: *mut *mut XcursorImage,
     num_images: usize,
@@ -190,7 +188,7 @@ unsafe fn save_images(path: &str, images: *const XcursorImages) -> Result<()> {
     Ok(())
 }
 
-/// Saves `cursor` to `path`.
+/// Saves `cursor` to `path` in Xcursor format.
 ///
 /// ## Errors
 ///
