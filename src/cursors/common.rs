@@ -7,7 +7,6 @@ use std::{fs::File, path::Path};
 
 use anyhow::{Context, Result, bail};
 use ico::IconDir;
-use x11::xcursor::XcursorImagesDestroy;
 
 /// Represents a generic cursor *image*.
 ///
@@ -54,7 +53,7 @@ impl CursorImage {
 
         if width != height {
             eprintln!(
-                "width={width} and height={height} aren't equal. \
+                "width={width} and height={height} aren't equal, \
                 this may cause odd behaviour"
             );
         }
@@ -182,7 +181,7 @@ impl GenericCursor {
 
         for c in cursor {
             let image = unsafe { construct_images(c)? };
-            images_vec.push(image);
+            images_vec.push(image.as_ptr());
         }
 
         // `images_vec` must not realloc after this or UB happens
@@ -190,10 +189,8 @@ impl GenericCursor {
         let images = unsafe { bundle_images(images_ptr, cursor.len())? };
 
         unsafe {
-            let res = save_images(path_str, images);
-            XcursorImagesDestroy(images);
-            res?;
-        };
+            save_images(path_str, &images)?;
+        }
 
         Ok(())
     }
