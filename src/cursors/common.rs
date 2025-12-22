@@ -7,6 +7,7 @@ use std::{fs::File, path::Path};
 
 use anyhow::{Context, Result, bail};
 use ico::IconDir;
+use x11::xcursor::XcursorImageDestroy;
 
 /// Represents a generic cursor *image*.
 ///
@@ -180,15 +181,34 @@ impl GenericCursor {
         let mut images_vec = Vec::with_capacity(cursor.len());
 
         for c in cursor {
-            let image = unsafe { construct_images(c)? };
+            let image = unsafe { construct_images(c) }.map_err(|e| {
+                // destroy images
+                for image in &images_vec {
+                    unsafe {
+                        XcursorImageDestroy(*image);
+                    }
+                }
+
+                anyhow::anyhow!("`construct_images() failed: {e}`")
+            })?;
+
             images_vec.push(image.as_ptr());
         }
 
         // `images_vec` must not realloc after this or UB happens
         let images_ptr = images_vec.as_mut_ptr();
-        let images = unsafe { bundle_images(images_ptr, cursor.len())? };
+        let images = unsafe { bundle_images(images_ptr, cursor.len()) }.map_err(|e| {
+            // destroy images yet again
+            for image in images_vec {
+                unsafe {
+                    XcursorImageDestroy(image);
+                }
+            }
+            anyhow::anyhow!("`bundle_images()` failed: {e}")
+        })?;
 
         unsafe {
+            // drop called on `images` if propagated
             save_images(path_str, &images)?;
         }
 
