@@ -101,23 +101,25 @@ impl GenericCursor {
     ///
     /// ## Errors
     ///
-    /// If any image in `images` has the same image
-    /// dimensions as another image.
+    /// If any image in `images` has the same nominal size as another image.
+    ///
+    /// The nominal size is calculated as such: `width.max(height)`
     pub fn new(images: Vec<CursorImage>) -> Result<Self> {
-        let mut seen_dims = Vec::with_capacity(images.len());
+        let mut seen_nominal_sizes = Vec::with_capacity(images.len());
 
         // no hashset because small collection
         for image in &images {
             let dims = image.dimensions();
+            let nominal_size = dims.0.max(dims.1);
 
-            if seen_dims.contains(&dims) {
+            if seen_nominal_sizes.contains(&nominal_size) {
                 bail!(
                     "`GenericCursor` can't be constructed \
-                    with images that have the same dimensions"
+                    with images that have the same nominal size"
                 );
             }
 
-            seen_dims.push(dims);
+            seen_nominal_sizes.push(nominal_size);
         }
 
         Ok(Self { images })
