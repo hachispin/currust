@@ -3,7 +3,7 @@ use currust::{
     cursors::common::GenericCursor,
 };
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 
 fn main() -> Result<()> {
@@ -14,13 +14,15 @@ fn main() -> Result<()> {
         let filename = cur_path.file_stem().unwrap();
         let out = args.out.join(filename);
 
-        println!("parsing {}", filename.display());
+        println!("Parsing {}", filename.display());
         let cursor = GenericCursor::from_cur_path(cur_path)?;
 
-        cursor.save_as_xcursor(out)?;
+        cursor.save_as_xcursor(out).context(
+            "\
+            An error occured while converting to Xcursor!\n\
+            Any produced Xcursor files may be corrupted.",
+        )?;
     }
-
-    println!("Success!");
 
     Ok(())
 }
