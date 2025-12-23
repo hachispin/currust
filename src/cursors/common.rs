@@ -7,12 +7,12 @@ use std::{fs::File, path::Path};
 
 use anyhow::{Context, Result, bail};
 use ico::IconDir;
-use x11::xcursor::XcursorImageDestroy;
 
 /// Represents a generic cursor *image*.
 ///
 /// An actual cursor is usually expressed as a
 /// vector of cursor images. See [`GenericCursor`].
+#[derive(Debug)]
 pub struct CursorImage {
     width: u32,
     height: u32,
@@ -46,7 +46,7 @@ impl CursorImage {
 
         if (width * height * 4) != rgba.len().try_into()? {
             bail!(
-                "expected rgba.len()={}, instead got rgba.len()={}",
+                "Expected rgba.len()={}, instead got rgba.len()={}",
                 width * height * 4,
                 rgba.len()
             );
@@ -54,8 +54,8 @@ impl CursorImage {
 
         if width != height {
             eprintln!(
-                "width={width} and height={height} aren't equal, \
-                this may cause odd behaviour"
+                "Warning: width={width} and height={height} \
+                aren't equal, this may cause odd behaviour"
             );
         }
 
@@ -91,6 +91,7 @@ impl CursorImage {
 ///
 /// `images` is guaranteed to not have any images
 /// that share the same dimensions.
+#[derive(Debug)]
 pub struct GenericCursor {
     images: Vec<CursorImage>,
 }
@@ -145,9 +146,9 @@ impl GenericCursor {
 
         for entry in entries {
             let image = entry.decode()?;
-            let hotspot = image.cursor_hotspot().ok_or(anyhow::anyhow!(
-                "provided cur_path={cur_path_display} must be to CUR, not ICO"
-            ))?;
+            let hotspot = image.cursor_hotspot().ok_or_else(|| {
+                anyhow::anyhow!("provided cur_path={cur_path_display} must be to CUR, not ICO")
+            })?;
 
             let image = CursorImage::new(
                 image.width(),
@@ -173,44 +174,23 @@ impl GenericCursor {
         let path = path.as_ref();
         let cursor = self.images.as_slice();
 
-        let path_str = path.to_str().ok_or(anyhow::anyhow!(
-            "failed to convert path={} to &str",
-            path.display()
-        ))?;
+        let path_str = path
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("failed to convert path={} to &str", path.display()))?;
 
         let mut images_vec = Vec::with_capacity(cursor.len());
 
         for c in cursor {
-            let image = unsafe { construct_images(c) }.map_err(|e| {
-                // destroy images
-                for image in &images_vec {
-                    unsafe {
-                        XcursorImageDestroy(*image);
-                    }
-                }
-
-                anyhow::anyhow!("`construct_images() failed: {e}`")
-            })?;
-
-            images_vec.push(image.as_ptr());
+            // drop called on XcursorImage if propagated
+            let image = unsafe { construct_images(c) }?;
+            images_vec.push(image);
         }
 
-        // `images_vec` must not realloc after this or UB happens
-        let images_ptr = images_vec.as_mut_ptr();
-        let images = unsafe { bundle_images(images_ptr, cursor.len()) }.map_err(|e| {
-            // destroy images yet again
-            for image in images_vec {
-                unsafe {
-                    XcursorImageDestroy(image);
-                }
-            }
-
-            anyhow::anyhow!("`bundle_images()` failed: {e}")
-        })?;
+        let images = unsafe { bundle_images(&mut images_vec) }?;
 
         unsafe {
-            // drop called on `images` if propagated
-            save_images(path_str, &images)?;
+            // drop called on each stored XcursorImage if propagated
+            save_images(path_str, images.as_ref())?;
         }
 
         Ok(())
