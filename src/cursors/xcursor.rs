@@ -8,7 +8,7 @@
 //! 4) Cleanup with [`XcursorImagesDestroy`].
 //!
 //! You can `man xcursor` to read documentation
-//! for the exposed C functions (from xcursorlib).
+//! for the exposed C functions (from libXcursor).
 //!
 //! Rely on the `man` pages for parameter ordering.
 
@@ -212,9 +212,9 @@ pub(super) unsafe fn save_images(path: &str, images: &XcursorImagesHandle) -> Re
     let file = unsafe { fopen(path_c.as_ptr(), WRITE_BINARY.as_ptr()) };
     let file = denullify!(file, "`fopen()` failed for path={path}: errno={}", errno());
     let file_ptr = file.as_ptr();
-    let result = unsafe { XcursorFileSaveImages(file.as_ptr(), images.as_ptr()) };
+    let result = unsafe { XcursorFileSaveImages(file_ptr, images.as_ptr()) };
 
-    // xcursorlib uses 0 as error state
+    // libXcursor uses 0 as error state
     if result == 0 {
         // we're already failing so it's not like it can get any worse...
         let _ = unsafe { fclose(file_ptr) };
