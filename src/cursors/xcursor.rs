@@ -67,7 +67,9 @@ pub(super) struct XcursorImageHandle {
 
 impl XcursorImageHandle {
     /// Equivalent to `self.inner.as_ptr()`.
-    pub const fn as_ptr(&self) -> *mut XcursorImage {
+    ///
+    /// This is marked unsafe because it returns a raw pointer.
+    const unsafe fn as_ptr(&self) -> *mut XcursorImage {
         self.inner.as_ptr()
     }
 }
