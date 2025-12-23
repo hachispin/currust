@@ -7,10 +7,10 @@
 //! 3) Save them using [`XcursorFileSaveImages`].
 //! 4) Cleanup with [`XcursorImagesDestroy`].
 //!
-//! You can `man xcursor` to read documentation
-//! for the exposed C functions (from libXcursor).
+//! You can [`man xcursor`](https://manpages.ubuntu.com/manpages/plucky/man3/Xcursor.3.html)
+//! for documentation regarding any C functions.
 //!
-//! Rely on the `man` pages for parameter ordering.
+//! NOTE: rely on the `man` pages for parameter ordering.
 
 use crate::cursors::common::CursorImage;
 
