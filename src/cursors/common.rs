@@ -192,7 +192,7 @@ impl GenericCursor {
 
         for c in cursor {
             // drop called on XcursorImage if propagated
-            let image = unsafe { construct_images(c)? };
+            let image = construct_images(c)?;
             images_vec.push(image);
         }
 

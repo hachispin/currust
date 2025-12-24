@@ -62,6 +62,8 @@ const fn pre_alpha_formula(color: u32, alpha: u32) -> u8 {
 /// [source code](https://gitlab.freedesktop.org/xorg/lib/libxcursor/-/blob/master/src/file.c?ref_type=heads#L134).
 #[repr(transparent)] // for safe casts: XcursorImageHandle <=> NonNull<XcursorImage> <=> *mut XcursorImage
 pub(super) struct XcursorImageHandle {
+    /// This is not guaranteed to be valid unless it
+    /// comes from a valid [`bundle_images`] call.
     inner: NonNull<XcursorImage>,
 }
 
@@ -135,10 +137,12 @@ fn u8_to_u32(u8_vec: &[u8]) -> Vec<u32> {
 
 /// Constructs an [`XcursorImageHandle`] using `cursor`.
 ///
+/// This is not marked `unsafe` as the caller cannot cause UB.
+///
 /// ## Errors
 ///
 /// If [`XcursorImageCreate`] returns `NULL`.
-pub(super) unsafe fn construct_images(cursor: &CursorImage) -> Result<XcursorImageHandle> {
+pub(super) fn construct_images(cursor: &CursorImage) -> Result<XcursorImageHandle> {
     let pixels = u8_to_u32(&to_pre_argb(cursor.rgba()));
     let dims = cursor.dimensions();
 
@@ -151,7 +155,12 @@ pub(super) unsafe fn construct_images(cursor: &CursorImage) -> Result<XcursorIma
     let mut image = denullify!(image, "`XcursorImageCreate()` returned null");
 
     // set fields
-    let num_pixels: usize = (dims.0 * dims.1).try_into()?;
+    let num_pixels: usize = (dims
+        .0
+        .checked_mul(dims.1)
+        .ok_or_else(|| anyhow::anyhow!("overflow on dims product")))?
+    .try_into()?;
+
     let image_mut = unsafe { image.as_mut() };
 
     image_mut.size = nominal_size;
@@ -168,8 +177,13 @@ pub(super) unsafe fn construct_images(cursor: &CursorImage) -> Result<XcursorIma
 
 /// Takes an array of [`XcursorImageHandle`], grouping them as [`XcursorImages`].
 ///
-/// NOTE: The returned [`XcursorImagesHandle`] has RAII, so
-/// you don't need to do any manual cleanup.
+/// NOTE: The returned [`XcursorImages`] inherently has RAII from
+/// [`XcursorImageHandle`], so you don't need to do any manual cleanup.
+///
+/// ## Safety
+///
+/// `images`'s elements are assumed to be valid
+/// and constructed by [`construct_images`].
 ///
 /// ## Errors
 ///
@@ -205,12 +219,18 @@ fn errno() -> std::io::Error {
 
 /// Writes `images` as an Xcursor file to `path`.
 ///
+/// ## Safety
+///
+/// `images` is assumed to be valid and constructed
+/// by a valid (safe) [`bundle_images`] call.
+///
 /// ## Errors
 ///
+/// - If `path` can't be converted to `CString`
 /// - If [`fopen`]/[`fclose`] fails (returns non-zero)
 /// - If [`XcursorFileSaveImages`] fails (returns zero)
 ///
-/// [`errno`] is read upon failure and displayed in [`bail`] messages.
+/// `errno()` is read upon failure and displayed in [`bail`] messages.
 pub(super) unsafe fn save_images(path: &str, images: &XcursorImages) -> Result<()> {
     const WRITE_BINARY: &CStr = c"wb";
 
@@ -226,15 +246,13 @@ pub(super) unsafe fn save_images(path: &str, images: &XcursorImages) -> Result<(
     if result == 0 {
         // we're already failing so it's not like it can get any worse...
         let _ = unsafe { fclose(file_ptr) };
-        let err = errno();
-        bail!("`XcursorFileSaveImages()` failed: errno={err}");
+        bail!("`XcursorFileSaveImages()` failed: errno={}", errno());
     }
 
     let result = unsafe { fclose(file_ptr) };
 
     if result != 0 {
-        let err = errno();
-        bail!("`fclose()` failed: errno={err}");
+        bail!("`fclose()` failed: errno={}", errno());
     }
 
     Ok(())
