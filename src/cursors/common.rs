@@ -200,7 +200,7 @@ impl GenericCursor {
 
         unsafe {
             // drop called on each stored XcursorImage if propagated
-            save_images(path_str, images.as_ref())?;
+            save_images(path_str, &images)?;
         }
 
         Ok(())

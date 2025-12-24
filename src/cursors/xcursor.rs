@@ -20,7 +20,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use libc::{fclose, fopen};
+use libc::{fclose, fopen, free};
 use x11::xcursor::{
     XcursorFileSaveImages, XcursorImage, XcursorImageCreate, XcursorImageDestroy, XcursorImages,
     XcursorImagesCreate,
@@ -50,17 +50,17 @@ const fn pre_alpha_formula(color: u32, alpha: u32) -> u8 {
 /// [`XcursorImage`] with an implemented [`Drop`] trait
 /// that calls [`XcursorImageDestroy`] for RAII.
 ///
-/// This also works for [`XcursorImages`], since its destructor,
-/// `XcursorImagesDestroy`, only frees its stored images
-/// and its `name` field (set to null in [`bundle_images`]).
+/// This struct is [transparent](https://doc.rust-lang.org/nomicon/other-reprs.html#reprtransparent)
+/// to allow for safe casts to `*mut XcursorImage` when needed.
 ///
-/// In other words, `XcursorImagesDestroy` is equivalent to
-/// just calling the destructor on each of its `images`, which
-/// is something the [`Drop`] trait for this struct already does.
+/// ## Safety
+///
+/// For [`XcursorImages`], **do not call** `XcursorImagesDestroy`,
+/// as this double-frees the pointers in `images`.
 ///
 /// You can see this in the
 /// [source code](https://gitlab.freedesktop.org/xorg/lib/libxcursor/-/blob/master/src/file.c?ref_type=heads#L134).
-#[repr(transparent)] // for safe casts: XcursorImageHandle <=> NonNull<XcursorImage> <=> *mut XcursorImage
+#[repr(transparent)]
 pub(super) struct XcursorImageHandle {
     /// This is not guaranteed to be valid unless it
     /// comes from a valid [`bundle_images`] call.
@@ -88,6 +88,51 @@ impl Drop for XcursorImageHandle {
     fn drop(&mut self) {
         unsafe {
             XcursorImageDestroy(self.as_ptr());
+        }
+    }
+}
+
+/// RAII wrapper around [`XcursorImages`].
+///
+/// This struct is [transparent](https://doc.rust-lang.org/nomicon/other-reprs.html#reprtransparent)
+/// to allow for safe casts to `*mut XcursorImages` when needed.
+///
+/// ## Safety
+///
+/// This does not call `XcursorImagesDestroy` because
+/// doing so would double-free the `images` pointers.
+///
+/// Images are already memory managed in [`XcursorImageHandle`].
+/// **Do not pass** non-managed [`XcursorImage`]'s here, it will leak!
+#[repr(transparent)]
+pub(super) struct XcursorImagesHandle {
+    /// The stored images here must be managed by [`XcursorImageHandle`].
+    ///
+    /// They are **not** freed by the [`Drop`] trait for this struct.
+    inner: NonNull<XcursorImages>,
+}
+
+impl Drop for XcursorImagesHandle {
+    fn drop(&mut self) {
+        unsafe {
+            let raw = self.as_ptr();
+            let name = (*raw).name;
+            free(name.cast());
+            free(raw.cast());
+        }
+    }
+}
+
+impl XcursorImagesHandle {
+    const unsafe fn as_ptr(&self) -> *mut XcursorImages {
+        self.inner.as_ptr()
+    }
+}
+
+impl From<NonNull<XcursorImages>> for XcursorImagesHandle {
+    fn from(non_null_images: NonNull<XcursorImages>) -> Self {
+        Self {
+            inner: non_null_images,
         }
     }
 }
@@ -190,7 +235,7 @@ pub(super) fn construct_images(cursor: &CursorImage) -> Result<XcursorImageHandl
 /// If [`XcursorImagesCreate`] returns `NULL`, or if [`TryInto`] conversions fail.
 pub(super) unsafe fn bundle_images(
     images: &mut [XcursorImageHandle],
-) -> Result<NonNull<XcursorImages>> {
+) -> Result<XcursorImagesHandle> {
     let num_images_i32: i32 = images.len().try_into()?;
     let xcur_images = unsafe { XcursorImagesCreate(num_images_i32) };
     let mut xcur_images = denullify!(xcur_images, "`XcursorImagesCreate() returned null`");
@@ -208,7 +253,7 @@ pub(super) unsafe fn bundle_images(
         std::ptr::copy_nonoverlapping(images_raw, xcur_images_mut.images, images.len());
     }
 
-    Ok(xcur_images)
+    Ok(xcur_images.into())
 }
 
 /// Alias for `std::io::Error::last_os_error()`
@@ -231,7 +276,7 @@ fn errno() -> std::io::Error {
 /// - If [`XcursorFileSaveImages`] fails (returns zero)
 ///
 /// `errno()` is read upon failure and displayed in [`bail`] messages.
-pub(super) unsafe fn save_images(path: &str, images: &XcursorImages) -> Result<()> {
+pub(super) unsafe fn save_images(path: &str, images: &XcursorImagesHandle) -> Result<()> {
     const WRITE_BINARY: &CStr = c"wb";
 
     let path_c = CString::new(path)
@@ -240,7 +285,7 @@ pub(super) unsafe fn save_images(path: &str, images: &XcursorImages) -> Result<(
     let file = unsafe { fopen(path_c.as_ptr(), WRITE_BINARY.as_ptr()) };
     let file = denullify!(file, "`fopen()` failed for path={path}: errno={}", errno());
     let file_ptr = file.as_ptr();
-    let result = unsafe { XcursorFileSaveImages(file_ptr, images) };
+    let result = unsafe { XcursorFileSaveImages(file_ptr, images.as_ptr()) };
 
     // libXcursor uses 0 as error state
     if result == 0 {
