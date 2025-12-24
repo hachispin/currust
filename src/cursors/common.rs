@@ -36,6 +36,14 @@ impl CursorImage {
         hotspot_y: u32,
         rgba: Vec<u8>,
     ) -> Result<Self> {
+        if width == 0 {
+            bail!("width cannot be zero");
+        }
+
+        if height == 0 {
+            bail!("height cannot be zero")
+        }
+
         if hotspot_x > width {
             bail!("hotspot_x={hotspot_x} cannot be greater than width={width}");
         }
@@ -184,7 +192,7 @@ impl GenericCursor {
 
         for c in cursor {
             // drop called on XcursorImage if propagated
-            let image = unsafe { construct_images(c) }?;
+            let image = unsafe { construct_images(c)? };
             images_vec.push(image);
         }
 
