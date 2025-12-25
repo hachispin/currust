@@ -4,3 +4,4 @@
 
 pub mod cli;
 pub mod cursors;
+pub mod scaling;
