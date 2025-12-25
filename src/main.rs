@@ -15,7 +15,8 @@ fn main() -> Result<()> {
         let out = args.out.join(filename);
 
         println!("Parsing {}", filename.display());
-        let cursor = GenericCursor::from_cur_path(cur_path)?;
+        let mut cursor = GenericCursor::from_cur_path(cur_path)?;
+        cursor.add_scale(10.0)?;
 
         cursor.save_as_xcursor(out).context(
             "\

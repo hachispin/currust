@@ -22,6 +22,8 @@ pub struct CursorImage {
 }
 
 impl CursorImage {
+    const MAX_SCALE_FACTOR: f64 = 100.0;
+
     /// Contructor for [`CursorImage`].
     ///
     /// ## Errors
@@ -76,6 +78,67 @@ impl CursorImage {
         })
     }
 
+    /// Returns a new [`CursorImage`] scaled to `scale_factor`.
+    ///
+    /// ## Errors
+    ///
+    /// If `scale_factor` is:
+    ///     - not "normal" (zero, infinite, subnormal, NaN)
+    ///     - negative
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    pub fn scaled_to(&self, scale_factor: f64) -> Result<Self> {
+        if !scale_factor.is_normal() {
+            bail!("scale_factor={scale_factor} must be normal");
+        }
+
+        if scale_factor <= 0.0 {
+            bail!("scale_factor={scale_factor} can't be negative or zero");
+        }
+
+        if scale_factor > Self::MAX_SCALE_FACTOR {
+            bail!(
+                "scale_factor={scale_factor} can't be larger than MAX_SCALE_FACTOR={}",
+                Self::MAX_SCALE_FACTOR
+            );
+        }
+
+        // this isn't very pretty
+        // from now on, keep in mind that: 0 < `scale_factor` < 100.0
+        // converting to `usize` for `Resizer::new()`
+
+        let (width, height) = self.dimensions();
+        let (scaled_width, scaled_height) = (
+            (f64::from(width) * scale_factor).round() as u32,
+            (f64::from(height) * scale_factor).round() as u32,
+        );
+
+        let (scaled_hotspot_x, scaled_hotspot_y) = (
+            (f64::from(self.hotspot_x) * scale_factor).round() as u32,
+            (f64::from(self.hotspot_y) * scale_factor).round() as u32,
+        );
+
+        let scaled_rgba = scale_nearest(self.rgba(), width, height, scaled_width, scaled_height);
+
+        Ok(Self {
+            width: scaled_width,
+            height: scaled_height,
+            hotspot_x: scaled_hotspot_x,
+            hotspot_y: scaled_hotspot_y,
+            rgba: scaled_rgba,
+        })
+    }
+
+    /// Helper function for scaling points/dimensions.
+    ///
+    /// `point` should be (x, y). The returned scaled
+    /// coordinates are rounded.
+    fn scale_point(point: (u32, u32), scale_factor: f64) -> (f64, f64) {
+        let scaled_width = f64::from(point.0) * scale_factor;
+        let scaled_height = f64::from(point.1) * scale_factor;
+
+        (scaled_width.round(), scaled_height.round())
+    }
+
     /// Returns image dimensions as (width, height).
     #[must_use]
     pub const fn dimensions(&self) -> (u32, u32) {
@@ -109,10 +172,13 @@ impl GenericCursor {
     ///
     /// ## Errors
     ///
-    /// If any image in `images` has the same nominal size as another image.
-    ///
-    /// The nominal size is calculated as such: `width.max(height)`
+    /// If any image in `images` has the same nominal
+    /// size as another image, or if `images` is empty.
     pub fn new(images: Vec<CursorImage>) -> Result<Self> {
+        if images.is_empty() {
+            bail!("`images` can't be empty");
+        }
+
         let mut seen_nominal_sizes = Vec::with_capacity(images.len());
 
         // no hashset because small collection
@@ -131,6 +197,45 @@ impl GenericCursor {
         }
 
         Ok(Self { images })
+    }
+
+    /// Helper function for [`Self::add_scale`].
+    fn has_nominal_size(&self, nominal_size: u32) -> bool {
+        for image in &self.images {
+            let dims = image.dimensions();
+
+            if dims.0.max(dims.1) == nominal_size {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Adds a scaled [`CursorImage`] to [`Self::images`]. This
+    /// scales based off of the first element in [`Self::images`].
+    ///
+    /// ## Errors
+    ///
+    /// If the newly made [`CursorImage`] doesn't have
+    /// a unique nominal size.
+    pub fn add_scale(&mut self, scale_factor: f64) -> Result<()> {
+        // this won't panic because new() guarantees at least 1
+        let base = &self.images[0];
+        let dims = base.dimensions();
+        let scaled_dims = CursorImage::scale_point(dims, scale_factor);
+
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let scaled_nominal = scaled_dims.0.max(scaled_dims.1) as u32;
+
+        if self.has_nominal_size(scaled_nominal) {
+            bail!("duplicate nominal size");
+        }
+
+        let scaled_image = base.scaled_to(scale_factor)?;
+        self.images.push(scaled_image);
+
+        Ok(())
     }
 
     /// Reads and parses a cursor from `cur_path`, which
@@ -219,4 +324,40 @@ impl From<CursorImage> for GenericCursor {
             images: vec![image],
         }
     }
+}
+
+/// Nearest-neighbour scaling algorithm for RGBA8.
+///
+/// This is center-aligned.
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss
+)]
+fn scale_nearest(src: &[u8], src_w: u32, src_h: u32, dst_w: u32, dst_h: u32) -> Vec<u8> {
+    let mut dst = vec![0u8; (dst_w * dst_h * 4) as usize];
+
+    let scale_x = src_w as f32 / dst_w as f32;
+    let scale_y = src_h as f32 / dst_h as f32;
+
+    // lowkenuinely copied from chatgpt so i have 
+    // no clue what this does. it works though
+    for y in 0..dst_h {
+        for x in 0..dst_w {
+            let src_x = ((x as f32 + 0.5) * scale_x - 0.5)
+                .round()
+                .clamp(0.0, (src_w - 1) as f32) as u32;
+
+            let src_y = ((y as f32 + 0.5) * scale_y - 0.5)
+                .round()
+                .clamp(0.0, (src_h - 1) as f32) as u32;
+
+            let src_idx = ((src_y * src_w + src_x) * 4) as usize;
+            let dst_idx = ((y * dst_w + x) * 4) as usize;
+
+            dst[dst_idx..dst_idx + 4].copy_from_slice(&src[src_idx..src_idx + 4]);
+        }
+    }
+
+    dst
 }
