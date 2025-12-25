@@ -1,13 +1,14 @@
 //! Contains scaling algorithms.
 
-/// Nearest-neighbour scaling algorithm for RGBA8.
-///
-/// This is center-aligned and used for *upscaling*.
-#[allow(
+#![allow(
     clippy::cast_possible_truncation,
     clippy::cast_precision_loss,
     clippy::cast_sign_loss
 )]
+
+/// Nearest-neighbour scaling algorithm for RGBA8.
+///
+/// This is center-aligned and used for *upscaling*.
 pub(crate) fn scale_nearest(src: &[u8], src_w: u32, src_h: u32, dst_w: u32, dst_h: u32) -> Vec<u8> {
     let mut dst = vec![0u8; (dst_w * dst_h * 4) as usize];
 
@@ -39,11 +40,6 @@ pub(crate) fn scale_nearest(src: &[u8], src_w: u32, src_h: u32, dst_w: u32, dst_
 /// Box sampling/averaging algorithm for RGBA8.
 ///
 /// This is used for *downscaling*.
-#[allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_precision_loss,
-    clippy::cast_sign_loss
-)]
 pub(crate) fn scale_box_average(
     src: &[u8],
     src_w: u32,
