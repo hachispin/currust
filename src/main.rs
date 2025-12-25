@@ -16,7 +16,16 @@ fn main() -> Result<()> {
 
         println!("Parsing {}", filename.display());
         let mut cursor = GenericCursor::from_cur_path(cur_path)?;
-        cursor.add_scale(10.0)?;
+
+        // add a bunch of scales
+        cursor.add_downscale(4)?;
+        cursor.add_downscale(2)?;
+        cursor.add_upscale(2)?;
+        cursor.add_upscale(3)?;
+
+        for image in cursor.images() {
+            println!("{:?}", image.dimensions());
+        }
 
         cursor.save_as_xcursor(out).context(
             "\

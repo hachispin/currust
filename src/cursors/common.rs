@@ -22,7 +22,10 @@ pub struct CursorImage {
 }
 
 impl CursorImage {
-    const MAX_SCALE_FACTOR: f64 = 100.0;
+    /// The max upscaling factor for images.
+    pub const MAX_UPSCALE_FACTOR: u32 = 20;
+    /// The max downscaling factor for images.
+    pub const MAX_DOWNSCALE_FACTOR: u32 = 5;
 
     /// Contructor for [`CursorImage`].
     ///
@@ -78,46 +81,29 @@ impl CursorImage {
         })
     }
 
-    /// Returns a new [`CursorImage`] scaled to `scale_factor`.
+    /// Returns a new [`CursorImage`] scaled *up* to `scale_factor` using
+    /// [nearest-neighbour](https://en.wikipedia.org/wiki/Image_scaling#Nearest-neighbor_interpolation)
+    /// scaling.
     ///
     /// ## Errors
     ///
-    /// If `scale_factor` is:
-    ///     - not "normal" (zero, infinite, subnormal, NaN)
-    ///     - negative
+    /// If `scale_factor` is greater than [`Self::MAX_UPSCALE_FACTOR`].
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    pub fn scaled_to(&self, scale_factor: f64) -> Result<Self> {
-        if !scale_factor.is_normal() {
-            bail!("scale_factor={scale_factor} must be normal");
-        }
-
-        if scale_factor <= 0.0 {
-            bail!("scale_factor={scale_factor} can't be negative or zero");
-        }
-
-        if scale_factor > Self::MAX_SCALE_FACTOR {
+    pub fn upscaled_to(&self, scale_factor: u32) -> Result<Self> {
+        if scale_factor > Self::MAX_UPSCALE_FACTOR {
             bail!(
-                "scale_factor={scale_factor} can't be larger than MAX_SCALE_FACTOR={}",
-                Self::MAX_SCALE_FACTOR
+                "scale_factor={scale_factor} can't be greater than MAX_SCALE_FACTOR={}",
+                Self::MAX_UPSCALE_FACTOR
             );
         }
 
-        // this isn't very pretty
-        // from now on, keep in mind that: 0 < `scale_factor` < 100.0
-        // converting to `usize` for `Resizer::new()`
-
         let (width, height) = self.dimensions();
-        let (scaled_width, scaled_height) = (
-            (f64::from(width) * scale_factor).round() as u32,
-            (f64::from(height) * scale_factor).round() as u32,
-        );
-
-        let (scaled_hotspot_x, scaled_hotspot_y) = (
-            (f64::from(self.hotspot_x) * scale_factor).round() as u32,
-            (f64::from(self.hotspot_y) * scale_factor).round() as u32,
-        );
-
+        let (scaled_width, scaled_height) = (width * scale_factor, height * scale_factor);
         let scaled_rgba = scale_nearest(self.rgba(), width, height, scaled_width, scaled_height);
+
+        let (hotspot_x, hotspot_y) = self.hotspot();
+        let (scaled_hotspot_x, scaled_hotspot_y) =
+            (hotspot_x * scale_factor, hotspot_y * scale_factor);
 
         Ok(Self {
             width: scaled_width,
@@ -128,15 +114,38 @@ impl CursorImage {
         })
     }
 
-    /// Helper function for scaling points/dimensions.
+    /// Returns a new [`CursorImage`] scaled *down* to `scale_factor` using
+    /// [box averaging](https://en.wikipedia.org/wiki/Image_scaling#Box_sampling).
     ///
-    /// `point` should be (x, y). The returned scaled
-    /// coordinates are rounded.
-    fn scale_point(point: (u32, u32), scale_factor: f64) -> (f64, f64) {
-        let scaled_width = f64::from(point.0) * scale_factor;
-        let scaled_height = f64::from(point.1) * scale_factor;
+    /// The actual "scale factor" would be `1/scale_factor` here.
+    ///
+    /// ## Errors
+    ///
+    /// If `scale_factor` is greater than [`Self::MAX_DOWNSCALE_FACTOR`]
+    pub fn downscaled_to(&self, scale_factor: u32) -> Result<Self> {
+        if scale_factor > Self::MAX_DOWNSCALE_FACTOR {
+            bail!(
+                "scale_factor={scale_factor} can't be greater than MAX_DOWNSCALE_FACTOR={}",
+                Self::MAX_DOWNSCALE_FACTOR
+            )
+        }
 
-        (scaled_width.round(), scaled_height.round())
+        let (width, height) = self.dimensions();
+        let (scaled_width, scaled_height) = (width / scale_factor, height / scale_factor);
+        let scaled_rgba =
+            scale_box_average(self.rgba(), width, height, scaled_width, scaled_height);
+
+        let (hotspot_x, hotspot_y) = self.hotspot();
+        let (scaled_hotspot_x, scaled_hotspot_y) =
+            (hotspot_x / scale_factor, hotspot_y / scale_factor);
+
+        Ok(Self {
+            width: scaled_width,
+            height: scaled_height,
+            hotspot_x: scaled_hotspot_x,
+            hotspot_y: scaled_hotspot_y,
+            rgba: scaled_rgba,
+        })
     }
 
     /// Returns image dimensions as (width, height).
@@ -161,7 +170,7 @@ impl CursorImage {
 /// Represents a generic cursor.
 ///
 /// `images` is guaranteed to not have any images
-/// that share the same dimensions.
+/// that share the same nominal sizes.
 #[derive(Debug)]
 pub struct GenericCursor {
     images: Vec<CursorImage>,
@@ -212,27 +221,49 @@ impl GenericCursor {
         false
     }
 
-    /// Adds a scaled [`CursorImage`] to [`Self::images`]. This
+    /// Adds an *upscaled* [`CursorImage`] to [`Self::images`]. This
     /// scales based off of the first element in [`Self::images`].
     ///
     /// ## Errors
     ///
-    /// If the newly made [`CursorImage`] doesn't have
-    /// a unique nominal size.
-    pub fn add_scale(&mut self, scale_factor: f64) -> Result<()> {
+    /// If the newly made [`CursorImage`] doesn't
+    /// have a unique nominal size.
+    pub fn add_upscale(&mut self, scale_factor: u32) -> Result<()> {
         // this won't panic because new() guarantees at least 1
         let base = &self.images[0];
         let dims = base.dimensions();
-        let scaled_dims = CursorImage::scale_point(dims, scale_factor);
-
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let scaled_nominal = scaled_dims.0.max(scaled_dims.1) as u32;
+        let scaled_dims = (dims.0 * scale_factor, dims.1 * scale_factor);
+        let scaled_nominal = scaled_dims.0.max(scaled_dims.1);
 
         if self.has_nominal_size(scaled_nominal) {
             bail!("duplicate nominal size");
         }
 
-        let scaled_image = base.scaled_to(scale_factor)?;
+        let scaled_image = base.upscaled_to(scale_factor)?;
+        self.images.push(scaled_image);
+
+        Ok(())
+    }
+
+    /// Adds a *downscaled* [`CursorImage`] to [`Self::images`]. This
+    /// scales based off of the first element in [`Self::images`].
+    ///
+    /// ## Errors
+    ///
+    /// If the newly made [`CursorImage`] doesn't
+    /// have a unique nominal size.
+    pub fn add_downscale(&mut self, scale_factor: u32) -> Result<()> {
+        // this won't panic because new() guarantees at least 1
+        let base = &self.images[0];
+        let dims = base.dimensions();
+        let scaled_dims = (dims.0 / scale_factor, dims.1 / scale_factor);
+        let scaled_nominal = scaled_dims.0.max(scaled_dims.1);
+
+        if self.has_nominal_size(scaled_nominal) {
+            bail!("duplicate nominal size");
+        }
+
+        let scaled_image = base.downscaled_to(scale_factor)?;
         self.images.push(scaled_image);
 
         Ok(())
@@ -328,7 +359,7 @@ impl From<CursorImage> for GenericCursor {
 
 /// Nearest-neighbour scaling algorithm for RGBA8.
 ///
-/// This is center-aligned.
+/// This is center-aligned and used for *upscaling*.
 #[allow(
     clippy::cast_possible_truncation,
     clippy::cast_precision_loss,
@@ -340,7 +371,7 @@ fn scale_nearest(src: &[u8], src_w: u32, src_h: u32, dst_w: u32, dst_h: u32) -> 
     let scale_x = src_w as f32 / dst_w as f32;
     let scale_y = src_h as f32 / dst_h as f32;
 
-    // lowkenuinely copied from chatgpt so i have 
+    // lowkenuinely copied from chatgpt so i have
     // no clue what this does. it works though
     for y in 0..dst_h {
         for x in 0..dst_w {
@@ -356,6 +387,58 @@ fn scale_nearest(src: &[u8], src_w: u32, src_h: u32, dst_w: u32, dst_h: u32) -> 
             let dst_idx = ((y * dst_w + x) * 4) as usize;
 
             dst[dst_idx..dst_idx + 4].copy_from_slice(&src[src_idx..src_idx + 4]);
+        }
+    }
+
+    dst
+}
+
+/// Box sampling/averaging algorithm for RGBA8.
+///
+/// This is used for *downscaling*.
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss
+)]
+fn scale_box_average(src: &[u8], src_w: u32, src_h: u32, dst_w: u32, dst_h: u32) -> Vec<u8> {
+    let mut dst = vec![0u8; (dst_w * dst_h * 4) as usize];
+
+    let scale_x = src_w as f32 / dst_w as f32;
+    let scale_y = src_h as f32 / dst_h as f32;
+
+    // same thing with this. just copied so i'm
+    // clueles on what this actually does
+    for y in 0..dst_h {
+        for x in 0..dst_w {
+            // find the source rectangle this dst pixel covers
+            let x0 = (x as f32 * scale_x).floor() as u32;
+            let y0 = (y as f32 * scale_y).floor() as u32;
+            let x1 = ((x + 1) as f32 * scale_x).ceil().min(src_w as f32) as u32;
+            let y1 = ((y + 1) as f32 * scale_y).ceil().min(src_h as f32) as u32;
+
+            let mut r_sum = 0u32;
+            let mut g_sum = 0u32;
+            let mut b_sum = 0u32;
+            let mut a_sum = 0u32;
+            let mut count = 0u32;
+
+            for sy in y0..y1 {
+                for sx in x0..x1 {
+                    let idx = ((sy * src_w + sx) * 4) as usize;
+                    r_sum += u32::from(src[idx]);
+                    g_sum += u32::from(src[idx + 1]);
+                    b_sum += u32::from(src[idx + 2]);
+                    a_sum += u32::from(src[idx + 3]);
+                    count += 1;
+                }
+            }
+
+            let dst_idx = ((y * dst_w + x) * 4) as usize;
+            dst[dst_idx] = (r_sum / count) as u8;
+            dst[dst_idx + 1] = (g_sum / count) as u8;
+            dst[dst_idx + 2] = (b_sum / count) as u8;
+            dst[dst_idx + 3] = (a_sum / count) as u8;
         }
     }
 
