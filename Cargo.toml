@@ -10,5 +10,4 @@ anyhow = "1.0.100"
 clap = { version = "4.5.53", features = ["derive"] }
 ico = "0.5.0"
 libc = "0.2.178"
-rgb = "0.8.52"
 x11 = { version = "2.21.0", features = ["xcursor"] }
