@@ -12,7 +12,7 @@
 //!
 //! NOTE: rely on the `man` pages for parameter ordering.
 
-use super::common::CursorImage;
+use super::cursor_image::CursorImage;
 
 use std::{
     ffi::{CStr, CString},

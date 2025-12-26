@@ -1,6 +1,6 @@
 use currust::{
     cli::{Args, ParsedArgs},
-    cursors::common::{GenericCursor, ScalingType::*},
+    cursors::generic_cursor::{GenericCursor, ScalingType::*},
 };
 
 use anyhow::{Context, Result};
@@ -21,7 +21,7 @@ fn main() -> Result<()> {
         cursor.add_scale(2, Downscale)?;
         cursor.add_scale(2, Upscale)?;
         cursor.add_scale(3, Upscale)?;
-        
+
         println!("cursor.images.len()={}", cursor.base_images().len());
 
         cursor.save_as_xcursor(out).context(
