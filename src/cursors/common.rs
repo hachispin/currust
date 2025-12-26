@@ -13,22 +13,26 @@ use ico::IconDir;
 ///
 /// An actual cursor is usually expressed as a
 /// vector of cursor images. See [`GenericCursor`].
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CursorImage {
     width: u32,
     height: u32,
     hotspot_x: u32,
     hotspot_y: u32,
     rgba: Vec<u8>,
+    delay: u32,
 }
 
 impl CursorImage {
+    /// A delay value of zero is used for static (i.e, non-animated) cursors.
+    pub(crate) const STATIC_DELAY: u32 = 0;
     /// The max upscaling factor for images.
     pub const MAX_UPSCALE_FACTOR: u32 = 20;
     /// The max downscaling factor for images.
     pub const MAX_DOWNSCALE_FACTOR: u32 = 5;
 
-    /// Contructor for [`CursorImage`].
+    /// Contructor for a static [`CursorImage`].
+    /// The `delay` field is set to zero.
     ///
     /// ## Errors
     ///
@@ -79,7 +83,27 @@ impl CursorImage {
             hotspot_x,
             hotspot_y,
             rgba,
+            delay: Self::STATIC_DELAY,
         })
+    }
+
+    /// Constructor with `delay` field.
+    ///
+    /// ## Errors
+    ///
+    /// See [`Self::new`].
+    pub fn new_with_delay(
+        width: u32,
+        height: u32,
+        hotspot_x: u32,
+        hotspot_y: u32,
+        rgba: Vec<u8>,
+        delay: u32,
+    ) -> Result<Self> {
+        let mut cursor = Self::new(width, height, hotspot_x, hotspot_y, rgba)?;
+        cursor.delay = delay;
+
+        Ok(cursor)
     }
 
     /// Returns a new [`CursorImage`] scaled *up* to `scale_factor` using
@@ -112,6 +136,7 @@ impl CursorImage {
             hotspot_x: scaled_hotspot_x,
             hotspot_y: scaled_hotspot_y,
             rgba: scaled_rgba,
+            delay: self.delay,
         })
     }
 
@@ -146,6 +171,7 @@ impl CursorImage {
             hotspot_x: scaled_hotspot_x,
             hotspot_y: scaled_hotspot_y,
             rgba: scaled_rgba,
+            delay: self.delay,
         })
     }
 
@@ -174,7 +200,18 @@ impl CursorImage {
 /// that share the same nominal sizes.
 #[derive(Debug)]
 pub struct GenericCursor {
-    images: Vec<CursorImage>,
+    /// Scaled images derived from `base`.
+    scaled: Vec<CursorImage>,
+    /// The base images, used for scaling.
+    ///
+    /// For static cursors, this contains one
+    /// [`CursorImage`] with a `delay` field of 0.
+    ///
+    /// For animated cursors, this contains multiple
+    /// [`CursorImage`]s with non-zero `delay` fields.
+    ///
+    /// All images here must have the **same nominal sizes**.
+    base: Vec<CursorImage>,
 }
 
 impl GenericCursor {
@@ -182,36 +219,34 @@ impl GenericCursor {
     ///
     /// ## Errors
     ///
-    /// If any image in `images` has the same nominal
-    /// size as another image, or if `images` is empty.
-    pub fn new(images: Vec<CursorImage>) -> Result<Self> {
-        if images.is_empty() {
-            bail!("`images` can't be empty");
+    /// If any image in `base_images` have different dimensions.
+    pub fn new(base_images: Vec<CursorImage>) -> Result<Self> {
+        if base_images.is_empty() {
+            bail!("`base_images` can't be empty");
         }
 
-        let mut seen_nominal_sizes = Vec::with_capacity(images.len());
+        let expected_dimensions = base_images[0].dimensions();
 
-        // no hashset because small collection
-        for image in &images {
+        for image in &base_images {
             let dims = image.dimensions();
-            let nominal_size = dims.0.max(dims.1);
 
-            if seen_nominal_sizes.contains(&nominal_size) {
+            if dims != expected_dimensions {
                 bail!(
-                    "`GenericCursor` can't be constructed \
-                    with images that have the same nominal size"
+                    "`GenericCursor` can't be constructed with \
+                    base images that don't have the same dimensions"
                 );
             }
-
-            seen_nominal_sizes.push(nominal_size);
         }
 
-        Ok(Self { images })
+        Ok(Self {
+            base: base_images,
+            scaled: Vec::new(),
+        })
     }
 
     /// Helper function for [`Self::add_scale`].
     fn has_nominal_size(&self, nominal_size: u32) -> bool {
-        for image in &self.images {
+        for image in &self.scaled {
             let dims = image.dimensions();
 
             if dims.0.max(dims.1) == nominal_size {
@@ -222,6 +257,8 @@ impl GenericCursor {
         false
     }
 
+    /* TODO: Deduplicate upscaling and downscaling code */
+
     /// Adds an *upscaled* [`CursorImage`] to [`Self::images`]. This
     /// scales based off of the first element in [`Self::images`].
     ///
@@ -230,18 +267,20 @@ impl GenericCursor {
     /// If the newly made [`CursorImage`] doesn't
     /// have a unique nominal size.
     pub fn add_upscale(&mut self, scale_factor: u32) -> Result<()> {
-        // this won't panic because new() guarantees at least 1
-        let base = &self.images[0];
-        let dims = base.dimensions();
-        let scaled_dims = (dims.0 * scale_factor, dims.1 * scale_factor);
-        let scaled_nominal = scaled_dims.0.max(scaled_dims.1);
+        let base_images = &self.base;
 
-        if self.has_nominal_size(scaled_nominal) {
-            bail!("duplicate nominal size");
+        for base_image in base_images {
+            let dims = base_image.dimensions();
+            let scaled_dims = (dims.0 * scale_factor, dims.1 * scale_factor);
+            let scaled_nominal = scaled_dims.0.max(scaled_dims.1);
+
+            if self.has_nominal_size(scaled_nominal) {
+                bail!("duplicate nominal size");
+            }
+
+            let scaled_image = base_image.upscaled_to(scale_factor)?;
+            self.scaled.push(scaled_image);
         }
-
-        let scaled_image = base.upscaled_to(scale_factor)?;
-        self.images.push(scaled_image);
 
         Ok(())
     }
@@ -254,18 +293,20 @@ impl GenericCursor {
     /// If the newly made [`CursorImage`] doesn't
     /// have a unique nominal size.
     pub fn add_downscale(&mut self, scale_factor: u32) -> Result<()> {
-        // this won't panic because new() guarantees at least 1
-        let base = &self.images[0];
-        let dims = base.dimensions();
-        let scaled_dims = (dims.0 / scale_factor, dims.1 / scale_factor);
-        let scaled_nominal = scaled_dims.0.max(scaled_dims.1);
+        let base_images = &self.base;
 
-        if self.has_nominal_size(scaled_nominal) {
-            bail!("duplicate nominal size");
+        for base_image in base_images {
+            let dims = base_image.dimensions();
+            let scaled_dims = (dims.0 * scale_factor, dims.1 * scale_factor);
+            let scaled_nominal = scaled_dims.0.max(scaled_dims.1);
+
+            if self.has_nominal_size(scaled_nominal) {
+                bail!("duplicate nominal size");
+            }
+
+            let scaled_image = base_image.downscaled_to(scale_factor)?;
+            self.scaled.push(scaled_image);
         }
-
-        let scaled_image = base.downscaled_to(scale_factor)?;
-        self.images.push(scaled_image);
 
         Ok(())
     }
@@ -289,8 +330,20 @@ impl GenericCursor {
         })?;
 
         let entries = icon_dir.entries();
+
+        if entries.is_empty() {
+            bail!("No stored images found in {cur_path_display}");
+        }
+
+        if entries.len() != 1 {
+            eprintln!("Warning: parsing CUR file with more than one stored image");
+        }
+
         let mut images = Vec::with_capacity(entries.len());
 
+        // this is written as a for loop but only one image should be expected
+        // windows already scales cursors so storing more is redundant
+        // ughhh... this opens up so many edge cases
         for entry in entries {
             let image = entry.decode()?;
             let hotspot = image.cursor_hotspot().ok_or_else(|| {
@@ -319,7 +372,8 @@ impl GenericCursor {
     /// from the `unsafe` helper functions are propagated.
     pub fn save_as_xcursor<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let path = path.as_ref();
-        let cursor = self.images.as_slice();
+        let joined = self.joined_images();
+        let cursor = joined.as_slice();
 
         let path_str = path
             .to_str()
@@ -343,17 +397,24 @@ impl GenericCursor {
         Ok(())
     }
 
+    /// Returns a vector joining `base` and `scaled`.
     #[must_use]
-    /// Trivial accessor for `images` field.
-    pub fn images(&self) -> &[CursorImage] {
-        &self.images
-    }
-}
+    pub fn joined_images(&self) -> Vec<CursorImage> {
+        let mut images = self.base.clone();
+        images.extend(self.scaled.clone());
 
-impl From<CursorImage> for GenericCursor {
-    fn from(image: CursorImage) -> Self {
-        Self {
-            images: vec![image],
-        }
+        images
+    }
+
+    /// Trivial accessor for `base` field.
+    #[must_use]
+    pub fn base_images(&self) -> &[CursorImage] {
+        &self.base
+    }
+
+    /// Trivial accessor for `scaled` field.
+    #[must_use]
+    pub fn scaled_images(&self) -> &[CursorImage] {
+        &self.scaled
     }
 }

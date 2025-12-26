@@ -12,7 +12,7 @@
 //!
 //! NOTE: rely on the `man` pages for parameter ordering.
 
-use crate::cursors::common::CursorImage;
+use super::common::CursorImage;
 
 use std::{
     ffi::{CStr, CString},
@@ -35,9 +35,6 @@ macro_rules! denullify {
         NonNull::new($ptr).ok_or_else(|| anyhow::anyhow!($($msg)*))?
     };
 }
-
-/// A delay value of zero is used for static (i.e, non-animated) Xcursors.
-const STATIC_DELAY: u32 = 0;
 
 /// Formula used for pre-multiplying a color channel with an alpha channel.
 #[allow(clippy::cast_possible_truncation)]
@@ -211,7 +208,7 @@ pub(super) fn construct_images(cursor: &CursorImage) -> Result<XcursorImageHandl
     image_mut.size = nominal_size;
     image_mut.xhot = xhot;
     image_mut.yhot = yhot;
-    image_mut.delay = STATIC_DELAY;
+    image_mut.delay = CursorImage::STATIC_DELAY;
 
     unsafe {
         std::ptr::copy_nonoverlapping(pixels.as_ptr(), image_mut.pixels, num_pixels);
