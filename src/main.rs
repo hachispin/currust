@@ -1,6 +1,6 @@
 use currust::{
     cli::{Args, ParsedArgs},
-    cursors::common::GenericCursor,
+    cursors::common::{GenericCursor, ScalingType::*},
 };
 
 use anyhow::{Context, Result};
@@ -17,10 +17,10 @@ fn main() -> Result<()> {
         println!("Parsing {}", filename.display());
         let mut cursor = GenericCursor::from_cur_path(cur_path)?;
 
-        cursor.add_downscale(4)?;
-        cursor.add_downscale(2)?;
-        cursor.add_upscale(2)?;
-        cursor.add_upscale(3)?;
+        cursor.add_scale(4, Downscale)?;
+        cursor.add_scale(2, Downscale)?;
+        cursor.add_scale(2, Upscale)?;
+        cursor.add_scale(3, Upscale)?;
         
         println!("cursor.images.len()={}", cursor.base_images().len());
 

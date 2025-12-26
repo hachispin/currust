@@ -9,6 +9,14 @@ use std::{fs::File, path::Path};
 use anyhow::{Context, Result, bail};
 use ico::IconDir;
 
+/// Used in [`GenericCursor::add_scale`]
+#[derive(Debug, Clone, Copy)]
+#[allow(missing_docs)]
+pub enum ScalingType {
+    Upscale,
+    Downscale,
+}
+
 /// Represents a generic cursor *image*.
 ///
 /// An actual cursor is usually expressed as a
@@ -257,16 +265,15 @@ impl GenericCursor {
         false
     }
 
-    /* TODO: Deduplicate upscaling and downscaling code */
-
-    /// Adds an *upscaled* [`CursorImage`] to [`Self::images`]. This
-    /// scales based off of the first element in [`Self::images`].
+    /// Adds scaled [`CursorImage`] from `base` to `scaled`.
+    ///
+    /// NOTE: Downscaled images isn't recommended.
     ///
     /// ## Errors
     ///
     /// If the newly made [`CursorImage`] doesn't
     /// have a unique nominal size.
-    pub fn add_upscale(&mut self, scale_factor: u32) -> Result<()> {
+    pub fn add_scale(&mut self, scale_factor: u32, scale_type: ScalingType) -> Result<()> {
         let base_images = &self.base;
 
         for base_image in base_images {
@@ -278,33 +285,11 @@ impl GenericCursor {
                 bail!("duplicate nominal size");
             }
 
-            let scaled_image = base_image.upscaled_to(scale_factor)?;
-            self.scaled.push(scaled_image);
-        }
+            let scaled_image = match scale_type {
+                ScalingType::Upscale => base_image.upscaled_to(scale_factor),
+                ScalingType::Downscale => base_image.downscaled_to(scale_factor),
+            }?;
 
-        Ok(())
-    }
-
-    /// Adds a *downscaled* [`CursorImage`] to [`Self::images`]. This
-    /// scales based off of the first element in [`Self::images`].
-    ///
-    /// ## Errors
-    ///
-    /// If the newly made [`CursorImage`] doesn't
-    /// have a unique nominal size.
-    pub fn add_downscale(&mut self, scale_factor: u32) -> Result<()> {
-        let base_images = &self.base;
-
-        for base_image in base_images {
-            let dims = base_image.dimensions();
-            let scaled_dims = (dims.0 * scale_factor, dims.1 * scale_factor);
-            let scaled_nominal = scaled_dims.0.max(scaled_dims.1);
-
-            if self.has_nominal_size(scaled_nominal) {
-                bail!("duplicate nominal size");
-            }
-
-            let scaled_image = base_image.downscaled_to(scale_factor)?;
             self.scaled.push(scaled_image);
         }
 
