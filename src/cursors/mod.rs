@@ -2,3 +2,4 @@
 
 pub mod common;
 pub mod xcursor;
+pub mod ani;
