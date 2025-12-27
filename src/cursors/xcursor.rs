@@ -183,7 +183,8 @@ fn u8_to_u32(u8_vec: &[u8]) -> Vec<u32> {
 ///
 /// ## Errors
 ///
-/// If [`XcursorImageCreate`] returns `NULL`.
+/// - If [`XcursorImageCreate`] returns `NULL`.
+/// - If [`TryInto`] conversions fail.
 pub(super) fn construct_images(cursor: &CursorImage) -> Result<XcursorImageHandle> {
     let pixels = u8_to_u32(&to_pre_argb(cursor.rgba()));
     let dims = cursor.dimensions();
@@ -229,15 +230,21 @@ pub(super) fn construct_images(cursor: &CursorImage) -> Result<XcursorImageHandl
 ///
 /// ## Errors
 ///
-/// If [`XcursorImagesCreate`] returns `NULL`, or if [`TryInto`] conversions fail.
+/// - If [`XcursorImagesCreate`] returns `NULL`, or if [`TryInto`] conversions fail.
+/// - If `images` is empty.
 pub(super) unsafe fn bundle_images(
     images: &mut [XcursorImageHandle],
 ) -> Result<XcursorImagesHandle> {
+    if images.is_empty() {
+        bail!("`images` can't be empty");
+    }
+
     let num_images_i32: i32 = images.len().try_into()?;
+
     let xcur_images = unsafe { XcursorImagesCreate(num_images_i32) };
     let mut xcur_images = denullify!(xcur_images, "`XcursorImagesCreate() returned null`");
-
     let xcur_images_mut = unsafe { xcur_images.as_mut() };
+
     // `name` is only used for loading xcursor
     // from themes. we aren't doing that so...
     xcur_images_mut.name = std::ptr::null_mut();
@@ -246,7 +253,7 @@ pub(super) unsafe fn bundle_images(
     // cast *mut XcursorImageHandle => *mut *mut XcursorImage
     // this is safe because XcursorImageHandle is transparent
     let images_raw: *mut *mut XcursorImage = images.as_mut_ptr().cast();
-    
+
     unsafe {
         std::ptr::copy_nonoverlapping(images_raw, xcur_images_mut.images, images.len());
     }
@@ -273,9 +280,14 @@ fn errno() -> std::io::Error {
 /// - If [`fopen`]/[`fclose`] fails (returns non-zero)
 /// - If [`XcursorFileSaveImages`] fails (returns zero)
 ///
-/// `errno()` is read upon failure and displayed in [`bail`] messages.
+/// `errno()` is read upon failure and displayed in [`bail`] messages
+/// but it's not reset beforehand, so you may get unrelated errors.
 pub(super) unsafe fn save_images(path: &str, images: &XcursorImagesHandle) -> Result<()> {
     const WRITE_BINARY: &CStr = c"wb";
+
+    if path.is_empty() {
+        bail!("`path` can't be empty");
+    }
 
     let path_c = CString::new(path)
         .with_context(|| format!("failed to create `CString` for path={path}"))?;
@@ -283,6 +295,9 @@ pub(super) unsafe fn save_images(path: &str, images: &XcursorImagesHandle) -> Re
     let file = unsafe { fopen(path_c.as_ptr(), WRITE_BINARY.as_ptr()) };
     let file = denullify!(file, "`fopen()` failed for path={path}: errno={}", errno());
     let file_ptr = file.as_ptr();
+
+    // this is not atomic (from testing), so you
+    // may end up with partially-written files :(
     let result = unsafe { XcursorFileSaveImages(file_ptr, images.as_ptr()) };
 
     // libXcursor uses 0 as error state
