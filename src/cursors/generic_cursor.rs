@@ -1,7 +1,7 @@
 //! Contains the [`GenericCursor`] struct.
 
 use super::{
-    cursor_image::CursorImage,
+    cursor_image::{CursorImage, ScalingType},
     xcursor::{bundle_images, construct_images, save_images},
 };
 
@@ -9,14 +9,6 @@ use std::{fs::File, path::Path};
 
 use anyhow::{Context, Result, bail};
 use ico::IconDir;
-
-/// Used in [`GenericCursor::add_scale`]
-#[derive(Debug, Clone, Copy)]
-#[allow(missing_docs)]
-pub enum ScalingType {
-    Upscale,
-    Downscale,
-}
 
 /// Represents a generic cursor.
 ///
@@ -101,11 +93,7 @@ impl GenericCursor {
                 bail!("duplicate nominal size");
             }
 
-            let scaled_image = match scale_type {
-                ScalingType::Upscale => base_image.upscaled_to(scale_factor),
-                ScalingType::Downscale => base_image.downscaled_to(scale_factor),
-            }?;
-
+            let scaled_image = base_image.scaled_to(scale_factor, scale_type)?;
             self.scaled.push(scaled_image);
         }
 

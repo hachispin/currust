@@ -4,6 +4,14 @@ use crate::scaling::{scale_box_average, scale_nearest};
 
 use anyhow::{Result, bail};
 
+/// Used in scaling functions.
+#[derive(Debug, Clone, Copy)]
+#[allow(missing_docs)]
+pub enum ScalingType {
+    Upscale,
+    Downscale,
+}
+
 /// Represents a generic cursor *image*.
 ///
 /// An actual cursor is usually expressed as a
@@ -101,64 +109,54 @@ impl CursorImage {
         Ok(cursor)
     }
 
-    /// Returns a new [`CursorImage`] scaled *up* to `scale_factor` using
-    /// [nearest-neighbour](https://en.wikipedia.org/wiki/Image_scaling#Nearest-neighbor_interpolation)
-    /// scaling.
+    /// Returns a new [`CursorImage`] scaled up/down to `scale_factor`.
+    ///
+    /// - Upscaling uses [nearest-neighbour](https://en.wikipedia.org/wiki/Image_scaling#Nearest-neighbor_interpolation).
+    /// - Downscaling uses [box averaging](https://en.wikipedia.org/wiki/Image_scaling#Box_sampling).
     ///
     /// ## Errors
     ///
-    /// If `scale_factor` is greater than [`Self::MAX_UPSCALE_FACTOR`].
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    pub fn upscaled_to(&self, scale_factor: u32) -> Result<Self> {
-        if scale_factor > Self::MAX_UPSCALE_FACTOR {
-            bail!(
-                "scale_factor={scale_factor} can't be greater than MAX_SCALE_FACTOR={}",
-                Self::MAX_UPSCALE_FACTOR
-            );
+    /// If `scale_factor` is greater than [`Self::MAX_UPSCALE_FACTOR`]
+    /// or [`Self::MAX_DOWNSCALE_FACTOR`], depending on `scaling_type`.
+    pub fn scaled_to(&self, scale_factor: u32, scale_type: ScalingType) -> Result<Self> {
+        // could be an if statement but whatever
+        match scale_type {
+            ScalingType::Upscale if scale_factor > Self::MAX_UPSCALE_FACTOR => {
+                bail!(
+                    "scale_factor={scale_factor} can't be greater than MAX_UPSCALE_FACTOR={}",
+                    Self::MAX_UPSCALE_FACTOR
+                );
+            }
+
+            ScalingType::Downscale if scale_factor > Self::MAX_DOWNSCALE_FACTOR => {
+                bail!(
+                    "scale_factor={scale_factor} can't be greater than MAX_DOWNSCALE_FACTOR={}",
+                    Self::MAX_DOWNSCALE_FACTOR
+                )
+            }
+
+            _ => (),
         }
 
         let (width, height) = self.dimensions();
-        let (scaled_width, scaled_height) = (width * scale_factor, height * scale_factor);
-        let scaled_rgba = scale_nearest(self.rgba(), width, height, scaled_width, scaled_height);
+        let (scaled_width, scaled_height) = match scale_type {
+            ScalingType::Upscale => (width * scale_factor, height * scale_factor),
+            ScalingType::Downscale => (width / scale_factor, height / scale_factor),
+        };
 
-        let (hotspot_x, hotspot_y) = self.hotspot();
-        let (scaled_hotspot_x, scaled_hotspot_y) =
-            (hotspot_x * scale_factor, hotspot_y * scale_factor);
+        let scaling_algorithm = match scale_type {
+            ScalingType::Upscale => scale_nearest,
+            ScalingType::Downscale => scale_box_average,
+        };
 
-        Ok(Self {
-            width: scaled_width,
-            height: scaled_height,
-            hotspot_x: scaled_hotspot_x,
-            hotspot_y: scaled_hotspot_y,
-            rgba: scaled_rgba,
-            delay: self.delay,
-        })
-    }
-
-    /// Returns a new [`CursorImage`] scaled *down* to `scale_factor` using
-    /// [box averaging](https://en.wikipedia.org/wiki/Image_scaling#Box_sampling).
-    ///
-    /// The actual "scale factor" would be `1/scale_factor` here.
-    ///
-    /// ## Errors
-    ///
-    /// If `scale_factor` is greater than [`Self::MAX_DOWNSCALE_FACTOR`]
-    pub fn downscaled_to(&self, scale_factor: u32) -> Result<Self> {
-        if scale_factor > Self::MAX_DOWNSCALE_FACTOR {
-            bail!(
-                "scale_factor={scale_factor} can't be greater than MAX_DOWNSCALE_FACTOR={}",
-                Self::MAX_DOWNSCALE_FACTOR
-            )
-        }
-
-        let (width, height) = self.dimensions();
-        let (scaled_width, scaled_height) = (width / scale_factor, height / scale_factor);
         let scaled_rgba =
-            scale_box_average(self.rgba(), width, height, scaled_width, scaled_height);
+            scaling_algorithm(self.rgba(), width, height, scaled_width, scaled_height);
 
         let (hotspot_x, hotspot_y) = self.hotspot();
-        let (scaled_hotspot_x, scaled_hotspot_y) =
-            (hotspot_x / scale_factor, hotspot_y / scale_factor);
+        let (scaled_hotspot_x, scaled_hotspot_y) = match scale_type {
+            ScalingType::Upscale => (hotspot_x * scale_factor, hotspot_y * scale_factor),
+            ScalingType::Downscale => (hotspot_x / scale_factor, hotspot_y / scale_factor),
+        };
 
         Ok(Self {
             width: scaled_width,

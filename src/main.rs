@@ -1,6 +1,6 @@
 use currust::{
     cli::{Args, ParsedArgs},
-    cursors::generic_cursor::{GenericCursor, ScalingType::*},
+    cursors::{cursor_image::ScalingType::*, generic_cursor::GenericCursor},
 };
 
 use anyhow::{Context, Result};
