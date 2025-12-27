@@ -56,7 +56,7 @@ const fn pre_alpha_formula(color: u32, alpha: u32) -> u8 {
 /// as this double-frees the pointers in `images`.
 ///
 /// You can see this in the
-/// [source code](https://gitlab.freedesktop.org/xorg/lib/libxcursor/-/blob/master/src/file.c?ref_type=heads#L134).
+/// [source code](https://gitlab.freedesktop.org/xorg/lib/libxcursor/-/blob/master/src/file.c#L133-L149).
 #[repr(transparent)]
 pub(super) struct XcursorImageHandle {
     /// This is not guaranteed to be valid unless it
@@ -243,10 +243,11 @@ pub(super) unsafe fn bundle_images(
     xcur_images_mut.name = std::ptr::null_mut();
     xcur_images_mut.nimage = num_images_i32;
 
+    // cast *mut XcursorImageHandle => *mut *mut XcursorImage
+    // this is safe because XcursorImageHandle is transparent
+    let images_raw: *mut *mut XcursorImage = images.as_mut_ptr().cast();
+    
     unsafe {
-        // cast *mut XcursorImageHandle => *mut *mut XcursorImage
-        // this is safe because XcursorImageHandle is transparent
-        let images_raw: *mut *mut XcursorImage = images.as_mut_ptr().cast();
         std::ptr::copy_nonoverlapping(images_raw, xcur_images_mut.images, images.len());
     }
 
