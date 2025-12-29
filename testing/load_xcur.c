@@ -19,7 +19,7 @@ int main() {
     XSelectInput(dpy, win, ExposureMask);
     XMapWindow(dpy, win);
 
-    XcursorImages *img = XcursorFilenameLoadImages("left_ptr", 32);
+    XcursorImages *img = XcursorFilenameLoadImages("left_ptr", 64);
 
     if (!img) {
         puts("`XcursorFilenameLoadImage` failed");
