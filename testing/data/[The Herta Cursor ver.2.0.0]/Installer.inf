@@ -1,0 +1,61 @@
+;The Herta Cursor by EbiEbiBeam
+
+[Version]
+signature="$CHICAGO$"
+
+[DefaultInstall]
+CopyFiles = Scheme.Cur, Scheme.Txt
+AddReg    = Scheme.Reg
+
+[DestinationDirs]
+Scheme.Cur = 10,"%CUR_DIR%"
+Scheme.Txt = 10,"%CUR_DIR%"
+
+[Scheme.Reg]
+HKCU,"Control Panel\Cursors\Schemes","%SCHEME_NAME%",,"%10%\%CUR_DIR%\%pointer%,%10%\%CUR_DIR%\%help%,%10%\%CUR_DIR%\%work%,%10%\%CUR_DIR%\%busy%,%10%\%CUR_DIR%\%Cross%,%10%\%CUR_DIR%\%Text%,%10%\%CUR_DIR%\%Hand%,%10%\%CUR_DIR%\%Unavailiable%,%10%\%CUR_DIR%\%Vert%,%10%\%CUR_DIR%\%Horz%,%10%\%CUR_DIR%\%Dgn1%,%10%\%CUR_DIR%\%Dgn2%,%10%\%CUR_DIR%\%move%,%10%\%CUR_DIR%\%alternate%,%10%\%CUR_DIR%\%link%,%10%\%CUR_DIR%\%pin%,%10%\%CUR_DIR%\%person%"
+
+[Scheme.txt]
+"[Changelog].txt"
+
+; -- Common Information
+
+[Scheme.Cur]
+"01-Normal.ani"
+"04-Help.ani"
+"03-Loading.ani"
+"03-Loading.ani"
+"07-Precision.ani"
+"05-Text Select.ani"
+"06-Handwriting.ani"
+"08-Unavailable.ani"
+"11-Vertical Resize.ani"
+"12-Horizontal Resize.ani"
+"13-Diagonal Resize 1.ani"
+"14-Diagonal Resize 2.ani"
+"15-Move.ani"
+"16-Alternate Select.ani"
+"02-Link.ani"
+"09-Location Select.ani"
+"10-Person Select.ani"
+"05-Text Select Alt.ani"
+
+[Strings]
+CUR_DIR         = "Cursors\The Herta Cursor ver.2.0.0"
+SCHEME_NAME     = "The Herta Cursor ver 2.0.0"
+pointer			= "01-Normal.ani"
+help			= "04-Help.ani"
+work			= "03-Loading.ani"
+busy			= "03-Loading.ani"
+cross			= "07-Precision.ani"
+text			= "05-Text Select.ani"
+hand			= "06-Handwriting.ani"
+unavailiable		= "08-Unavailable.ani"
+vert			= "11-Vertical Resize.ani"
+horz			= "12-Horizontal Resize.ani"
+dgn1			= "13-Diagonal Resize 1.ani"
+dgn2			= "14-Diagonal Resize 2.ani"
+move			= "15-Move.ani"
+alternate		= "16-Alternate Select.ani"
+link			= "02-Link.ani"
+pin			= "09-Location Select.ani"
+person			= "10-Person Select.ani"
