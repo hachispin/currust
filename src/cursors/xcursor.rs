@@ -44,6 +44,11 @@ const fn pre_alpha_formula(color: u32, alpha: u32) -> u8 {
     ((color * alpha + 128) / 255) as u8
 }
 
+#[inline]
+fn last_os_error() -> std::io::Error {
+    std::io::Error::last_os_error()
+}
+
 /// [`XcursorImage`] with an implemented [`Drop`] trait
 /// that calls [`XcursorImageDestroy`] for RAII.
 ///
@@ -73,18 +78,18 @@ impl XcursorImageHandle {
     }
 }
 
-impl From<NonNull<XcursorImage>> for XcursorImageHandle {
-    fn from(non_null_image: NonNull<XcursorImage>) -> Self {
-        Self {
-            inner: non_null_image,
-        }
-    }
-}
-
 impl Drop for XcursorImageHandle {
     fn drop(&mut self) {
         unsafe {
             XcursorImageDestroy(self.as_ptr());
+        }
+    }
+}
+
+impl From<NonNull<XcursorImage>> for XcursorImageHandle {
+    fn from(non_null_image: NonNull<XcursorImage>) -> Self {
+        Self {
+            inner: non_null_image,
         }
     }
 }
@@ -109,6 +114,12 @@ pub(super) struct XcursorImagesHandle {
     inner: NonNull<XcursorImages>,
 }
 
+impl XcursorImagesHandle {
+    const unsafe fn as_ptr(&self) -> *mut XcursorImages {
+        self.inner.as_ptr()
+    }
+}
+
 impl Drop for XcursorImagesHandle {
     fn drop(&mut self) {
         unsafe {
@@ -117,12 +128,6 @@ impl Drop for XcursorImagesHandle {
             free(name.cast());
             free(raw.cast());
         }
-    }
-}
-
-impl XcursorImagesHandle {
-    const unsafe fn as_ptr(&self) -> *mut XcursorImages {
-        self.inner.as_ptr()
     }
 }
 
@@ -261,12 +266,6 @@ pub(super) unsafe fn bundle_images(
     Ok(xcur_images.into())
 }
 
-/// Alias for `std::io::Error::last_os_error()`
-#[inline]
-fn errno() -> std::io::Error {
-    std::io::Error::last_os_error()
-}
-
 /// Writes `images` as an Xcursor file to `path`.
 ///
 /// ## Safety
@@ -293,7 +292,11 @@ pub(super) unsafe fn save_images(path: &str, images: &XcursorImagesHandle) -> Re
         .with_context(|| format!("failed to create `CString` for path={path}"))?;
 
     let file = unsafe { fopen(path_c.as_ptr(), WRITE_BINARY.as_ptr()) };
-    let file = denullify!(file, "`fopen()` failed for path={path}: errno={}", errno());
+    let file = denullify!(
+        file,
+        "`fopen()` failed for path={path}: errno={}",
+        last_os_error()
+    );
     let file_ptr = file.as_ptr();
 
     // this is not atomic (from testing), so you
@@ -304,13 +307,16 @@ pub(super) unsafe fn save_images(path: &str, images: &XcursorImagesHandle) -> Re
     if result == 0 {
         // we're already failing so it's not like it can get any worse...
         let _ = unsafe { fclose(file_ptr) };
-        bail!("`XcursorFileSaveImages()` failed: errno={}", errno());
+        bail!(
+            "`XcursorFileSaveImages()` failed: errno={}",
+            last_os_error()
+        );
     }
 
     let result = unsafe { fclose(file_ptr) };
 
     if result != 0 {
-        bail!("`fclose()` failed: errno={}", errno());
+        bail!("`fclose()` failed: errno={}", last_os_error());
     }
 
     Ok(())
