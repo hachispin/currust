@@ -180,6 +180,12 @@ impl CursorImage {
         (self.hotspot_x, self.hotspot_y)
     }
 
+    /// Returns the delay in milliseconds.
+    #[must_use]
+    pub fn delay(&self) -> u32 {
+        self.delay
+    }
+
     /// Returns a reference to the stored RGBA.
     #[must_use]
     pub fn rgba(&self) -> &[u8] {

@@ -214,7 +214,7 @@ pub(super) fn construct_images(cursor: &CursorImage) -> Result<XcursorImageHandl
     image_mut.size = nominal_size;
     image_mut.xhot = xhot;
     image_mut.yhot = yhot;
-    image_mut.delay = CursorImage::STATIC_DELAY;
+    image_mut.delay = cursor.delay();
 
     unsafe {
         std::ptr::copy_nonoverlapping(pixels.as_ptr(), image_mut.pixels, num_pixels);

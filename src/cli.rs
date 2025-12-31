@@ -107,7 +107,7 @@ impl ParsedArgs {
             let entry_path = entry.path();
 
             if let Some(ext) = entry_path.extension()
-                && ext == "cur"
+                && (ext == "cur" || ext == "ani")
             {
                 cur_paths.push(entry_path);
             }
