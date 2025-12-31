@@ -160,35 +160,26 @@ pub(super) struct AniHeader {
 #[br(magic = b"LIST")]
 struct SkipAniMetadata {
     /* TODO: consider actually parsing this */
-
     // this chunk (that we're skipping) is just two strings max
     // also, subchunks are even-padded, so the chunk size must be even too
-    #[br(assert(_list_size < 1024, "INFO chunk unreasonably large (1KB+)"))]
-    #[br(assert(_list_size.is_multiple_of(2)), temp)]
+    #[br(
+        assert(_list_size < 1024, "INFO chunk unreasonably large (1KB+)"),
+        assert(_list_size.is_multiple_of(2)), temp
+    )]
     _list_size: u32,
 
     // list identifier
     #[br(assert(_info == *b"INFO"), temp)]
     _info: [u8; 4],
 
-    // i wonder if this jump is still done after the size assert
-    // even if it fails? oh well, can't be that bad ¯\_(ツ)_/¯
-
     // -4 since we've read `_info`, which is 4 bytes
     #[br(calc = _list_size.checked_sub(4).unwrap(), temp)]
     _skip_value: u32,
 
-    // just skip all the metadata to jump to `AniHeader`
-    #[br(pad_after = _skip_value, temp)]
-    _skip: (),
-
     // make sure we skipped far enough
-    #[br(assert(_anih == *b"anih"), temp)]
+    #[br(pad_before = _skip_value, restore_position, temp)]
+    #[br(assert(_anih == *b"anih"))]
     _anih: [u8; 4],
-
-    // step back so `AniHeader` can assert its magic
-    #[br(pad_after = -4, temp)]
-    _back: (),
 }
 
 /// Models an ANI file.
@@ -253,7 +244,7 @@ pub(super) struct AniFile {
 
     #[br(args {
         list_length: header.num_frames,
-        expected_list_id: *b"fram", 
+        expected_list_id: *b"fram",
         expected_subchunk_id: *b"icon" }
     )]
     pub frames: RiffListU8,
