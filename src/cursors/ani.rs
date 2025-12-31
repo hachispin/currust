@@ -26,7 +26,7 @@ pub(super) struct RiffChunkU32 {
     // `data` is even (4 bytes each)
     //
     // this also means we don't add padding
-    #[br(temp)]
+    #[br(temp, assert(_data_size.is_multiple_of(2)))]
     _data_size: u32,
     #[br(try_calc = usize::try_from(_data_size / 4), temp)]
     _data_length: usize,
@@ -85,7 +85,7 @@ pub(super) struct RiffListU8 {
 ///
 ///```text
 /// #define AF_ICON 0x1         // Frames are in Windows ICO format.
-/// #define AF_SEQUENCE 0x2     // Animation is sequenced. 
+/// #define AF_SEQUENCE 0x2     // Animation is sequenced.
 /// ```
 ///
 /// All frames must be in ICO format, so these are invalid flags:
@@ -95,9 +95,8 @@ pub(super) struct RiffListU8 {
 #[derive(Debug, PartialEq, BinRead)]
 #[br(repr = u32)]
 enum AniFlags {
-    // NOTE: this is storing the valid combinations of 
+    // NOTE: this is storing the valid combinations of
     // bitflags and are not meant to be composable.
-
     /// Contains ICO frames with a custom "seq " chunk,
     /// which defines the order frames should be played.
     ///
@@ -146,7 +145,7 @@ pub(super) struct AniHeader {
     #[br(pad_after = 16)]
     pub num_steps: u32,
 
-    /// Default jiffle rate if "rate" isn't provided.
+    /// Default jiffy rate if "rate" isn't provided.
     pub jiffy_rate: u32,
     // Flags to indicate whether the "seq " chunk exists.
     flags: AniFlags,
@@ -160,6 +159,8 @@ pub(super) struct AniHeader {
 #[derive(Debug)]
 #[br(magic = b"LIST")]
 struct SkipAniMetadata {
+    /* TODO: consider actually parsing this */
+
     // this chunk (that we're skipping) is just two strings max
     // also, subchunks are even-padded, so the chunk size must be even too
     #[br(assert(_list_size < 1024, "INFO chunk unreasonably large (1KB+)"))]
@@ -193,7 +194,7 @@ struct SkipAniMetadata {
 /// Models an ANI file.
 ///
 /// ```text
-// RIFF('ACON'                        
+/// RIFF('ACON'
 ///     [LIST('INFO'                   
 ///         [INAM(<ZSTR>)]             // Title. Optional.
 ///         [IART(<ZSTR>)]             // Author. Optional.
@@ -226,10 +227,10 @@ struct SkipAniMetadata {
 #[derive(Debug)]
 #[br(little, magic = b"RIFF")]
 #[br(assert(
-    (header.flags == AniFlags::UnsequencedIcon && sequence.is_none())
-    || (header.flags == AniFlags::SequencedIcon && sequence.is_some())
-    ),
-)]
+    (header.flags == AniFlags::UnsequencedIcon && sequence.is_none()) ||
+    (header.flags == AniFlags::SequencedIcon /* && sequence.is_some() */)
+    ), //                                    └────────────┬────────────┘
+)] //                        some cursors don't follow this but still render on windows
 pub(super) struct AniFile {
     #[br(assert(file_size < 1_048_576, "file_size unreasonably large (1MB+)"))]
     pub file_size: u32,
@@ -238,7 +239,6 @@ pub(super) struct AniFile {
     _acon: [u8; 4],
     #[br(try, temp)]
     _metadata: Option<SkipAniMetadata>,
-
     pub header: AniHeader,
 
     // for these fields, you can't assert the magic directly
@@ -246,7 +246,6 @@ pub(super) struct AniFile {
     //
     // you have to pass the magic as an argument to let the "inner"
     // parser fail, which is caught by `try`, rewinding the cursor.
-
     #[br(try, args{ expected_id: *b"rate" })]
     pub rate: Option<RiffChunkU32>,
     #[br(try, args{ expected_id: *b"seq " })]
