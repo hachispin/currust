@@ -140,7 +140,7 @@ pub(super) struct AniHeader {
     pub num_steps: u32,
 
     /// Default jiffle rate if "rate" isn't provided.
-    pub jiffle_rate: u32,
+    pub jiffy_rate: u32,
     // Flags to indicate whether the "seq " chunk exists.
     flags: AniFlags,
 }
@@ -189,7 +189,7 @@ struct SkipAniMetadata {
 #[br(little, magic = b"RIFF")]
 #[br(assert(
     (header.flags == AniFlags::UnsequencedIcon && sequence.is_none())
-     ||(header.flags == AniFlags::SequencedIcon && sequence.is_some())
+    || (header.flags == AniFlags::SequencedIcon && sequence.is_some())
     ),
 )]
 pub(super) struct AniFile {

@@ -3,33 +3,19 @@ use currust::{
     cursors::{cursor_image::ScalingType::*, generic_cursor::GenericCursor},
 };
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::Parser;
 
 fn main() -> Result<()> {
     let raw_args = Args::parse();
     let args = ParsedArgs::from_args(&raw_args)?;
+    let test = &args.cur_paths[0];
 
-    for cur_path in &args.cur_paths {
-        let filename = cur_path.file_stem().unwrap();
-        let out = args.out.join(filename);
-
-        println!("Parsing {}", filename.display());
-        let mut cursor = GenericCursor::from_cur_path(cur_path)?;
-
-        cursor.add_scale(4, Downscale)?;
-        cursor.add_scale(2, Downscale)?;
-        cursor.add_scale(2, Upscale)?;
-        cursor.add_scale(3, Upscale)?;
-
-        println!("cursor.images.len()={}", cursor.base_images().len());
-
-        cursor.save_as_xcursor(out).context(
-            "\
-            An error occured while converting to Xcursor!\n\
-            Any produced Xcursor files may be corrupted.",
-        )?;
-    }
+    let mut cursor = GenericCursor::from_ani_path(test)?;
+    cursor.add_scale(2, Upscale)?;
+    cursor.add_scale(3, Upscale)?;
+    dbg!(&cursor.scaled_images().len());
+    cursor.save_as_xcursor(args.out.join("left_ptr"))?;
 
     Ok(())
 }

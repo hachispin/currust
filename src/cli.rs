@@ -72,7 +72,7 @@ impl ParsedArgs {
             bail!("no CUR files found in {path_str}, note that sub-directories aren't checked");
         } else if path.is_file() {
             if let Some(ext) = path.extension()
-                && ext == "cur"
+                && (ext == "cur" || ext == "ani")
             {
                 return Ok(vec![path]);
             }

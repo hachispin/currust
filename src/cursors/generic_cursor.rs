@@ -1,13 +1,20 @@
 //! Contains the [`GenericCursor`] struct.
 
+use crate::cursors::ani::AniFile;
+
 use super::{
     cursor_image::{CursorImage, ScalingType},
     xcursor::{bundle_images, construct_images, save_images},
 };
 
-use std::{fs::File, path::Path};
+use std::{
+    fs::{self, File},
+    io::Cursor,
+    path::Path,
+};
 
 use anyhow::{Context, Result, bail};
+use binrw::BinRead;
 use ico::IconDir;
 
 /// Represents a generic cursor.
@@ -89,10 +96,11 @@ impl GenericCursor {
             let scaled_dims = (dims.0 * scale_factor, dims.1 * scale_factor);
             let scaled_nominal = scaled_dims.0.max(scaled_dims.1);
 
-            if self.has_nominal_size(scaled_nominal) {
+            if self.has_nominal_size(scaled_nominal) && base_images.len() == 1 {
                 bail!("duplicate nominal size");
             }
 
+            /* TODO: consider Vec<Vec<_>> to detect duplicate nominals for animated */
             let scaled_image = base_image.scaled_to(scale_factor, scale_type)?;
             self.scaled.push(scaled_image);
         }
@@ -110,6 +118,10 @@ impl GenericCursor {
     pub fn from_cur_path<P: AsRef<Path>>(cur_path: P) -> Result<Self> {
         let cur_path = cur_path.as_ref();
         let cur_path_display = cur_path.display();
+
+        if cur_path.extension().is_none_or(|ext| ext != "cur") {
+            bail!("expected {cur_path_display} to have extension 'cur'")
+        }
 
         let handle = File::open(cur_path)
             .with_context(|| format!("failed to read from cur_path={cur_path_display}"))?;
@@ -151,6 +163,87 @@ impl GenericCursor {
         }
 
         Self::new(images)
+    }
+
+    /// Parses `ani_path`.
+    ///
+    /// ## Errors
+    ///
+    /// Path `ani_path` is not to a valid ANI cursor.
+    pub fn from_ani_path<P: AsRef<Path>>(ani_path: P) -> Result<Self> {
+        let ani_path = ani_path.as_ref();
+        let ani_path_display = ani_path.display();
+
+        if ani_path.extension().is_none_or(|ext| ext != "ani") {
+            bail!("expected {ani_path_display} to have extension 'ani'")
+        }
+
+        let ani_blob = fs::read(ani_path)?;
+        let ani_file = AniFile::read(&mut Cursor::new(ani_blob))?;
+        let header = ani_file.header;
+
+        let icos: Vec<IconDir> = ani_file
+            .frames
+            .list
+            .into_iter()
+            .map(|chunk| IconDir::read(&mut Cursor::new(&chunk.data)))
+            .collect::<Result<_, _>>()?;
+
+        let num_steps = usize::try_from(header.num_steps)?;
+        dbg!(num_steps);
+        let delays_jiffies = ani_file
+            .sequence
+            .map_or(vec![header.jiffy_rate; num_steps], |chunk| chunk.data);
+
+        // jiffies are 1/60th of a second
+        let delays_ms: Vec<f64> = delays_jiffies
+            .into_iter()
+            .map(|j| f64::from(j) * 1000.0 / 60.0)
+            .collect();
+
+        let mut canon_entries = Vec::with_capacity(icos.len());
+
+        // using for loop for easier inspection
+        for ico in &icos {
+            let entries = ico.entries();
+
+            /* TODO: find a better way to handle >1 entries here */
+            match entries.len() {
+                0 => {
+                    eprintln!("Warning: skipping IconDir with 0 entries (ANI)");
+                }
+
+                1 => canon_entries.push(entries[0].clone()),
+
+                _ => {
+                    eprintln!("Warning: found multiple entries, only parsing first (ANI)");
+                    canon_entries.push(entries[0].clone());
+                }
+            }
+        }
+
+        assert_eq!(canon_entries.len(), delays_ms.len());
+
+        /* TODO: handle custom sequences */
+        let mut cursor_images = Vec::with_capacity(canon_entries.len());
+        for (entry, delay) in canon_entries.into_iter().zip(delays_ms) {
+            let (hotspot_x, hotspot_y) = entry.cursor_hotspot().unwrap();
+            let rgba = entry.decode()?.into_rgba_data();
+
+            let cursor_image = CursorImage::new_with_delay(
+                entry.width(),
+                entry.height(),
+                hotspot_x.into(),
+                hotspot_y.into(),
+                rgba,
+                delay.round() as u32,
+            )?;
+
+            println!("delay={delay}ms");
+            cursor_images.push(cursor_image);
+        }
+
+        GenericCursor::new(cursor_images)
     }
 
     /// Saves `cursor` to `path` in Xcursor format.
