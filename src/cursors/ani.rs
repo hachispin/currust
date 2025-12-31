@@ -9,8 +9,6 @@
 
 use binrw::{BinRead, binread};
 
-/* TODO: maybe do some type magic to not duplicate for u8, u32 chunks */
-
 /// RIFF chunk with [`Self::data`] as `Vec<u32>`.
 #[binread]
 #[derive(Debug)]
@@ -60,6 +58,7 @@ pub(super) struct RiffChunkU8 {
     // padding byte skipped with `pad_after`
 }
 
+/// A generic LIST chunk with subchunks that store u8 bytes.
 #[binread]
 #[derive(Debug)]
 #[br(import{ list_length: u32, expected_list_id: [u8; 4], expected_subchunk_id: [u8; 4] })]
@@ -82,15 +81,23 @@ pub(super) struct RiffListU8 {
 /// Contains possible flag combinations for [`AniHeader`].
 /// These are used to describe the state of the "seq " chunk.
 ///
-/// Invalid flags:
+/// The ANI format defines these flags:
+///
+///```text
+/// #define AF_ICON 0x1         // Frames are in Windows ICO format.
+/// #define AF_SEQUENCE 0x2     // Animation is sequenced. 
+/// ```
+///
+/// All frames must be in ICO format, so these are invalid flags:
 ///
 /// - `0`: no flags set
 /// - `2`: frames are not ICO
-///
-/// All frames must be in ICO format.
 #[derive(Debug, PartialEq, BinRead)]
 #[br(repr = u32)]
 enum AniFlags {
+    // NOTE: this is storing the valid combinations of 
+    // bitflags and are not meant to be composable.
+
     /// Contains ICO frames with a custom "seq " chunk,
     /// which defines the order frames should be played.
     ///
@@ -184,6 +191,37 @@ struct SkipAniMetadata {
 }
 
 /// Models an ANI file.
+///
+/// ```text
+// RIFF('ACON'                        
+///     [LIST('INFO'                   
+///         [INAM(<ZSTR>)]             // Title. Optional.
+///         [IART(<ZSTR>)]             // Author. Optional.
+///     )]                             
+///     'anih'(<ANIHEADER>)            // ANI file header.
+///     ['rate'(<DWORD...>)]           // Rate table (array of jiffies).
+///                                    // If the AF_SEQUENCE flag is set
+///                                    // then the count is ANIHEADER.cSteps,
+///                                    // otherwise ANIHEADER.cFrames.
+///     ['seq '(<DWORD...>)]           // Sequence table (array of frame index values).
+///                                    // Should be present when AF_SEQUENCE flag is set.
+///                                    // Count is ANIHEADER.cSteps.
+///     LIST('fram'                    // List of frames data. Count is ANIHEADER.cFrames.
+///        'icon'(<icon_data_1>)       // Frame 1
+///        'icon'(<icon_data_2>)       // Frame 2
+///        ...
+///     )
+/// )
+/// ```
+///
+/// - Chunks always follow this: identifier => data size => even-padded data.
+///   * Data size doesn't include padding.
+/// - Brackets around a chunk (like "seq ") indicate that it's optional.
+/// - Chunks like "RIFF" and "LIST" have a second identifier, after the size.
+///
+/// ## References
+///
+/// [Wikipedia: ANI structure](https://en.wikipedia.org/wiki/ANI_(file_format)#File_structure)
 #[binread]
 #[derive(Debug)]
 #[br(little, magic = b"RIFF")]
@@ -203,9 +241,14 @@ pub(super) struct AniFile {
 
     pub header: AniHeader,
 
+    // for these fields, you can't assert the magic directly
+    // in this struct since that overrides the `try` directive.
+    //
+    // you have to pass the magic as an argument to let the "inner"
+    // parser fail, which is caught by `try`, rewinding the cursor.
+
     #[br(try, args{ expected_id: *b"rate" })]
     pub rate: Option<RiffChunkU32>,
-
     #[br(try, args{ expected_id: *b"seq " })]
     pub sequence: Option<RiffChunkU32>,
 
