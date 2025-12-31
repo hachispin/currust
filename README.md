@@ -9,7 +9,7 @@ require a substantial amount of manual work, this project aims to be as **easy t
 ## Goals
 
 - [x] Modify [`.cur`](https://en.wikipedia.org/wiki/ICO_(file_format)) files to valid Xcursor
-- [ ] Ditto, but for the [`.ani`](https://en.wikipedia.org/wiki/ANI_(file_format)) format
+- [x] Ditto, but for the [`.ani`](https://en.wikipedia.org/wiki/ANI_(file_format)) format
 - [x] Add upscaling and downscaling for cursors
 - [ ] Map cursor names to Xcursor equivalents, similar to [win2xcur-batch](https://github.com/khayalhus/win2xcur-batch)
 - [ ] Read [`.inf`](https://en.wikipedia.org/wiki/INF_file) files for smart mappings, like [these](/testing/data/Installer.inf).
