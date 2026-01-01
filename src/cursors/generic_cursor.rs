@@ -38,8 +38,10 @@ pub struct GenericCursor {
     /// Each inner vector should have the same length as `base`.
     scaled: Vec<Vec<CursorImage>>,
 
-    /// Used scale factors. Always includes 1.
-    scale_factors: Vec<u32>,
+    /// Used scale factors. Always includes 1.0.
+    ///
+    /// Downscaled factors are added as 1/SF.
+    scale_factors: Vec<f64>,
 }
 
 impl GenericCursor {
@@ -69,7 +71,7 @@ impl GenericCursor {
         Ok(Self {
             base: base_images,
             scaled: Vec::new(),
-            scale_factors: vec![1],
+            scale_factors: vec![1.0],
         })
     }
 
@@ -82,7 +84,13 @@ impl GenericCursor {
     /// If the newly made [`CursorImage`] doesn't
     /// have a unique nominal size.
     pub fn add_scale(&mut self, scale_factor: u32, scale_type: ScalingType) -> Result<()> {
-        if self.scale_factors.contains(&scale_factor) {
+
+        let canon_scale_factor: f64 = match scale_type {
+            ScalingType::Upscale => f64::from(scale_factor),
+            ScalingType::Downscale => 1.0 / f64::from(scale_factor),
+        };
+
+        if self.scale_factors.contains(&canon_scale_factor) {
             bail!("scale_factor={scale_factor} already added");
         }
 
