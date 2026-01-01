@@ -5,8 +5,9 @@
 //!
 //! You may find it helpful to also read about [RIFF](https://en.wikipedia.org/wiki/Resource_Interchange_File_Format).
 
-#![allow(dead_code)]
+use std::io::Cursor;
 
+use anyhow::{Context, Result, bail};
 use binrw::{BinRead, binread};
 
 /// RIFF chunk with [`Self::data`] as `Vec<u32>`.
@@ -16,8 +17,8 @@ use binrw::{BinRead, binread};
 #[br(import{ expected_id: [u8; 4] })]
 pub(super) struct RiffChunkU32 {
     /// ASCII identifier for the chunk.
-    #[br(assert(id == expected_id))]
-    id: [u8; 4],
+    #[br(assert(_id == expected_id))]
+    _id: [u8; 4],
 
     // these fields are temporary since `data`
     // already stores its length when constructed
@@ -45,8 +46,8 @@ pub(super) struct RiffChunkU32 {
 #[br(import{ expected_id: [u8; 4] })]
 pub(super) struct RiffChunkU8 {
     /// ASCII identifier for the chunk.
-    #[br(assert(id == expected_id))]
-    id: [u8; 4],
+    #[br(assert(_id == expected_id))]
+    _id: [u8; 4],
 
     // size == length here since `data` is Vec<u8>
     #[br(temp)]
@@ -58,32 +59,12 @@ pub(super) struct RiffChunkU8 {
     // padding byte skipped with `pad_after`
 }
 
-/// A generic LIST chunk with subchunks that store u8 bytes.
-#[binread]
-#[derive(Debug)]
-#[br(import{ list_length: u32, expected_list_id: [u8; 4], expected_subchunk_id: [u8; 4] })]
-#[br(assert(list_length != 0))]
-#[br(little, magic = b"LIST")]
-pub(super) struct RiffListU8 {
-    #[br(temp)]
-    _list_size: u32,
-
-    #[br(assert(list_id == expected_list_id))]
-    list_id: [u8; 4],
-
-    #[br(args {
-        count: list_length.try_into().unwrap(),
-        inner: RiffChunkU8BinReadArgs { expected_id: expected_subchunk_id }}
-    )]
-    pub list: Vec<RiffChunkU8>,
-}
-
 /// Contains possible flag combinations for [`AniHeader`].
 /// These are used to describe the state of the "seq " chunk.
 ///
 /// The ANI format defines these flags:
 ///
-///```text
+/// ```text
 /// #define AF_ICON 0x1         // Frames are in Windows ICO format.
 /// #define AF_SEQUENCE 0x2     // Animation is sequenced.
 /// ```
@@ -113,7 +94,7 @@ enum AniFlags {
 ///
 /// - [Wikipedia: ANI structure](https://en.wikipedia.org/wiki/ANI_(file_format)#File_structure)
 #[binread]
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[br(magic = b"anih")]
 pub(super) struct AniHeader {
     /// Size field of the "anih" chunk, not part of the header itself.
@@ -151,37 +132,6 @@ pub(super) struct AniHeader {
     flags: AniFlags,
 }
 
-/// This has no fields, doesn't parse metadata,
-/// and is only used to skip until [`AniHeader`].
-///
-/// _no one even writes this chunk anyway..._
-#[binread]
-#[derive(Debug)]
-#[br(magic = b"LIST")]
-struct SkipAniMetadata {
-    /* TODO: consider actually parsing this */
-    // this chunk (that we're skipping) is just two strings max
-    // also, subchunks are even-padded, so the chunk size must be even too
-    #[br(
-        assert(_list_size < 1024, "INFO chunk unreasonably large (1KB+)"),
-        assert(_list_size.is_multiple_of(2)), temp
-    )]
-    _list_size: u32,
-
-    // list identifier
-    #[br(assert(_info == *b"INFO"), temp)]
-    _info: [u8; 4],
-
-    // -4 since we've read `_info`, which is 4 bytes
-    #[br(calc = _list_size.checked_sub(4).unwrap(), temp)]
-    _skip_value: u32,
-
-    // make sure we skipped far enough
-    #[br(pad_before = _skip_value, restore_position, temp)]
-    #[br(assert(_anih == *b"anih"))]
-    _anih: [u8; 4],
-}
-
 /// Models an ANI file.
 ///
 /// ```text
@@ -206,6 +156,9 @@ struct SkipAniMetadata {
 /// )
 /// ```
 ///
+/// NOTE: The order shown here may not reflect how actual ANI files
+///       can choose to order their fields.
+///
 /// - Chunks always follow this: identifier => data size => even-padded data.
 ///   * Data size doesn't include padding.
 /// - Brackets around a chunk (like "seq ") indicate that it's optional.
@@ -214,38 +167,179 @@ struct SkipAniMetadata {
 /// ## References
 ///
 /// [Wikipedia: ANI structure](https://en.wikipedia.org/wiki/ANI_(file_format)#File_structure)
-#[binread]
-#[derive(Debug)]
-#[br(little, magic = b"RIFF")]
-#[br(assert(
-    (header.flags == AniFlags::UnsequencedIcon && sequence.is_none()) ||
-    (header.flags == AniFlags::SequencedIcon /* && sequence.is_some() */)
-    ), //                                    └────────────┬────────────┘
-)] //                        some cursors don't follow this but still render on windows
+#[derive(Debug, Default)]
 pub(super) struct AniFile {
-    #[br(assert(file_size < 1_048_576, "file_size unreasonably large (1MB+)"))]
-    pub file_size: u32,
-
-    #[br(assert(_acon == *b"ACON"), temp)]
-    _acon: [u8; 4],
-    #[br(try, temp)]
-    _metadata: Option<SkipAniMetadata>,
     pub header: AniHeader,
-
-    // for these fields, you can't assert the magic directly
-    // in this struct since that overrides the `try` directive.
-    //
-    // you have to pass the magic as an argument to let the "inner"
-    // parser fail, which is caught by `try`, rewinding the cursor.
-    #[br(try, args{ expected_id: *b"rate" })]
     pub rate: Option<RiffChunkU32>,
-    #[br(try, args{ expected_id: *b"seq " })]
     pub sequence: Option<RiffChunkU32>,
+    pub ico_frames: Vec<RiffChunkU8>,
+}
 
-    #[br(args {
-        list_length: header.num_frames,
-        expected_list_id: *b"fram",
-        expected_subchunk_id: *b"icon" }
-    )]
-    pub frames: RiffListU8,
+impl Default for AniHeader {
+    fn default() -> Self {
+        Self {
+            num_frames: 0,
+            num_steps: 0,
+            jiffy_rate: 0,
+            flags: AniFlags::SequencedIcon,
+        }
+    }
+}
+
+impl AniFile {
+    /// Parses `ani_blob`.
+    ///
+    /// This is pretty complicated (uses a sliding window)
+    /// because of the "constraint" (or more like freedom?)
+    /// of chunks being able to appear in any order.
+    ///
+    /// > [gdgsoft](https://www.gdgsoft.com/anituner/help/aniformat.htm):
+    /// > "Any of the blocks ("ACON", "anih", "rate", or "seq ") can appear in any order."
+    // this is the worst format i've ever seen
+    pub fn from_blob(ani_blob: &[u8]) -> Result<AniFile> {
+        let mut ani = AniFile::default();
+
+        // make window for matching identifiers/fourcc (e.g, "seq ")
+        // NOTE: consider using array_windows when it's stable
+        let windows = ani_blob.windows(4);
+
+        for (offset, id) in windows.enumerate() {
+            // there are asserts here checking for duplicate chunks
+            // i'll turn them into results if this ever panics though
+
+            match id {
+                b"LIST" => {
+                    let list_id = &ani_blob[(offset + 8)..(offset + 12)];
+
+                    match list_id {
+                        b"INFO" => {
+                            eprintln!("Found 'INFO' chunk at offset={offset}, skipping");
+                        }
+
+                        b"fram" => {
+                            assert!(ani.ico_frames.is_empty());
+                            ani.ico_frames = Self::parse_fram(ani_blob, offset)?;
+                        }
+
+                        _ => bail!("Unexpected 'LIST' subtype {list_id:?}"),
+                    }
+                }
+
+                b"anih" => {
+                    assert!(ani.header == AniHeader::default());
+                    ani.header = Self::parse_anih(ani_blob, offset)?;
+                }
+                
+                b"rate" => {
+                    assert!(ani.rate.is_none());
+                    ani.rate = Some(Self::parse_rate(ani_blob, offset)?);
+                }
+
+                b"seq " => {
+                    assert!(ani.sequence.is_none());
+                    ani.sequence = Some(Self::parse_seq(ani_blob, offset)?);
+                }
+                _ => (),
+            }
+        }
+
+        /* check invariants */
+
+        let hdr = &ani.header;
+
+        if (hdr.flags == AniFlags::SequencedIcon && ani.sequence.is_none())
+            || (hdr.flags == AniFlags::UnsequencedIcon && ani.sequence.is_some())
+        {
+            bail!(
+                "flags didn't match state of 'seq ' chunk: flags={:?}, sequence={:?}",
+                hdr.flags,
+                ani.sequence
+            );
+        }
+
+        if hdr.num_frames != ani.ico_frames.len().try_into()? {
+            bail!(
+                "expected {} frames, instead got {}",
+                hdr.num_frames,
+                ani.ico_frames.len()
+            );
+        }
+
+        Ok(ani)
+    }
+
+    /// Helper for [`Self::from_blob`] for the "fram" chunk.
+    ///
+    /// Note: `offset` is where the "LIST" fourcc starts.
+    fn parse_fram(ani_blob: &[u8], offset: usize) -> Result<Vec<RiffChunkU8>> {
+        let fram_chunk = Self::extract_chunk(ani_blob, offset)?;
+        let mut chunks = Vec::new();
+
+        // not this again...
+        for (fram_offset, fourcc) in fram_chunk.windows(4).enumerate() {
+            if fourcc != b"icon" {
+                continue;
+            }
+
+            let icon_chunk = Self::extract_chunk(ani_blob, offset + fram_offset)?;
+            let args = RiffChunkU8BinReadArgs {
+                expected_id: *b"icon",
+            };
+            let parsed_chunk = RiffChunkU8::read_le_args(&mut Cursor::new(icon_chunk), args)
+                .context("failed to parse 'icon' subchunk in 'fram'")?;
+
+            chunks.push(parsed_chunk);
+        }
+
+        Ok(chunks)
+    }
+
+    fn parse_anih(ani_blob: &[u8], offset: usize) -> Result<AniHeader> {
+        let anih_chunk = Self::extract_chunk(ani_blob, offset)?;
+        AniHeader::read_le(&mut Cursor::new(anih_chunk)).context("failed to parse 'anih' chunk")
+    }
+
+    fn parse_rate(ani_blob: &[u8], offset: usize) -> Result<RiffChunkU32> {
+        let rate_chunk = Self::extract_chunk(ani_blob, offset)?;
+        let args = RiffChunkU32BinReadArgs {
+            expected_id: *b"rate",
+        };
+
+        RiffChunkU32::read_le_args(&mut Cursor::new(rate_chunk), args)
+            .context("failed to parse 'rate' chunk")
+    }
+
+    fn parse_seq(ani_blob: &[u8], offset: usize) -> Result<RiffChunkU32> {
+        let seq_chunk = Self::extract_chunk(ani_blob, offset)?;
+        let args = RiffChunkU32BinReadArgs {
+            expected_id: *b"seq ",
+        };
+
+        RiffChunkU32::read_le_args(&mut Cursor::new(seq_chunk), args)
+            .context("failed to parse 'seq ' chunk")
+    }
+
+    /// Calculates the slice that contains the chunk.
+    /// `chunk_start` is where the fourcc starts.
+    fn extract_chunk(blob: &[u8], chunk_start: usize) -> Result<&[u8]> {
+        let blob_len = blob.len();
+
+        if chunk_start + 8 > blob.len() {
+            bail!("blob.len()={blob_len} too small to hold chunk_start={chunk_start}");
+        }
+
+        // size always comes after identifier for RIFF chunks
+        let chunk_size_u32 =
+            u32::from_le_bytes(blob[(chunk_start + 4)..(chunk_start + 8)].try_into()?);
+        let chunk_size = usize::try_from(chunk_size_u32)?;
+        let chunk_end = chunk_start + chunk_size + 8;
+
+        if chunk_end > blob.len() {
+            bail!("chunk_end={chunk_end} greater than blob.len()={blob_len}");
+        }
+
+        let chunk = &blob[chunk_start..(chunk_start + chunk_size + 8)];
+
+        Ok(chunk)
+    }
 }
