@@ -158,6 +158,7 @@ struct SkipAniMetadata {
     // also, subchunks are even-padded, so the chunk size must be even too
     #[br(
         assert(_list_size < 1024, "INFO chunk unreasonably large (1KB+)"),
+        assert(_list_size >= 4, "INFO chunk too small (less than 4)"),
         assert(_list_size.is_multiple_of(2)), temp
     )]
     _list_size: u32,
@@ -167,6 +168,7 @@ struct SkipAniMetadata {
     _info: [u8; 4],
 
     // -4 since we've read `_info`, which is 4 bytes
+    // unwrap since list size is asserted to be >= 4
     #[br(calc = _list_size.checked_sub(4).unwrap(), temp)]
     _skip_value: u32,
 
@@ -186,12 +188,15 @@ pub(super) struct RiffListU8 {
     #[br(temp)]
     _list_size: u32,
 
+    #[br(try_calc = usize::try_from(_list_size), temp)]
+    _list_size_usize: usize,
+
     #[allow(dead_code)]
     #[br(assert(list_id == expected_list_id))]
     list_id: [u8; 4],
 
     #[br(args {
-        count: list_length.try_into().unwrap(),
+        count: _list_size_usize,
         inner: RiffChunkU8BinReadArgs { expected_id: expected_subchunk_id }}
     )]
     pub list: Vec<RiffChunkU8>,
