@@ -23,18 +23,23 @@ use ico::IconDir;
 /// that share the same nominal sizes.
 #[derive(Debug)]
 pub struct GenericCursor {
-    /// Scaled images derived from `base`.
-    scaled: Vec<CursorImage>,
     /// The base images, used for scaling.
     ///
-    /// For static cursors, this contains one
-    /// [`CursorImage`] with a `delay` field of 0.
+    /// - For static cursors, this should have one
+    ///   [`CursorImage`] with a `delay` of zero.
+    /// - For animated cursors, this should have multiple
+    ///   [`CursorImage`]s with non-zero `delay` fields.
     ///
-    /// For animated cursors, this contains multiple
-    /// [`CursorImage`]s with non-zero `delay` fields.
-    ///
-    /// All images here must have the **same nominal sizes**.
+    /// All images here must have the **same dimensions**.
     base: Vec<CursorImage>,
+
+    /// Scaled cursors derived from `base`.
+    ///
+    /// Each inner vector should have the same length as `base`.
+    scaled: Vec<Vec<CursorImage>>,
+
+    /// Used scale factors. Always includes 1.
+    scale_factors: Vec<u32>,
 }
 
 impl GenericCursor {
@@ -64,20 +69,8 @@ impl GenericCursor {
         Ok(Self {
             base: base_images,
             scaled: Vec::new(),
+            scale_factors: vec![1],
         })
-    }
-
-    /// Helper function for [`Self::add_scale`].
-    fn has_nominal_size(&self, nominal_size: u32) -> bool {
-        for image in &self.scaled {
-            let dims = image.dimensions();
-
-            if dims.0.max(dims.1) == nominal_size {
-                return true;
-            }
-        }
-
-        false
     }
 
     /// Adds scaled [`CursorImage`] from `base` to `scaled`.
@@ -89,21 +82,17 @@ impl GenericCursor {
     /// If the newly made [`CursorImage`] doesn't
     /// have a unique nominal size.
     pub fn add_scale(&mut self, scale_factor: u32, scale_type: ScalingType) -> Result<()> {
-        let base_images = &self.base;
-
-        for base_image in base_images {
-            let dims = base_image.dimensions();
-            let scaled_dims = (dims.0 * scale_factor, dims.1 * scale_factor);
-            let scaled_nominal = scaled_dims.0.max(scaled_dims.1);
-
-            if self.has_nominal_size(scaled_nominal) && base_images.len() == 1 {
-                bail!("duplicate nominal size");
-            }
-
-            /* TODO: consider Vec<Vec<_>> to detect duplicate nominals for animated */
-            let scaled_image = base_image.scaled_to(scale_factor, scale_type)?;
-            self.scaled.push(scaled_image);
+        if self.scale_factors.contains(&scale_factor) {
+            bail!("scale_factor={scale_factor} already added");
         }
+
+        let scaled_images: Vec<CursorImage> = self
+            .base
+            .iter()
+            .map(|c| c.scaled_to(scale_factor, scale_type))
+            .collect::<Result<_>>()?;
+
+        self.scaled.push(scaled_images);
 
         Ok(())
     }
@@ -190,15 +179,15 @@ impl GenericCursor {
             .collect::<Result<_, _>>()?;
 
         let num_steps = usize::try_from(header.num_steps)?;
-        dbg!(num_steps);
         let delays_jiffies = ani_file
             .sequence
             .map_or(vec![header.jiffy_rate; num_steps], |chunk| chunk.data);
 
         // jiffies are 1/60th of a second
-        let delays_ms: Vec<f64> = delays_jiffies
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let delays_ms: Vec<u32> = delays_jiffies
             .into_iter()
-            .map(|j| f64::from(j) * 1000.0 / 60.0)
+            .map(|j| (f64::from(j) * 1000.0 / 60.0).round() as u32)
             .collect();
 
         let mut canon_entries = Vec::with_capacity(icos.len());
@@ -222,7 +211,7 @@ impl GenericCursor {
             }
         }
 
-        assert_eq!(canon_entries.len(), delays_ms.len());
+        // assert_eq!(canon_entries.len(), delays_ms.len());
 
         /* TODO: handle custom sequences */
         let mut cursor_images = Vec::with_capacity(canon_entries.len());
@@ -236,10 +225,9 @@ impl GenericCursor {
                 hotspot_x.into(),
                 hotspot_y.into(),
                 rgba,
-                delay.round() as u32,
+                delay,
             )?;
 
-            println!("delay={delay}ms");
             cursor_images.push(cursor_image);
         }
 
@@ -254,7 +242,7 @@ impl GenericCursor {
     /// from the `unsafe` helper functions are propagated.
     pub fn save_as_xcursor<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let path = path.as_ref();
-        let joined = self.joined_images();
+        let joined: Vec<CursorImage> = self.joined_images().cloned().collect();
         let cursor = joined.as_slice();
 
         let path_str = path
@@ -279,15 +267,6 @@ impl GenericCursor {
         Ok(())
     }
 
-    /// Returns a vector joining `base` and `scaled`.
-    #[must_use]
-    pub fn joined_images(&self) -> Vec<CursorImage> {
-        let mut images = self.base.clone();
-        images.extend(self.scaled.clone());
-
-        images
-    }
-
     /// Trivial accessor for `base` field.
     #[must_use]
     pub fn base_images(&self) -> &[CursorImage] {
@@ -295,8 +274,21 @@ impl GenericCursor {
     }
 
     /// Trivial accessor for `scaled` field.
-    #[must_use]
-    pub fn scaled_images(&self) -> &[CursorImage] {
-        &self.scaled
+    ///
+    /// This returns an iterator over `&[CursorImage]`.
+    pub fn scaled_images(&self) -> impl Iterator<Item = &[CursorImage]> {
+        self.scaled.iter().map(Vec::as_slice)
+    }
+
+    /// Trivial accessor for `scaled` field, flattened.
+    ///
+    /// This returns an iterator over `&CursorImage`.
+    pub fn scaled_images_flat(&self) -> impl Iterator<Item = &CursorImage> {
+        self.scaled.iter().flat_map(Vec::as_slice)
+    }
+
+    /// Returns an iterator joining `base` and `scaled`, flattened.
+    pub fn joined_images(&self) -> impl Iterator<Item = &CursorImage> {
+        self.base.iter().chain(self.scaled_images_flat())
     }
 }
