@@ -14,7 +14,6 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use binrw::BinRead;
 use ico::IconDir;
 
 /// Represents a generic cursor.
@@ -176,12 +175,12 @@ impl GenericCursor {
         }
 
         let ani_blob = fs::read(ani_path)?;
-        let ani_file = AniFile::read(&mut Cursor::new(ani_blob))?;
+        let ani_file = AniFile::from_blob(&ani_blob)?;
+        println!("{ani_file:#?}");
         let header = ani_file.header;
 
         let icos: Vec<IconDir> = ani_file
-            .frames
-            .list
+            .ico_frames
             .into_iter()
             .map(|chunk| IconDir::read(&mut Cursor::new(&chunk.data)))
             .collect::<Result<_, _>>()?;
