@@ -172,14 +172,12 @@ fn u8_to_u32(u8_vec: &[u8]) -> Vec<u32> {
         "u8_vec length must be a multiple of four for conversion to `Vec<u32>`"
     );
 
-    let mut u32_vec = Vec::with_capacity(u8_vec.len() / 4);
-
-    for split_quad in u8_vec.as_chunks::<4>().0 {
-        let quad = u32::from_be_bytes(*split_quad);
-        u32_vec.push(quad);
-    }
-
-    u32_vec
+    u8_vec
+        .as_chunks::<4>()
+        .0 // ignore remainder
+        .iter()
+        .map(|&q| u32::from_be_bytes(q))
+        .collect()
 }
 
 /// Constructs an [`XcursorImageHandle`] using `cursor`.
