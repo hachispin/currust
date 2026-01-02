@@ -270,7 +270,7 @@ impl AniFile {
 
                     ani.header = Self::parse_anih(&mut cursor)?;
                 }
-                
+
                 b"rate" => {
                     ani.rate = {
                         if ani.rate.is_some() {
@@ -310,8 +310,7 @@ impl AniFile {
         if hdr.flags == AniFlags::UnsequencedIcon && ani.sequence.is_some() {
             eprintln!(
                 "Warning: expected 'seq ' chunk to be None from flags={:?}, found sequence={:?}",
-                hdr.flags,
-                ani.sequence
+                hdr.flags, ani.sequence
             );
         }
 
@@ -321,6 +320,12 @@ impl AniFile {
                 hdr.num_frames,
                 ani.ico_frames.len()
             );
+        }
+
+        if let Some(seq) = &ani.sequence
+            && seq.data.iter().max() >= Some(&hdr.num_frames)
+        {
+            bail!("frame indices of 'seq ' chunk go out of bounds");
         }
 
         Ok(ani)
