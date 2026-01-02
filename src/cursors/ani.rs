@@ -108,7 +108,7 @@ struct SkipAniMetadata {
 ///
 /// - `0`: no flags set
 /// - `2`: frames are not ICO
-#[derive(Debug, PartialEq, BinRead)]
+#[derive(Debug, Default, PartialEq, BinRead)]
 #[br(repr = u32)]
 enum AniFlags {
     // NOTE: this is storing the valid combinations of
@@ -117,6 +117,7 @@ enum AniFlags {
     /// which defines the order frames should be played.
     ///
     /// This is mainly for optimizing repeated frames(?).
+    #[default]
     UnsequencedIcon = 1,
     /// Contains ICO frames that play in the
     /// order they're defined (no "seq " chunk).
@@ -129,7 +130,7 @@ enum AniFlags {
 ///
 /// - [Wikipedia: ANI structure](https://en.wikipedia.org/wiki/ANI_(file_format)#File_structure)
 #[binread]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 #[br(magic = b"anih")]
 pub(super) struct AniHeader {
     /// Size field of the "anih" chunk, not part of the header itself.
@@ -156,9 +157,7 @@ pub(super) struct AniHeader {
     /// sequence = [0, 1, 2, 1] => num_steps  = 4
     /// frames   = [0, 1, 2]    => num_frames = 3
     /// ```
-    // skip 4 DWORDs (u32s): cx, cy, cBitCount, cPlanes
-    // NOTE: don't assert for zero, Windows doesn't care
-    #[br(pad_after = 16)]
+    #[br(pad_after = 16)] // contains unused fields: cx, cy, cBitCount, cPlanes
     pub num_steps: u32,
 
     /// Default jiffy rate if "rate" isn't provided.
@@ -210,17 +209,6 @@ pub(super) struct AniFile {
     pub ico_frames: Vec<RiffChunkU8>,
 }
 
-impl Default for AniHeader {
-    fn default() -> Self {
-        Self {
-            num_frames: 0,
-            num_steps: 0,
-            jiffy_rate: 0,
-            flags: AniFlags::SequencedIcon,
-        }
-    }
-}
-
 impl AniFile {
     /// Parses `ani_blob`.
     ///
@@ -255,6 +243,9 @@ impl AniFile {
         cursor.read_exact(&mut buf)?;
         let riff_size = u32::from_le_bytes(buf);
 
+        // NOTE: stricter checks like this fail on "valid" files
+        // `riff_size == blob.len() - 8`
+        // https://github.com/quantum5/win2xcur/commit/ac9552ce83d2955a96a4d7a5cfde7c113ec5a4c5
         if u64::from(riff_size) > ani_blob_len_u64 {
             bail!("riff_size={riff_size} extends beyond blob")
         }
@@ -272,9 +263,31 @@ impl AniFile {
             // deref patterns are unstable
             match &buf {
                 b"LIST" => Self::parse_list(&mut cursor, &mut ani)?,
-                b"anih" => ani.header = Self::parse_anih(&mut cursor)?,
-                b"rate" => ani.rate = Some(Self::parse_rate(&mut cursor)?),
-                b"seq " => ani.sequence = Some(Self::parse_seq(&mut cursor)?),
+                b"anih" => {
+                    if ani.header != AniHeader::default() {
+                        bail!("duplicate 'anih' chunk");
+                    }
+
+                    ani.header = Self::parse_anih(&mut cursor)?;
+                }
+                
+                b"rate" => {
+                    ani.rate = {
+                        if ani.rate.is_some() {
+                            bail!("duplicate 'rate' chunk");
+                        }
+
+                        Some(Self::parse_rate(&mut cursor)?)
+                    }
+                }
+
+                b"seq " => {
+                    if ani.sequence.is_some() {
+                        bail!("duplicate 'seq ' chunk");
+                    }
+
+                    ani.sequence = Some(Self::parse_seq(&mut cursor)?);
+                }
 
                 // consider attempting to read size and skipping
                 // for unknown chunks (but it's a bit unreliable)
@@ -282,27 +295,29 @@ impl AniFile {
             }
         }
 
-        /* check invariants */
+        /* check "invariants" */
+        // if something isn't a bail!(), it's for good reason
+        // windows still renders some technically invalid files
         let hdr = &ani.header;
 
         if hdr.flags == AniFlags::SequencedIcon && ani.sequence.is_none() {
-            bail!(
-                "expected 'seq ' chunk from flags={:?}, found None",
+            eprintln!(
+                "Warning: expected 'seq ' chunk from flags={:?}, found None",
                 hdr.flags
-            )
+            );
         }
 
         if hdr.flags == AniFlags::UnsequencedIcon && ani.sequence.is_some() {
-            bail!(
-                "expected 'seq ' chunk to be none from flags={:?}, found sequence={:?}",
+            eprintln!(
+                "Warning: expected 'seq ' chunk to be None from flags={:?}, found sequence={:?}",
                 hdr.flags,
                 ani.sequence
-            )
+            );
         }
 
         if usize::try_from(hdr.num_frames)? != ani.ico_frames.len() {
             bail!(
-                "expected num_frames={}, instead got ico_frames.len()={}",
+                "Warning: expected num_frames={}, instead got ico_frames.len()={}",
                 hdr.num_frames,
                 ani.ico_frames.len()
             );
@@ -310,6 +325,7 @@ impl AniFile {
 
         Ok(ani)
     }
+
     /// Helper for [`Self::from_blob`] for the "LIST" chunk.
     ///
     /// This can diverge depending on the subtype, which can
