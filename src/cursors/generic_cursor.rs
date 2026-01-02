@@ -13,7 +13,7 @@ use std::{
     path::Path,
 };
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use ico::IconDir;
 
 /// Represents a generic cursor.
@@ -83,7 +83,6 @@ impl GenericCursor {
     /// If the newly made [`CursorImage`] doesn't
     /// have a unique nominal size.
     pub fn add_scale(&mut self, scale_factor: u32, scale_type: ScalingType) -> Result<()> {
-
         let canon_scale_factor: f64 = match scale_type {
             ScalingType::Upscale => f64::from(scale_factor),
             ScalingType::Downscale => 1.0 / f64::from(scale_factor),
@@ -176,7 +175,6 @@ impl GenericCursor {
 
         let ani_blob = fs::read(ani_path)?;
         let ani_file = AniFile::from_blob(&ani_blob)?;
-        println!("{ani_file:#?}");
         let header = ani_file.header;
 
         let icos: Vec<IconDir> = ani_file
@@ -185,9 +183,18 @@ impl GenericCursor {
             .map(|chunk| IconDir::read(&mut Cursor::new(&chunk.data)))
             .collect::<Result<_, _>>()?;
 
+        let sequence: Option<Vec<usize>> = ani_file
+            .sequence
+            .map(|chunk| chunk.data.into_iter().map(usize::try_from).collect())
+            .transpose()?;
+
+        let sequenced_icos: Vec<&IconDir> = sequence.map_or(icos.iter().collect(), |v| {
+            v.into_iter().map(|idx| &icos[idx]).collect()
+        });
+
         let num_steps = usize::try_from(header.num_steps)?;
         let delays_jiffies = ani_file
-            .sequence
+            .rate
             .map_or(vec![header.jiffy_rate; num_steps], |chunk| chunk.data);
 
         // jiffies are 1/60th of a second
@@ -200,7 +207,7 @@ impl GenericCursor {
         let mut canon_entries = Vec::with_capacity(icos.len());
 
         // using for loop for easier inspection
-        for ico in &icos {
+        for ico in sequenced_icos {
             let entries = ico.entries();
 
             /* TODO: find a better way to handle >1 entries here */
@@ -218,12 +225,14 @@ impl GenericCursor {
             }
         }
 
-        // assert_eq!(canon_entries.len(), delays_ms.len());
-
         /* TODO: handle custom sequences */
         let mut cursor_images = Vec::with_capacity(canon_entries.len());
         for (entry, delay) in canon_entries.into_iter().zip(delays_ms) {
-            let (hotspot_x, hotspot_y) = entry.cursor_hotspot().unwrap();
+            let (hotspot_x, hotspot_y) = entry.cursor_hotspot().ok_or(anyhow!(
+                "expected stored ANI frames to be CUR, instead got ICO \
+                are you sure these are meant for cursors?"
+            ))?;
+
             let rgba = entry.decode()?.into_rgba_data();
 
             let cursor_image = CursorImage::new_with_delay(
