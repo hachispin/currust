@@ -73,13 +73,6 @@ impl CursorImage {
             );
         }
 
-        if width != height {
-            eprintln!(
-                "Warning: width={width} and height={height} \
-                aren't equal, this may cause odd behaviour"
-            );
-        }
-
         Ok(Self {
             width,
             height,
