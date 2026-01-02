@@ -263,25 +263,20 @@ impl GenericCursor {
     /// from the `unsafe` helper functions are propagated.
     pub fn save_as_xcursor<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let path = path.as_ref();
-        let joined: Vec<CursorImage> = self.joined_images().cloned().collect();
-        let cursor = joined.as_slice();
+        let joined: Vec<&CursorImage> = self.joined_images().collect();
 
         let path_str = path
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("failed to convert path={} to &str", path.display()))?;
 
-        let mut images_vec = Vec::with_capacity(cursor.len());
-
-        for c in cursor {
-            // drop called on XcursorImage if propagated
-            let image = construct_images(c)?;
-            images_vec.push(image);
-        }
+        let mut images_vec: Vec<_> = joined
+            .into_iter()
+            .map(construct_images)
+            .collect::<Result<_>>()?;
 
         let images = unsafe { bundle_images(&mut images_vec) }?;
 
         unsafe {
-            // drop called on each stored XcursorImage if propagated
             save_images(path_str, &images)?;
         }
 
