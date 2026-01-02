@@ -76,12 +76,12 @@ impl GenericCursor {
 
     /// Adds scaled [`CursorImage`] from `base` to `scaled`.
     ///
-    /// NOTE: Downscaled images isn't recommended.
+    /// NOTE: Downscaling isn't recommended for pixel-art images.
     ///
     /// ## Errors
     ///
     /// If the newly made [`CursorImage`] doesn't
-    /// have a unique nominal size.
+    /// have a unique (canon) scale factor.
     pub fn add_scale(&mut self, scale_factor: u32, scale_type: ScalingType) -> Result<()> {
         let canon_scale_factor: f64 = match scale_type {
             ScalingType::Upscale => f64::from(scale_factor),
@@ -91,6 +91,8 @@ impl GenericCursor {
         if self.scale_factors.contains(&canon_scale_factor) {
             bail!("scale_factor={scale_factor} already added");
         }
+
+        self.scale_factors.push(canon_scale_factor);
 
         let scaled_images: Vec<CursorImage> = self
             .base
@@ -110,6 +112,8 @@ impl GenericCursor {
     ///
     /// If a file handle to `cur_path` can't be opened,
     /// or the file stored is not a CUR file.
+    ///
+    /// This also checks for the `.cur` extension.
     pub fn from_cur_path<P: AsRef<Path>>(cur_path: P) -> Result<Self> {
         let cur_path = cur_path.as_ref();
         let cur_path_display = cur_path.display();
@@ -165,6 +169,8 @@ impl GenericCursor {
     /// ## Errors
     ///
     /// Path `ani_path` is not to a valid ANI cursor.
+    ///
+    /// This also checks for the `.ani` extension.
     pub fn from_ani_path<P: AsRef<Path>>(ani_path: P) -> Result<Self> {
         let ani_path = ani_path.as_ref();
         let ani_path_display = ani_path.display();
@@ -212,25 +218,24 @@ impl GenericCursor {
 
             /* TODO: find a better way to handle >1 entries here */
             match entries.len() {
-                0 => {
-                    eprintln!("Warning: skipping IconDir with 0 entries (ANI)");
-                }
-
+                0 => eprintln!("Warning: skipping IconDir with 0 entries (ANI)"),
                 1 => canon_entries.push(entries[0].clone()),
-
                 _ => {
-                    eprintln!("Warning: found multiple entries, only parsing first (ANI)");
+                    eprintln!(
+                        "Warning: found {} entries, only storing first (ANI)",
+                        entries.len()
+                    );
+
                     canon_entries.push(entries[0].clone());
                 }
             }
         }
 
-        /* TODO: handle custom sequences */
         let mut cursor_images = Vec::with_capacity(canon_entries.len());
         for (entry, delay) in canon_entries.into_iter().zip(delays_ms) {
             let (hotspot_x, hotspot_y) = entry.cursor_hotspot().ok_or(anyhow!(
                 "expected stored ANI frames to be CUR, instead got ICO \
-                are you sure these are meant for cursors?"
+                are you sure {ani_path_display} is meant for cursors?"
             ))?;
 
             let rgba = entry.decode()?.into_rgba_data();
