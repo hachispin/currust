@@ -18,6 +18,27 @@ pub struct Args {
     /// The path to a CUR/ANI file, or a directory containing CUR/ANI files.
     path: String,
 
+    /// Flag to indicate whether to use `rayon` or not.
+    ///
+    /// This is enabled by default when parsing a large amount of cursors.
+    /// Note that `rayon` is only effective with heavier workloads and
+    /// can be slower on lighter ones (e.g, parsing 25 cursors or less).
+    #[arg(long)]
+    use_rayon: bool,
+
+    /// A list of scale factors to upscale the original cursor to.
+    ///
+    /// All scaled variations and the original cursor
+    /// are included in the produced Xcursor files.
+    #[arg(long, value_parser, num_args(1..), value_name = "U32_SCALE_FACTORS")]
+    upscalings: Vec<u32>,
+    /// A list of scale factors to downscale the original cursor to.
+    ///
+    /// All scaled variations and the original cursor
+    /// are included in the produced Xcursor files.
+    #[arg(long, value_parser, num_args(1..), value_name = "U32_SCALE_FACTORS")]
+    downscalings: Vec<u32>,
+
     /// Where to place parsed Xcursors.
     ///
     /// If the provided path doesn't exist yet, this
@@ -26,11 +47,26 @@ pub struct Args {
     out: String,
 }
 
+/// A path and whether if it's ANI or CUR.
+#[derive(Debug)]
+pub struct CursorPath {
+    /// Path to ANI/CUR.
+    pub path: PathBuf,
+    /// If true, ANI, else CUR.
+    pub is_animated: bool,
+}
+
 /// Parsed CLI arguments.
 #[derive(Debug)]
 pub struct ParsedArgs {
     /// All files in the specified directory that are CUR/ANI files.
-    pub cursor_paths: Vec<PathBuf>,
+    pub cursor_paths: Vec<CursorPath>,
+    /// Whether to use `rayon` or not.
+    pub use_rayon: bool,
+    /// Scale factors.
+    pub upscalings: Vec<u32>,
+    /// Reciprocal scale factors.
+    pub downscalings: Vec<u32>,
     /// Where to put parsed Xcursor files.
     pub out: PathBuf,
 }
@@ -45,16 +81,44 @@ impl ParsedArgs {
     ///
     /// If the input path is to a directory that doesn't contain CUR or
     /// ANI files, or to a file that lacks the `.cur`/`.ani` extension.
-    pub fn from_args(args: &Args) -> Result<Self> {
-        let cur_paths = Self::validate_cursor_path(&args.path)?;
+    pub fn from_args(args: Args) -> Result<Self> {
+        // If the number of cursors being parsed is greater
+        // than or equal to this, use `rayon` for parsing.
+        const USE_RAYON_BOUND: usize = 100;
+
+        let cursor_paths = Self::validate_cursor_path(&args.path)?;
+        let use_rayon = args.use_rayon || cursor_paths.len() >= USE_RAYON_BOUND;
         let out = PathBuf::from(&args.out);
         fs::create_dir_all(&out).with_context(|| format!("failed to create out={}", args.out))?;
 
-        Ok(Self { cursor_paths: cur_paths, out })
+        // deduplicate scaling factors
+        let mut upscalings = args.upscalings;
+        let mut downscalings = args.downscalings;
+
+        upscalings.sort_unstable();
+        downscalings.sort_unstable();
+        upscalings.dedup();
+        downscalings.dedup();
+
+        if upscalings
+            .iter()
+            .chain(&downscalings)
+            .any(|sf| [0, 1].contains(sf))
+        {
+            bail!("scaling factors cannot include 1 or 0");
+        }
+
+        Ok(Self {
+            cursor_paths,
+            use_rayon,
+            upscalings,
+            downscalings,
+            out,
+        })
     }
 
     /// Helper function for validating [`Args::path`].
-    fn validate_cursor_path(path: &str) -> Result<Vec<PathBuf>> {
+    fn validate_cursor_path(path: &str) -> Result<Vec<CursorPath>> {
         // for triage purposes
         let path_str = path.to_string();
 
@@ -63,10 +127,10 @@ impl ParsedArgs {
             .with_context(|| format!("failed to canonicalize path {path_str}"))?;
 
         if path.is_dir() {
-            let cur_paths = Self::extract_cursors(&path)?;
+            let cursor_paths = Self::extract_cursors(&path)?;
 
-            if !cur_paths.is_empty() {
-                return Ok(cur_paths);
+            if !cursor_paths.is_empty() {
+                return Ok(cursor_paths);
             }
 
             bail!("no CUR files found in {path_str}, note that sub-directories aren't checked");
@@ -74,7 +138,10 @@ impl ParsedArgs {
             if let Some(ext) = path.extension()
                 && (ext == "cur" || ext == "ani")
             {
-                return Ok(vec![path]);
+                return Ok(vec![CursorPath {
+                    path: path.clone(),
+                    is_animated: ext == "ani",
+                }]);
             }
 
             bail!("provided file {path_str} is not a CUR file");
@@ -87,7 +154,7 @@ impl ParsedArgs {
 
     /// Returns all the files in `dir` that point to
     /// "cursor" files. (files with `.cur` or `.ani` extension)
-    fn extract_cursors(cursor_dir: &Path) -> Result<Vec<PathBuf>> {
+    fn extract_cursors(cursor_dir: &Path) -> Result<Vec<CursorPath>> {
         assert!(
             cursor_dir.is_dir(),
             "passed `cur_dir` to `extract_curs()` must be a dir"
@@ -109,7 +176,11 @@ impl ParsedArgs {
             if let Some(ext) = entry_path.extension()
                 && (ext == "cur" || ext == "ani")
             {
-                cursor_paths.push(entry_path);
+                // a bit fragile
+                cursor_paths.push(CursorPath {
+                    path: entry_path.clone(),
+                    is_animated: ext == "ani",
+                });
             }
         }
 
