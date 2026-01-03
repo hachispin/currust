@@ -21,7 +21,7 @@ use std::{
     ptr::NonNull,
 };
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use libc::{fclose, fopen, free};
 use x11::xcursor::{
     XcursorFileSaveImages, XcursorImage, XcursorImageCreate, XcursorImageDestroy, XcursorImages,
@@ -34,7 +34,7 @@ use x11::xcursor::{
 /// This works with format strings.
 macro_rules! denullify {
     ($ptr:expr, $($msg:tt)*) => {
-        NonNull::new($ptr).ok_or_else(|| anyhow::anyhow!($($msg)*))?
+        NonNull::new($ptr).ok_or_else(|| anyhow!($($msg)*))?
     };
 }
 
@@ -73,9 +73,7 @@ pub(super) struct XcursorImageHandle {
 
 impl XcursorImageHandle {
     /// Equivalent to `self.inner.as_ptr()`.
-    ///
-    /// This is marked unsafe because it returns a raw pointer.
-    const unsafe fn as_ptr(&self) -> *mut XcursorImage {
+    const fn as_ptr(&self) -> *mut XcursorImage {
         self.inner.as_ptr()
     }
 }
@@ -117,7 +115,7 @@ pub(super) struct XcursorImagesHandle {
 }
 
 impl XcursorImagesHandle {
-    const unsafe fn as_ptr(&self) -> *mut XcursorImages {
+    const fn as_ptr(&self) -> *mut XcursorImages {
         self.inner.as_ptr()
     }
 }
@@ -206,7 +204,7 @@ pub(super) fn construct_images(cursor: &CursorImage) -> Result<XcursorImageHandl
     let num_pixels: usize = (dims
         .0
         .checked_mul(dims.1)
-        .ok_or_else(|| anyhow::anyhow!("overflow on dims product")))?
+        .ok_or_else(|| anyhow!("overflow on dims product")))?
     .try_into()?;
 
     let image_mut = unsafe { image.as_mut() };
@@ -268,6 +266,9 @@ pub(super) unsafe fn bundle_images(
 
 /// Writes `images` as an Xcursor file to `path`.
 ///
+/// NOTE: This is not atomic, so partially-written 
+///       files may be created if saving fails.
+///
 /// ## Safety
 ///
 /// `images` is assumed to be valid and constructed
@@ -275,11 +276,11 @@ pub(super) unsafe fn bundle_images(
 ///
 /// ## Errors
 ///
-/// - If `path` can't be converted to `CString`
+/// - If `path` can't be converted to [`CString`]
 /// - If [`fopen`]/[`fclose`] fails (returns non-zero)
 /// - If [`XcursorFileSaveImages`] fails (returns zero)
 ///
-/// `errno()` is read upon failure and displayed in [`bail`] messages
+/// [`last_os_error`] is read upon failure and displayed in [`bail`] messages
 /// but it's not reset beforehand, so you may get unrelated errors.
 pub(super) unsafe fn save_images(path: &str, images: &XcursorImagesHandle) -> Result<()> {
     const WRITE_BINARY: &CStr = c"wb";
