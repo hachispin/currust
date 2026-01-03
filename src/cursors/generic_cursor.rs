@@ -147,7 +147,7 @@ impl GenericCursor {
         for entry in entries {
             let image = entry.decode()?;
             let hotspot = image.cursor_hotspot().ok_or_else(|| {
-                anyhow::anyhow!("provided cur_path={cur_path_display} must be to CUR, not ICO")
+                anyhow!("provided cur_path={cur_path_display} must be to CUR, not ICO")
             })?;
 
             let image = CursorImage::new(
@@ -215,20 +215,16 @@ impl GenericCursor {
         // using for loop for easier inspection
         for ico in sequenced_icos {
             let entries = ico.entries();
-
+            let num_entries = entries.len();
+            
             /* TODO: find a better way to handle >1 entries here */
-            match entries.len() {
-                0 => eprintln!("[warning] skipping IconDir with 0 entries (ANI)"),
-                1 => canon_entries.push(entries[0].clone()),
-                _ => {
-                    eprintln!(
-                        "[warning] found {} entries, only storing first (ANI)",
-                        entries.len()
-                    );
-
-                    canon_entries.push(entries[0].clone());
-                }
+            if num_entries == 0 {
+                eprintln!("[warning] skipping IconDir with 0 entries (ANI)");
+            } else if num_entries != 1 {
+                eprintln!("[warning] found {num_entries} entries, only storing first (ANI)",);
             }
+
+            canon_entries.push(entries[0].clone());
         }
 
         let mut cursor_images = Vec::with_capacity(canon_entries.len());
@@ -267,7 +263,7 @@ impl GenericCursor {
 
         let path_str = path
             .to_str()
-            .ok_or_else(|| anyhow::anyhow!("failed to convert path={} to &str", path.display()))?;
+            .ok_or_else(|| anyhow!("failed to convert path={} to &str", path.display()))?;
 
         let mut images_vec: Vec<_> = joined
             .into_iter()
