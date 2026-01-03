@@ -18,13 +18,19 @@ pub struct Args {
     /// The path to a CUR/ANI file, or a directory containing CUR/ANI files.
     path: String,
 
-    /// Flag to indicate whether to use `rayon` or not.
+    /// Forces sequential processing (i.e, no `rayon`).
+    ///
+    /// Sequential processing is used by default for light workloads.
+    #[arg(long)]
+    sequential: bool,
+
+    /// Forces `rayon` usage.
     ///
     /// This is enabled by default when parsing a large amount of cursors.
     /// Note that `rayon` is only effective with heavier workloads and
     /// can be slower on lighter ones (e.g, parsing 25 cursors or less).
     #[arg(long)]
-    use_rayon: bool,
+    parallel: bool,
 
     /// A list of scale factors to upscale the original cursor to.
     ///
@@ -87,7 +93,13 @@ impl ParsedArgs {
         const USE_RAYON_BOUND: usize = 100;
 
         let cursor_paths = Self::validate_cursor_path(&args.path)?;
-        let use_rayon = args.use_rayon || cursor_paths.len() >= USE_RAYON_BOUND;
+
+        let use_rayon =
+            (!args.sequential) && (args.parallel || cursor_paths.len() >= USE_RAYON_BOUND);
+
+        let process_state = if use_rayon {"parallelly, with rayon"} else {"sequentially"};
+        println!("processing cursors {process_state} ...");
+
         let out = PathBuf::from(&args.out);
         fs::create_dir_all(&out).with_context(|| format!("failed to create out={}", args.out))?;
 
