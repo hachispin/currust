@@ -12,6 +12,8 @@
 //!
 //! NOTE: rely on the `man` pages for parameter ordering.
 
+/* TODO: replace with pure `binrw` structs */
+
 use super::cursor_image::CursorImage;
 
 use std::{

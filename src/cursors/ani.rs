@@ -204,15 +204,18 @@ pub(super) struct AniHeader {
 #[derive(Debug, Default)]
 pub(super) struct AniFile {
     pub header: AniHeader,
+    /// Per-frame timings. Usually [`None`].
     pub rate: Option<RiffChunkU32>,
+    /// Order in which frames are played.
     pub sequence: Option<RiffChunkU32>,
+    /// The frames.
     pub ico_frames: Vec<RiffChunkU8>,
 }
 
 impl AniFile {
     /// Parses `ani_blob`.
     ///
-    /// This is pretty complicated (uses a sliding window)
+    /// This is pretty complicated to parse (matches on fourcc)
     /// because of the "constraint" (or more like freedom?)
     /// of chunks being able to appear in any order.
     ///
@@ -291,7 +294,7 @@ impl AniFile {
 
                 // consider attempting to read size and skipping
                 // for unknown chunks (but it's a bit unreliable)
-                _ => bail!("Unexpected fourcc(?) buf={buf:?}"),
+                _ => bail!("unexpected fourcc(?) buf={buf:?}"),
             }
         }
 
@@ -302,21 +305,21 @@ impl AniFile {
 
         if hdr.flags == AniFlags::SequencedIcon && ani.sequence.is_none() {
             eprintln!(
-                "Warning: expected 'seq ' chunk from flags={:?}, found None",
+                "[warning] expected 'seq ' chunk from flags={:?}, found None",
                 hdr.flags
             );
         }
 
         if hdr.flags == AniFlags::UnsequencedIcon && ani.sequence.is_some() {
             eprintln!(
-                "Warning: expected 'seq ' chunk to be None from flags={:?}, found sequence={:?}",
+                "[warning] expected 'seq ' chunk to be None from flags={:?}, found sequence={:?}",
                 hdr.flags, ani.sequence
             );
         }
 
         if usize::try_from(hdr.num_frames)? != ani.ico_frames.len() {
             bail!(
-                "Warning: expected num_frames={}, instead got ico_frames.len()={}",
+                "expected num_frames={}, instead got ico_frames.len()={}",
                 hdr.num_frames,
                 ani.ico_frames.len()
             );
@@ -391,13 +394,13 @@ impl AniFile {
                 }
 
                 if chunks.is_empty() {
-                    bail!("Failed to parse any frames from 'fram' chunk");
+                    bail!("failed to parse any frames from 'fram' chunk");
                 }
 
                 ani.ico_frames = chunks;
             }
 
-            _ => bail!("Unexpected list_id={list_id:?}"),
+            _ => bail!("unexpected list_id={list_id:?}"),
         }
 
         Ok(())

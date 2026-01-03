@@ -132,11 +132,11 @@ impl GenericCursor {
         let entries = icon_dir.entries();
 
         if entries.is_empty() {
-            bail!("No stored images found in {cur_path_display}");
+            bail!("no stored images found in {cur_path_display}");
         }
 
         if entries.len() != 1 {
-            eprintln!("Warning: parsing CUR file with more than one stored image");
+            eprintln!("[warning] parsing CUR file with more than one stored image");
         }
 
         let mut images = Vec::with_capacity(entries.len());
@@ -218,11 +218,11 @@ impl GenericCursor {
 
             /* TODO: find a better way to handle >1 entries here */
             match entries.len() {
-                0 => eprintln!("Warning: skipping IconDir with 0 entries (ANI)"),
+                0 => eprintln!("[warning] skipping IconDir with 0 entries (ANI)"),
                 1 => canon_entries.push(entries[0].clone()),
                 _ => {
                     eprintln!(
-                        "Warning: found {} entries, only storing first (ANI)",
+                        "[warning] found {} entries, only storing first (ANI)",
                         entries.len()
                     );
 

@@ -33,7 +33,6 @@ fn parse_cursor(args: &ParsedArgs, cursor: &CursorPath) -> Result<()> {
 fn main() -> Result<()> {
     let raw_args = Args::parse();
     let args = ParsedArgs::from_args(raw_args)?;
-    println!("{args:?}");
 
     if args.use_rayon {
         args.cursor_paths
