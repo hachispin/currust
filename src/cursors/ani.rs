@@ -59,41 +59,6 @@ pub(super) struct RiffChunkU8 {
     // padding byte skipped with `pad_after`
 }
 
-/// This has no fields, doesn't parse metadata,
-/// and is only used to skip until [`AniHeader`].
-///
-/// _no one even writes this chunk anyway..._
-#[binread]
-#[derive(Debug)]
-#[br(magic = b"LIST")]
-struct SkipAniMetadata {
-    /* TODO: consider actually parsing this */
-    // this chunk (that we're skipping) is just two strings max
-    // also, subchunks are even-padded, so the chunk size must be even too
-    #[br(
-        assert(_list_size < 1024, "INFO chunk unreasonably large (1KB+)"),
-        assert(_list_size.is_multiple_of(2)), temp
-    )]
-    _list_size: u32,
-
-    // list identifier
-    #[br(assert(_info == *b"INFO"), temp)]
-    _info: [u8; 4],
-
-    // -4 since we've read `_info`, which is 4 bytes
-    #[br(
-        try_calc =
-            _list_size.checked_sub(4)
-            .ok_or_else(|| format!("overflow on list_size={_list_size} - 4")),
-        temp
-    )]
-    _skip_value: u32,
-
-    // yolo
-    #[br(pad_after = _skip_value)]
-    _skip: (),
-}
-
 /// Contains possible flag combinations for [`AniHeader`].
 /// These are used to describe the state of the "seq " chunk.
 ///
@@ -348,9 +313,21 @@ impl AniFile {
         let mut list_id = [0u8; 4];
         cursor.read_exact(&mut list_id)?;
 
+        // excluding subtype fourcc (and padding)
+        let list_data_size = list_size
+            .checked_sub(4)
+            .with_context(|| format!("underflow on list_size={list_size} - 4"))?;
+
         match &list_id {
             b"INFO" => {
-                SkipAniMetadata::read_le(cursor).context("failed to skip 'INFO' chunk")?;
+                eprintln!("found 'INFO' chunk, skipping");
+
+                if list_data_size == u32::MAX {
+                    bail!("overflow ???");
+                }
+
+                let padding = list_data_size % 2;
+                cursor.seek_relative(i64::from(list_data_size + padding))?;
             }
 
             b"fram" => {
@@ -359,27 +336,24 @@ impl AniFile {
                 }
 
                 let mut chunks: Vec<RiffChunkU8> = Vec::new();
-                let fram_size = list_size
-                    .checked_sub(4)
-                    .with_context(|| format!("underflow on list_size={list_size} - 4"))?;
 
-                if fram_size > MAX_FRAM_SIZE {
-                    bail!("fram_size={fram_size} unreasonably large (1MB+)");
+                if list_data_size > MAX_FRAM_SIZE {
+                    bail!("fram_size={list_data_size} unreasonably large (1MB+)");
                 }
 
                 let end = cursor
                     .position()
-                    .checked_add(u64::from(fram_size))
+                    .checked_add(u64::from(list_data_size))
                     .with_context(|| {
                         format!(
-                            "overflow on cursor.position={} + fram_size={fram_size}",
+                            "overflow on cursor.position={} + fram_size={list_data_size}",
                             cursor.position()
                         )
                     })?;
 
                 // if we read `fram_size` bytes, are we still in the blob?
                 if end > ani_blob_size.try_into()? {
-                    bail!("fram_size={fram_size} extends beyond blob");
+                    bail!("fram_size={list_data_size} extends beyond blob");
                 }
 
                 while cursor.position() < end {
