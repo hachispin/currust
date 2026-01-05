@@ -10,6 +10,7 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use clap::Parser;
+use dialoguer::Confirm;
 
 /// Raw arguments from CLI. Has the [`Parser`] trait.
 #[derive(Parser)]
@@ -51,6 +52,13 @@ pub struct Args {
     /// attempts to create them (including parents).
     #[arg(short, long, default_value = "./")]
     out: String,
+}
+
+impl Args {
+    /// The max upscaling factor for images.
+    pub const MAX_UPSCALE_FACTOR: u32 = 20;
+    /// The max downscaling factor for images.
+    pub const MAX_DOWNSCALE_FACTOR: u32 = 5;
 }
 
 /// A path and whether if it's ANI or CUR.
@@ -97,7 +105,12 @@ impl ParsedArgs {
         let use_rayon =
             (!args.sequential) && (args.parallel || cursor_paths.len() >= USE_RAYON_BOUND);
 
-        let process_state = if use_rayon {"parallelly, with rayon"} else {"sequentially"};
+        let process_state = if use_rayon {
+            "parallelly, with rayon"
+        } else {
+            "sequentially"
+        };
+
         println!("processing cursors {process_state} ...");
 
         let out = PathBuf::from(&args.out);
@@ -118,6 +131,31 @@ impl ParsedArgs {
             .any(|sf| [0, 1].contains(sf))
         {
             bail!("scaling factors cannot include 1 or 0");
+        }
+
+        if upscalings.iter().max() > Some(&Args::MAX_UPSCALE_FACTOR) {
+            bail!(
+                "max upscaling factor can't be greater than {}",
+                Args::MAX_UPSCALE_FACTOR
+            );
+        }
+
+        if downscalings.iter().max() > Some(&Args::MAX_DOWNSCALE_FACTOR) {
+            bail!(
+                "max downscaling factor can't be greater than {}",
+                Args::MAX_DOWNSCALE_FACTOR
+            );
+        }
+
+        if upscalings.len() >= 5
+            && !Confirm::new()
+                .with_prompt(
+                    "you've chosen more than five upscalings, this may create large files--continue?",
+                )
+                .default(true)
+                .interact()?
+        {
+            std::process::exit(0);
         }
 
         Ok(Self {

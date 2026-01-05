@@ -29,10 +29,6 @@ pub struct CursorImage {
 impl CursorImage {
     /// A delay value of zero is used for static (i.e, non-animated) cursors.
     pub(crate) const STATIC_DELAY: u32 = 0;
-    /// The max upscaling factor for images.
-    pub const MAX_UPSCALE_FACTOR: u32 = 20;
-    /// The max downscaling factor for images.
-    pub const MAX_DOWNSCALE_FACTOR: u32 = 5;
 
     /// Contructor for a static [`CursorImage`].
     /// The `delay` field is set to zero.
@@ -112,25 +108,6 @@ impl CursorImage {
     /// If `scale_factor` is greater than [`Self::MAX_UPSCALE_FACTOR`]
     /// or [`Self::MAX_DOWNSCALE_FACTOR`], depending on `scaling_type`.
     pub fn scaled_to(&self, scale_factor: u32, scale_type: ScalingType) -> Result<Self> {
-        // could be an if statement but whatever
-        match scale_type {
-            ScalingType::Upscale if scale_factor > Self::MAX_UPSCALE_FACTOR => {
-                bail!(
-                    "scale_factor={scale_factor} can't be greater than MAX_UPSCALE_FACTOR={}",
-                    Self::MAX_UPSCALE_FACTOR
-                );
-            }
-
-            ScalingType::Downscale if scale_factor > Self::MAX_DOWNSCALE_FACTOR => {
-                bail!(
-                    "scale_factor={scale_factor} can't be greater than MAX_DOWNSCALE_FACTOR={}",
-                    Self::MAX_DOWNSCALE_FACTOR
-                )
-            }
-
-            _ => (),
-        }
-
         let (width, height) = self.dimensions();
         let (scaled_width, scaled_height) = match scale_type {
             ScalingType::Upscale => (width * scale_factor, height * scale_factor),
