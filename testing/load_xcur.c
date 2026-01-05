@@ -1,47 +1,80 @@
-#define _DEFAULT_SOURCE  // Add this at the very top
+#define _DEFAULT_SOURCE
+
 #include <X11/Xcursor/Xcursor.h>
 #include <X11/Xlib.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
-int main() {
-    Display *dpy = XOpenDisplay(NULL);
-    if (!dpy) {
-        puts("`XOpenDisplay` failed");
+int main(int argc, char** argv) {
+    char* cursor_name = "left_ptr";
+    int size = 32;
+
+    const char* usage_yap = "usage: ./load_xcur [cursor_name=left_ptr] [size=32]\n";
+
+    if (argc > 3) {
+        fprintf(stderr, "too many arguments\n");
+        fprintf(stderr, "%s", usage_yap);
+    }
+
+    if (argc >= 2) {
+        cursor_name = argv[1];
+    }
+
+    if (argc == 3) {
+        size = atoi(argv[2]);
+
+        if (size == 0) {
+            fprintf(stderr, "size can't be 0 (or invalid size arg)\n");
+            fprintf(stderr, "%s", usage_yap);
+        }
+    }
+
+    Display* display = XOpenDisplay(NULL);
+
+    if (!display) {
+        fprintf(stderr, "`XOpenDisplay()` failed\n");
         return 1;
     }
 
-    Window win = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy), 100, 100, 300, 200, 1, 0, 0xffffff);
-    XStoreName(dpy, win, "Animated Cursor Test");
-    XSelectInput(dpy, win, ExposureMask | StructureNotifyMask);
-    XMapWindow(dpy, win);
+    Window window = XCreateSimpleWindow(display, DefaultRootWindow(display), 100, 100, 300, 200, 1, 0, 0xffffff);
+    XStoreName(display, window, "xcursor test");
+    XSelectInput(display, window, ExposureMask | StructureNotifyMask);
+    XMapWindow(display, window);
+    XcursorImages* image = XcursorFilenameLoadImages(cursor_name, size);
 
-    XcursorImages *img = XcursorFilenameLoadImages("left_ptr", 128);
-    if (!img) {
-        puts("`XcursorFilenameLoadImages` failed");
+    if (!image) {
+        fprintf(stderr, "`XcursorFilenameLoadImages()` failed\n");
         return 1;
     }
 
-    Cursor *frames = malloc(sizeof(Cursor) * (size_t)img->nimage);  // Fixed sign conversion
-    for (int i = 0; i < img->nimage; i++)
-        frames[i] = XcursorImageLoadCursor(dpy, img->images[i]);
+    Cursor* frames = malloc(sizeof(Cursor) * (size_t) image->nimage);
 
+    if (!frames) {
+        fprintf(stderr, "`malloc()` failed\n");
+        return 1;
+    }
+
+    for (int i = 0; i < image->nimage; ++i) {
+        frames[i] = XcursorImageLoadCursor(display, image->images[i]);
+    }
+
+    // might leak but probably not
     int frame = 0;
-    while (1) {
-        XDefineCursor(dpy, win, frames[frame]);
-        XFlush(dpy);
+    while (true) {
+        XDefineCursor(display, window, frames[frame]);
+        XFlush(display);
 
-        unsigned int delay = img->images[frame]->delay;
-        if (delay == 0) delay = 100;
+        unsigned int delay = image->images[frame]->delay;
+
+        // insane default so it's instantly noticeable
+        if (delay == 0) {
+            delay = 1;
+        }
+
+        // convert to microseconds
         usleep(delay * 1000);
-
-        frame = (frame + 1) % img->nimage;
+        frame = (frame + 1) % image->nimage;
     }
-
-    for (int i = 0; i < img->nimage; i++)
-        XFreeCursor(dpy, frames[i]);
-    free(frames);
-    XcursorImagesDestroy(img);
-    XCloseDisplay(dpy);
 }
