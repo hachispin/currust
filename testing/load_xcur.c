@@ -70,11 +70,6 @@ int main(int argc, char** argv) {
 
         unsigned int delay = image->images[frame]->delay;
 
-        // insane default so it's instantly noticeable
-        if (delay == 0) {
-            delay = 1;
-        }
-
         // convert to microseconds
         usleep(delay * 1000);
         frame = (frame + 1) % image->nimage;
