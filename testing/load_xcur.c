@@ -16,6 +16,7 @@ int main(int argc, char** argv) {
     if (argc > 3) {
         fprintf(stderr, "too many arguments\n");
         fprintf(stderr, "%s", usage_yap);
+        return 1;
     }
 
     if (argc >= 2) {
@@ -28,6 +29,7 @@ int main(int argc, char** argv) {
         if (size == 0) {
             fprintf(stderr, "size can't be 0 (or invalid size arg)\n");
             fprintf(stderr, "%s", usage_yap);
+            return 1;
         }
     }
 
