@@ -1,8 +1,7 @@
 //! Contains the [`GenericCursor`] struct.
 
-use crate::cursors::ani::AniFile;
-
 use super::{
+    ani::AniFile,
     cursor_image::{CursorImage, ScalingType},
     xcursor::{bundle_images, construct_images, save_images},
 };
@@ -10,6 +9,7 @@ use super::{
 use std::{
     fs::{self, File},
     io::Cursor,
+    mem,
     path::Path,
 };
 
@@ -19,7 +19,7 @@ use ico::IconDir;
 /// Represents a generic cursor.
 ///
 /// `images` is guaranteed to not have any images
-/// that share the same nominal sizes.
+/// that share the same dimensions.
 #[derive(Debug)]
 pub struct GenericCursor {
     /// The base images, used for scaling.
@@ -54,17 +54,11 @@ impl GenericCursor {
             bail!("`base_images` can't be empty");
         }
 
-        let expected_dimensions = base_images[0].dimensions();
-
-        for image in &base_images {
-            let dims = image.dimensions();
-
-            if dims != expected_dimensions {
-                bail!(
-                    "`GenericCursor` can't be constructed with \
-                    base images that don't have the same dimensions"
-                );
-            }
+        if !Self::has_consistent_dimensions(&base_images) {
+            bail!(
+                "`GenericCursor` can't be constructed with \
+                base images that don't have the same dimensions"
+            );
         }
 
         Ok(Self {
@@ -72,6 +66,93 @@ impl GenericCursor {
             scaled: Vec::new(),
             scale_factors: vec![1.0],
         })
+    }
+
+    /// Constructor for cursors that already store multiple sizes.
+    /// This also infers scale factors from `scaled_images`.
+    ///
+    /// If `scaled_images` is empty, this is the same as [`Self::new`].
+    ///
+    /// ## Errors
+    ///
+    /// - If `base_images` is empty.
+    /// - If `base_images` or each `scaled_image` has inconsistent
+    ///   dimensions for each frame (for animated cursors).
+    /// - If any [`Vec<CursorImage>`] differs in length (may be missing frames?)
+    pub fn new_with_scaled(
+        base_images: Vec<CursorImage>,
+        scaled_images: Vec<Vec<CursorImage>>,
+    ) -> Result<Self> {
+        if scaled_images.is_empty() {
+            return Self::new(base_images);
+        }
+
+        let mut scale_factors = Vec::with_capacity(scaled_images.len());
+        let base_len = base_images.len();
+        let base_dims = base_images[0].dimensions();
+
+        // used for calculating sf
+        let base_nominal = f64::from(base_dims.0.max(base_dims.1));
+
+        if !Self::has_consistent_dimensions(&base_images) {
+            bail!(
+                "`GenericCursor` can't be constructed with \
+                base images that don't have the same dimensions"
+            );
+        }
+
+        for images in &scaled_images {
+            if images.is_empty() {
+                bail!("`scaled_images` can't contain empty vectors");
+            }
+
+            if images.len() != base_len {
+                bail!(
+                    "expected base_len={base_len} images, instead got images.len()={}",
+                    images.len()
+                );
+            }
+
+            if !Self::has_consistent_dimensions(images) {
+                bail!(
+                    "scaled `GenericCursor` constructor must \
+                    have consistent dimensions for scaled frames"
+                );
+            }
+
+            let scaled_dims = images[0].dimensions();
+            let scaled_nominal = f64::from(scaled_dims.0.max(scaled_dims.1));
+            let scale_factor = scaled_nominal / base_nominal;
+
+            if scale_factors.contains(&scale_factor) {
+                bail!(
+                    "scaled `GenericCursor` constructor must \
+                    have unique scale factors for scaled frames"
+                );
+            }
+
+            scale_factors.push(scale_factor);
+        }
+
+        Ok(Self {
+            base: base_images,
+            scaled: scaled_images,
+            scale_factors,
+        })
+    }
+
+    /// Helper function for checking for inconsistent
+    /// dimensions within a [`Vec<CursorImage>`].
+    ///
+    /// NOTE: If `images` is empty, this returns `true`.
+    #[inline]
+    fn has_consistent_dimensions(images: &[CursorImage]) -> bool {
+        if images.is_empty() {
+            return true;
+        }
+
+        let expected_dims = images[0].dimensions();
+        images.iter().all(|img| img.dimensions() == expected_dims)
     }
 
     /// Adds scaled [`CursorImage`] from `base` to `scaled`.
@@ -141,9 +222,6 @@ impl GenericCursor {
 
         let mut images = Vec::with_capacity(entries.len());
 
-        // this is written as a for loop but only one image should be expected
-        // windows already scales cursors so storing more is redundant
-        // ughhh... this opens up so many edge cases
         for entry in entries {
             let image = entry.decode()?;
             let hotspot = image.cursor_hotspot().ok_or_else(|| {
@@ -210,45 +288,65 @@ impl GenericCursor {
             .map(|j| (f64::from(j) * 1000.0 / 60.0).round() as u32)
             .collect();
 
-        let mut canon_entries = Vec::with_capacity(icos.len());
+        let first_entry = &sequenced_icos[0].entries()[0];
+        let base_dims = (first_entry.width(), first_entry.height());
+        let mut base: Vec<CursorImage> = Vec::new();
+        let mut scaled_ungrouped: Vec<CursorImage> = Vec::new();
 
-        // using for loop for easier inspection
-        for ico in sequenced_icos {
+        for (ico, delay) in sequenced_icos.iter().zip(delays_ms) {
             let entries = ico.entries();
-            let num_entries = entries.len();
-            
-            /* TODO: find a better way to handle >1 entries here */
-            if num_entries == 0 {
-                eprintln!("[warning] skipping IconDir with 0 entries (ANI)");
-            } else if num_entries != 1 {
-                eprintln!("[warning] found {num_entries} entries, only storing first (ANI)",);
+
+            for entry in entries {
+                let rgba = entry.decode()?.into_rgba_data();
+                let (hotspot_x, hotspot_y) = entry.cursor_hotspot().ok_or(anyhow!(
+                    "expected stored ANI frames to be CUR, instead got ICO \
+                    are you sure {ani_path_display} is meant for cursors?"
+                ))?;
+
+                let image = CursorImage::new_with_delay(
+                    entry.width(),
+                    entry.height(),
+                    hotspot_x.into(),
+                    hotspot_y.into(),
+                    rgba,
+                    delay,
+                )?;
+
+                if image.dimensions() == base_dims {
+                    base.push(image);
+                } else {
+                    scaled_ungrouped.push(image);
+                }
+            }
+        }
+
+        if scaled_ungrouped.is_empty() {
+            return Self::new(base);
+        }
+
+        scaled_ungrouped.sort_unstable_by_key(CursorImage::dimensions);
+
+        let scaled_ungrouped = scaled_ungrouped;
+        let mut scaled = Vec::new();
+        let mut current_dims = scaled_ungrouped[0].dimensions();
+        let mut buffer = Vec::new();
+
+        // group by dimensions
+        for image in scaled_ungrouped {
+            if image.dimensions() != current_dims {
+                scaled.push(mem::take(&mut buffer));
+                current_dims = image.dimensions();
             }
 
-            canon_entries.push(entries[0].clone());
+            buffer.push(image);
         }
 
-        let mut cursor_images = Vec::with_capacity(canon_entries.len());
-        for (entry, delay) in canon_entries.into_iter().zip(delays_ms) {
-            let (hotspot_x, hotspot_y) = entry.cursor_hotspot().ok_or(anyhow!(
-                "expected stored ANI frames to be CUR, instead got ICO \
-                are you sure {ani_path_display} is meant for cursors?"
-            ))?;
-
-            let rgba = entry.decode()?.into_rgba_data();
-
-            let cursor_image = CursorImage::new_with_delay(
-                entry.width(),
-                entry.height(),
-                hotspot_x.into(),
-                hotspot_y.into(),
-                rgba,
-                delay,
-            )?;
-
-            cursor_images.push(cursor_image);
+        // push anything left
+        if !buffer.is_empty() {
+            scaled.push(buffer);
         }
 
-        GenericCursor::new(cursor_images)
+        GenericCursor::new_with_scaled(base, scaled)
     }
 
     /// Saves `cursor` to `path` in Xcursor format.
