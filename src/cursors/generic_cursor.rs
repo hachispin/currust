@@ -2,7 +2,7 @@
 
 use super::{
     ani::AniFile,
-    cursor_image::{CursorImage, ScalingType},
+    cursor_image::{CursorImage, CursorImages, ScalingType},
     xcursor::{bundle_images, construct_images, save_images},
 };
 
@@ -23,19 +23,12 @@ use ico::IconDir;
 #[derive(Debug)]
 pub struct GenericCursor {
     /// The base images, used for scaling.
-    ///
-    /// - For static cursors, this should have one
-    ///   [`CursorImage`] with a `delay` of zero.
-    /// - For animated cursors, this should have multiple
-    ///   [`CursorImage`]s with non-zero `delay` fields.
-    ///
-    /// All images here must have the **same dimensions**.
-    base: Vec<CursorImage>,
+    base: CursorImages,
 
     /// Scaled cursors derived from `base`.
     ///
-    /// Each inner vector should have the same length as `base`.
-    scaled: Vec<Vec<CursorImage>>,
+    /// Each vector should have the same length as `base`.
+    scaled: Vec<CursorImages>,
 
     /// Used scale factors. Always includes 1.0.
     ///
@@ -49,23 +42,12 @@ impl GenericCursor {
     /// ## Errors
     ///
     /// If any image in `base_images` have different dimensions.
-    pub fn new(base_images: Vec<CursorImage>) -> Result<Self> {
-        if base_images.is_empty() {
-            bail!("`base_images` can't be empty");
-        }
-
-        if !Self::has_consistent_dimensions(&base_images) {
-            bail!(
-                "`GenericCursor` can't be constructed with \
-                base images that don't have the same dimensions"
-            );
-        }
-
-        Ok(Self {
+    fn new(base_images: CursorImages) -> Self {
+        Self {
             base: base_images,
             scaled: Vec::new(),
             scale_factors: vec![1.0],
-        })
+        }
     }
 
     /// Constructor for cursors that already store multiple sizes.
@@ -79,33 +61,22 @@ impl GenericCursor {
     /// - If `base_images` or each `scaled_image` has inconsistent
     ///   dimensions for each frame (for animated cursors).
     /// - If any [`Vec<CursorImage>`] differs in length (may be missing frames?)
-    pub fn new_with_scaled(
-        base_images: Vec<CursorImage>,
-        scaled_images: Vec<Vec<CursorImage>>,
+    fn new_with_scaled(
+        base_images: CursorImages,
+        scaled_images: Vec<CursorImages>,
     ) -> Result<Self> {
         if scaled_images.is_empty() {
-            return Self::new(base_images);
+            return Ok(Self::new(base_images));
         }
 
         let mut scale_factors = Vec::with_capacity(scaled_images.len());
         let base_len = base_images.len();
-        let base_dims = base_images[0].dimensions();
+        let base_dims = base_images.first().dimensions();
 
         // used for calculating sf
         let base_nominal = f64::from(base_dims.0.max(base_dims.1));
 
-        if !Self::has_consistent_dimensions(&base_images) {
-            bail!(
-                "`GenericCursor` can't be constructed with \
-                base images that don't have the same dimensions"
-            );
-        }
-
         for images in &scaled_images {
-            if images.is_empty() {
-                bail!("`scaled_images` can't contain empty vectors");
-            }
-
             if images.len() != base_len {
                 bail!(
                     "expected base_len={base_len} images, instead got images.len()={}",
@@ -113,14 +84,7 @@ impl GenericCursor {
                 );
             }
 
-            if !Self::has_consistent_dimensions(images) {
-                bail!(
-                    "scaled `GenericCursor` constructor must \
-                    have consistent dimensions for scaled frames"
-                );
-            }
-
-            let scaled_dims = images[0].dimensions();
+            let scaled_dims = images.first().dimensions();
             let scaled_nominal = f64::from(scaled_dims.0.max(scaled_dims.1));
             let scale_factor = scaled_nominal / base_nominal;
 
@@ -139,20 +103,6 @@ impl GenericCursor {
             scaled: scaled_images,
             scale_factors,
         })
-    }
-
-    /// Helper function for checking for inconsistent
-    /// dimensions within a [`Vec<CursorImage>`].
-    ///
-    /// NOTE: If `images` is empty, this returns `true`.
-    #[inline]
-    fn has_consistent_dimensions(images: &[CursorImage]) -> bool {
-        if images.is_empty() {
-            return true;
-        }
-
-        let expected_dims = images[0].dimensions();
-        images.iter().all(|img| img.dimensions() == expected_dims)
     }
 
     /// Adds scaled [`CursorImage`] from `base` to `scaled`.
@@ -177,11 +127,12 @@ impl GenericCursor {
 
         let scaled_images: Vec<CursorImage> = self
             .base
+            .inner()
             .iter()
             .map(|c| c.scaled_to(scale_factor, scale_type))
             .collect::<Result<_>>()?;
 
-        self.scaled.push(scaled_images);
+        self.scaled.push(scaled_images.try_into()?);
 
         Ok(())
     }
@@ -239,7 +190,7 @@ impl GenericCursor {
             images.push(image);
         }
 
-        Self::new(images)
+        Ok(Self::new(images.try_into()?))
     }
 
     /// Parses `ani_path`.
@@ -321,20 +272,20 @@ impl GenericCursor {
         }
 
         if scaled_ungrouped.is_empty() {
-            return Self::new(base);
+            return Ok(Self::new(base.try_into()?));
         }
 
         scaled_ungrouped.sort_unstable_by_key(CursorImage::dimensions);
 
-        let scaled_ungrouped = scaled_ungrouped;
-        let mut scaled = Vec::new();
+        let scaled_ungrouped: Vec<CursorImage> = scaled_ungrouped;
+        let mut scaled: Vec<CursorImages> = Vec::new();
+        let mut buffer: Vec<CursorImage> = Vec::new();
         let mut current_dims = scaled_ungrouped[0].dimensions();
-        let mut buffer = Vec::new();
 
         // group by dimensions
         for image in scaled_ungrouped {
             if image.dimensions() != current_dims {
-                scaled.push(mem::take(&mut buffer));
+                scaled.push((mem::take(&mut buffer)).try_into()?);
                 current_dims = image.dimensions();
             }
 
@@ -343,10 +294,10 @@ impl GenericCursor {
 
         // push anything left
         if !buffer.is_empty() {
-            scaled.push(buffer);
+            scaled.push(buffer.try_into()?);
         }
 
-        GenericCursor::new_with_scaled(base, scaled)
+        GenericCursor::new_with_scaled(base.try_into()?, scaled)
     }
 
     /// Saves `cursor` to `path` in Xcursor format.
@@ -380,25 +331,25 @@ impl GenericCursor {
     /// Trivial accessor for `base` field.
     #[must_use]
     pub fn base_images(&self) -> &[CursorImage] {
-        &self.base
+        self.base.inner()
     }
 
     /// Trivial accessor for `scaled` field.
     ///
     /// This returns an iterator over `&[CursorImage]`.
     pub fn scaled_images(&self) -> impl Iterator<Item = &[CursorImage]> {
-        self.scaled.iter().map(Vec::as_slice)
+        self.scaled.iter().map(CursorImages::inner)
     }
 
     /// Trivial accessor for `scaled` field, flattened.
     ///
     /// This returns an iterator over `&CursorImage`.
     pub fn scaled_images_flat(&self) -> impl Iterator<Item = &CursorImage> {
-        self.scaled.iter().flat_map(Vec::as_slice)
+        self.scaled.iter().flat_map(CursorImages::inner)
     }
 
     /// Returns an iterator joining `base` and `scaled`, flattened.
     pub fn joined_images(&self) -> impl Iterator<Item = &CursorImage> {
-        self.base.iter().chain(self.scaled_images_flat())
+        self.base.inner().iter().chain(self.scaled_images_flat())
     }
 }

@@ -162,3 +162,74 @@ impl CursorImage {
         &self.rgba
     }
 }
+
+/// Wrapper around [`Vec<CursorImage>`].
+///
+/// This represents a valid sequence of frames
+/// or a single frame for static cursors.
+///
+/// Held invariants:
+///
+/// - There should be at least one frame.
+/// - Each frame should share the same dimensions.
+/// - If there is one frame, the delay of it is zero.
+/// - If there are multiple frames, all delays are non-zero.
+#[derive(Debug)]
+pub(super) struct CursorImages {
+    inner: Vec<CursorImage>,
+}
+
+impl CursorImages {
+    /// Returns a reference to the first stored element in [`Self::inner`].
+    #[inline]
+    pub fn first(&self) -> &CursorImage {
+        &self.inner[0]
+    }
+
+    /// Equivalent to `self.inner.len()`.
+    #[inline]
+    pub const fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    /// Accessor for `inner`.
+    #[inline]
+    pub fn inner(&self) -> &[CursorImage] {
+        &self.inner
+    }
+}
+
+impl TryFrom<Vec<CursorImage>> for CursorImages {
+    type Error = anyhow::Error;
+
+    fn try_from(vec: Vec<CursorImage>) -> Result<Self> {
+        if vec.is_empty() {
+            bail!("can't create CursorImages from empty vec, call new() instead");
+        }
+
+        if vec.len() == 1 {
+            if vec[0].delay != 0 {
+                bail!("delay must be zero for CursorImages if there is only one image");
+            }
+
+            return Ok(Self { inner: vec });
+        }
+
+        let expected_dims = vec[0].dimensions();
+        if vec.iter().any(|img| img.dimensions() != expected_dims) {
+            bail!("can't create CursorImages with inconsistent image dimensions");
+        }
+
+        if vec.iter().any(|img| img.delay == 0) {
+            bail!("animated cursors can't have frames with zero delay");
+        }
+
+        Ok(Self { inner: vec })
+    }
+}
+
+impl From<CursorImages> for Vec<CursorImage> {
+    fn from(images: CursorImages) -> Self {
+        images.inner
+    }
+}
