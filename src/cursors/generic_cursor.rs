@@ -167,26 +167,10 @@ impl GenericCursor {
             bail!("no stored images found in {cur_path_display}");
         }
 
-        if entries.len() != 1 {
-            eprintln!("[warning] parsing CUR file with more than one stored image");
-        }
-
         let mut images = Vec::with_capacity(entries.len());
 
         for entry in entries {
-            let image = entry.decode()?;
-            let hotspot = image.cursor_hotspot().ok_or_else(|| {
-                anyhow!("provided cur_path={cur_path_display} must be to CUR, not ICO")
-            })?;
-
-            let image = CursorImage::new(
-                image.width(),
-                image.height(),
-                u32::from(hotspot.0),
-                u32::from(hotspot.1),
-                image.into_rgba_data(),
-            )?;
-
+            let image = CursorImage::from_entry(entry, CursorImage::STATIC_DELAY)?;
             images.push(image);
         }
 
@@ -248,20 +232,7 @@ impl GenericCursor {
             let entries = ico.entries();
 
             for entry in entries {
-                let rgba = entry.decode()?.into_rgba_data();
-                let (hotspot_x, hotspot_y) = entry.cursor_hotspot().ok_or(anyhow!(
-                    "expected stored ANI frames to be CUR, instead got ICO \
-                    are you sure {ani_path_display} is meant for cursors?"
-                ))?;
-
-                let image = CursorImage::new_with_delay(
-                    entry.width(),
-                    entry.height(),
-                    hotspot_x.into(),
-                    hotspot_y.into(),
-                    rgba,
-                    delay,
-                )?;
+                let image = CursorImage::from_entry(entry, delay)?;
 
                 if image.dimensions() == base_dims {
                     base.push(image);

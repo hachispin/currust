@@ -2,7 +2,8 @@
 
 use crate::scaling::{scale_box_average, scale_nearest};
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
+use ico::{IconDirEntry, ResourceType};
 
 /// Used in scaling functions.
 #[derive(Debug, Clone, Copy)]
@@ -44,6 +45,7 @@ impl CursorImage {
         hotspot_x: u32,
         hotspot_y: u32,
         rgba: Vec<u8>,
+        delay: u32,
     ) -> Result<Self> {
         if width == 0 {
             bail!("width cannot be zero");
@@ -75,27 +77,42 @@ impl CursorImage {
             hotspot_x,
             hotspot_y,
             rgba,
-            delay: Self::STATIC_DELAY,
+            delay,
         })
     }
 
-    /// Constructor with `delay` field.
+    /// Helper function for constructing from an `entry`.
+    ///
+    /// Entries don't store delay unlike Xcursor, so it's a separate parameter.
     ///
     /// ## Errors
     ///
-    /// See [`Self::new`].
-    pub fn new_with_delay(
-        width: u32,
-        height: u32,
-        hotspot_x: u32,
-        hotspot_y: u32,
-        rgba: Vec<u8>,
-        delay: u32,
-    ) -> Result<Self> {
-        let mut cursor = Self::new(width, height, hotspot_x, hotspot_y, rgba)?;
-        cursor.delay = delay;
+    /// If the entry isn't a cursor (no hotspot), or RGBA fails to decode.
+    pub fn from_entry(entry: &IconDirEntry, delay: u32) -> Result<Self> {
+        if entry.resource_type() == ResourceType::Icon {
+            bail!(
+                "can't create CursorImage with resource_type={:?}",
+                ResourceType::Icon
+            );
+        }
 
-        Ok(cursor)
+        let (hotspot_x, hotspot_y) = entry
+            .cursor_hotspot()
+            .context("failed to extract hotspot to construct CursorImage")?;
+
+        let rgba = entry
+            .decode()
+            .context("failed to decode RGBA to construct CursorImage")?
+            .into_rgba_data();
+
+        Self::new(
+            entry.width(),
+            entry.height(),
+            hotspot_x.into(),
+            hotspot_y.into(),
+            rgba,
+            delay,
+        )
     }
 
     /// Returns a new [`CursorImage`] scaled up/down to `scale_factor`.
