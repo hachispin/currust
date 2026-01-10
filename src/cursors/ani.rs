@@ -170,10 +170,30 @@ pub(super) struct AniHeader {
 pub(super) struct AniFile {
     pub header: AniHeader,
     /// Per-frame timings. Usually [`None`].
+    ///
+    /// ## Explanation
+    ///
+    /// rate:   `[t_0, t_1, t_2, ...]`\
+    /// frames: `[f_0, f_1, f_2, ...]`
+    ///
+    /// Each frame, `f_n`, is displayed for `t_n`
+    /// jiffies until `f_{n+1}` (modulo length).
     pub rate: Option<RiffChunkU32>,
-    /// Order in which frames are played.
+    /// Stores frame indices to indicate the order in which
+    /// frames are played. Frames can also be repeated.
+    ///
+    /// ## Explanation
+    ///
+    /// frames:         `[f_0, f_1, f_2, f_3, ...]`\
+    /// rate:           `[2, 3, 0, 0, 1, ...]`\
+    /// display order: `[f_2, f_3, f_0, f_0, f_1, ...]`
     pub sequence: Option<RiffChunkU32>,
-    /// The frames.
+    /// ICO frames. Each frame should have a hotspot.
+    ///
+    /// Each ICO frame can contain multiple images, usually
+    /// for supporting different sizes.
+    ///
+    /// _(although redundant, since Windows scales cursors already.)_
     pub ico_frames: Vec<RiffChunkU8>,
 }
 
@@ -264,9 +284,49 @@ impl AniFile {
         }
 
         /* check "invariants" */
-        // if something isn't a bail!(), it's for good reason
+        // if something isn't a bail!(), it's for good reason,
         // windows still renders some technically invalid files
         let hdr = &ani.header;
+        let num_frames = usize::try_from(hdr.num_frames)?;
+        let num_steps = usize::try_from(hdr.num_steps)?;
+
+        if num_frames != ani.ico_frames.len() {
+            bail!(
+                "expected num_frames={num_frames}, instead got ico_frames.len()={}",
+                ani.ico_frames.len()
+            );
+        }
+
+        if let Some(seq) = &ani.sequence
+            && seq.data.iter().max() >= Some(&hdr.num_frames)
+        {
+            bail!("frame indices of 'seq ' chunk go out of bounds");
+        }
+
+        if hdr.jiffy_rate == 0 && ani.rate.is_none() {
+            bail!("no frame timings: jiffy_rate=0 and ani.rate is None");
+        }
+
+        if let Some(rate) = &ani.rate
+            && rate.data.len() != num_steps
+        {
+            bail!(
+                "expected num_steps={num_steps}, instead got rate.len()={}",
+                rate.data.len(),
+            )
+        }
+
+        // because rate is per-frame timings where indices should match
+        // but unsure
+        if let Some(rate) = &ani.rate
+            && rate.data.len() != num_frames
+        {
+            eprintln!(
+                "[warning] 'rate' chunk's length ({}) differs from num_frames={}",
+                rate.data.len(),
+                hdr.num_frames
+            );
+        }
 
         if hdr.flags == AniFlags::SequencedIcon && ani.sequence.is_none() {
             eprintln!(
@@ -280,20 +340,6 @@ impl AniFile {
                 "[warning] expected 'seq ' chunk to be None from flags={:?}, found sequence={:?}",
                 hdr.flags, ani.sequence
             );
-        }
-
-        if usize::try_from(hdr.num_frames)? != ani.ico_frames.len() {
-            bail!(
-                "expected num_frames={}, instead got ico_frames.len()={}",
-                hdr.num_frames,
-                ani.ico_frames.len()
-            );
-        }
-
-        if let Some(seq) = &ani.sequence
-            && seq.data.iter().max() >= Some(&hdr.num_frames)
-        {
-            bail!("frame indices of 'seq ' chunk go out of bounds");
         }
 
         Ok(ani)
