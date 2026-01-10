@@ -2,6 +2,8 @@
 
 use crate::scaling::{scale_box_average, scale_nearest};
 
+use core::fmt;
+
 use anyhow::{Context, Result, bail};
 use ico::{IconDirEntry, ResourceType};
 
@@ -17,7 +19,7 @@ pub enum ScalingType {
 ///
 /// An actual cursor is usually expressed as a
 /// vector of cursor images. See [`GenericCursor`].
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct CursorImage {
     width: u32,
     height: u32,
@@ -177,6 +179,19 @@ impl CursorImage {
     #[must_use]
     pub fn rgba(&self) -> &[u8] {
         &self.rgba
+    }
+}
+
+// skip rgba when debugging
+impl fmt::Debug for CursorImage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CursorImage")
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("hotspot_x", &self.hotspot_x)
+            .field("hotspot_y", &self.hotspot_y)
+            .field("delay", &self.delay)
+            .finish_non_exhaustive()
     }
 }
 
