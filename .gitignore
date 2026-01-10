@@ -2,4 +2,7 @@
 /testing/load_xcur
 /tmp_out/
 left_ptr
-testing/data/ani
+
+# no reupload clauses :(
+testing/data/ani/elysia
+testing/data/ani/herta
