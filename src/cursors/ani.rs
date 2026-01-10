@@ -14,41 +14,24 @@ use binrw::{BinRead, binread};
 #[binread]
 #[derive(Debug)]
 #[br(little)]
-#[br(import{ expected_id: [u8; 4] })]
 pub(super) struct RiffChunkU32 {
-    /// ASCII identifier for the chunk.
-    #[br(assert(_id == expected_id))]
-    _id: [u8; 4],
-
-    // these fields are temporary since `data`
-    // already stores its length when constructed
-    //
-    // we assert `data_size` is even because
-    // `data` is even (4 bytes each)
-    //
-    // this also means we don't add padding
-    #[br(temp, assert(_data_size.is_multiple_of(2)))]
+    // temp because `data` stores its own length
+    #[br(temp)]
     _data_size: u32,
+
     #[br(try_calc = usize::try_from(_data_size / 4), temp)]
     _data_length: usize,
 
     /// The chunk data.
-    #[br(count = _data_length)]
-    pub data: Vec<u32>,
+    #[br(count = _data_length, pad_after = _data_size % 2)]
+    pub data: Vec<u32>, // unsure if padding is needed but why not
 }
 
 /// RIFF chunk with [`Self::data`] as `Vec<u8>`.
-///
-/// Used for [`RiffListU8`].
 #[binread]
 #[derive(Debug)]
 #[br(little)]
-#[br(import{ expected_id: [u8; 4] })]
 pub(super) struct RiffChunkU8 {
-    /// ASCII identifier for the chunk.
-    #[br(assert(_id == expected_id))]
-    _id: [u8; 4],
-
     // size == length here since `data` is Vec<u8>
     #[br(temp)]
     _data_size: u32,
@@ -69,7 +52,8 @@ pub(super) struct RiffChunkU8 {
 /// #define AF_SEQUENCE 0x2     // Animation is sequenced.
 /// ```
 ///
-/// All frames must be in ICO format, so these are invalid flags:
+/// All frames must be in ICO format in order to store the required
+/// cursor metadata (e.g, hotspot), so these are invalid flags:
 ///
 /// - `0`: no flags set
 /// - `2`: frames are not ICO
@@ -81,13 +65,18 @@ enum AniFlags {
     /// Contains ICO frames with a custom "seq " chunk,
     /// which defines the order frames should be played.
     ///
-    /// This is mainly for optimizing repeated frames(?).
+    /// This is mainly for optimizing repeated frames.
     #[default]
     UnsequencedIcon = 1,
     /// Contains ICO frames that play in the
     /// order they're defined (no "seq " chunk).
     SequencedIcon = 3,
 }
+
+// also side note but frame not being ICO is impossible
+// it would imply it's raw data, most claiming it'd be BMP
+// and you can't store any cursor-related info in BMP
+// so... well that's just speculation
 
 /// Models an ANI file's header (or the "anih" chunk).
 ///
@@ -185,8 +174,8 @@ pub(super) struct AniFile {
     /// ## Explanation
     ///
     /// frames:         `[f_0, f_1, f_2, f_3, ...]`\
-    /// rate:           `[2, 3, 0, 0, 1, ...]`\
-    /// display order: `[f_2, f_3, f_0, f_0, f_1, ...]`
+    /// sequence:       `[2, 3, 0, 0, 1, ...]`\
+    /// display order:  `[f_2, f_3, f_0, f_0, f_1, ...]`
     pub sequence: Option<RiffChunkU32>,
     /// ICO frames. Each frame should have a hotspot.
     ///
@@ -202,7 +191,7 @@ impl AniFile {
     ///
     /// This is pretty complicated to parse (matches on fourcc)
     /// because of the "constraint" (or more like freedom?)
-    /// of chunks being able to appear in any order.
+    /// of chunks being able to appearing in an arbitrary order.
     ///
     /// > [gdgsoft](https://www.gdgsoft.com/anituner/help/aniformat.htm):
     /// > "Any of the blocks ("ACON", "anih", "rate", or "seq ") can appear in any order."
@@ -256,17 +245,19 @@ impl AniFile {
                         bail!("duplicate 'anih' chunk");
                     }
 
-                    ani.header = Self::parse_anih(&mut cursor)?;
+                    ani.header =
+                        AniHeader::read_le(&mut cursor).context("failed to read 'anih' chunk")?;
                 }
 
                 b"rate" => {
-                    ani.rate = {
-                        if ani.rate.is_some() {
-                            bail!("duplicate 'rate' chunk");
-                        }
-
-                        Some(Self::parse_rate(&mut cursor)?)
+                    if ani.rate.is_some() {
+                        bail!("duplicate 'rate' chunk");
                     }
+
+                    ani.rate = Some(
+                        RiffChunkU32::read_le(&mut cursor)
+                            .context("failed to read 'rate' chunk")?,
+                    );
                 }
 
                 b"seq " => {
@@ -274,7 +265,10 @@ impl AniFile {
                         bail!("duplicate 'seq ' chunk");
                     }
 
-                    ani.sequence = Some(Self::parse_seq(&mut cursor)?);
+                    ani.sequence = Some(
+                        RiffChunkU32::read_le(&mut cursor)
+                            .context("failed to read 'seq ' chunk")?,
+                    );
                 }
 
                 // consider attempting to read size and skipping
@@ -283,64 +277,7 @@ impl AniFile {
             }
         }
 
-        /* check "invariants" */
-        // if something isn't a bail!(), it's for good reason,
-        // windows still renders some technically invalid files
-        let hdr = &ani.header;
-        let num_frames = usize::try_from(hdr.num_frames)?;
-        let num_steps = usize::try_from(hdr.num_steps)?;
-
-        if num_frames != ani.ico_frames.len() {
-            bail!(
-                "expected num_frames={num_frames}, instead got ico_frames.len()={}",
-                ani.ico_frames.len()
-            );
-        }
-
-        if let Some(seq) = &ani.sequence
-            && seq.data.iter().max() >= Some(&hdr.num_frames)
-        {
-            bail!("frame indices of 'seq ' chunk go out of bounds");
-        }
-
-        if hdr.jiffy_rate == 0 && ani.rate.is_none() {
-            bail!("no frame timings: jiffy_rate=0 and ani.rate is None");
-        }
-
-        if let Some(rate) = &ani.rate
-            && rate.data.len() != num_steps
-        {
-            bail!(
-                "expected num_steps={num_steps}, instead got rate.len()={}",
-                rate.data.len(),
-            )
-        }
-
-        // because rate is per-frame timings where indices should match
-        // but unsure
-        if let Some(rate) = &ani.rate
-            && rate.data.len() != num_frames
-        {
-            eprintln!(
-                "[warning] 'rate' chunk's length ({}) differs from num_frames={}",
-                rate.data.len(),
-                hdr.num_frames
-            );
-        }
-
-        if hdr.flags == AniFlags::SequencedIcon && ani.sequence.is_none() {
-            eprintln!(
-                "[warning] expected 'seq ' chunk from flags={:?}, found None",
-                hdr.flags
-            );
-        }
-
-        if hdr.flags == AniFlags::UnsequencedIcon && ani.sequence.is_some() {
-            eprintln!(
-                "[warning] expected 'seq ' chunk to be None from flags={:?}, found sequence={:?}",
-                hdr.flags, ani.sequence
-            );
-        }
+        Self::check_invariants(&ani)?;
 
         Ok(ani)
     }
@@ -403,11 +340,13 @@ impl AniFile {
                 }
 
                 while cursor.position() < end {
-                    const ICON_ARGS: RiffChunkU8BinReadArgs = RiffChunkU8BinReadArgs {
-                        expected_id: *b"icon",
-                    };
+                    cursor.read_exact(&mut buf)?;
 
-                    let chunk = RiffChunkU8::read_le_args(cursor, ICON_ARGS)
+                    if buf != *b"icon" {
+                        bail!("expected 'icon' subchunk, instead got {buf:?}");
+                    }
+
+                    let chunk = RiffChunkU8::read_le(cursor)
                         .context("failed to read 'icon' subchunk of 'fram'")?;
 
                     chunks.push(chunk);
@@ -426,34 +365,69 @@ impl AniFile {
         Ok(())
     }
 
-    /// Helper for [`Self::from_blob`] for the "anih" chunk.
-    #[inline]
-    fn parse_anih(cursor: &mut Cursor<&[u8]>) -> Result<AniHeader> {
-        // step back so `AniHeader` can assert magic ("anih")
-        cursor.seek_relative(-4)?;
+    /// Helper function for checking invariants, since Clippy
+    /// is complaining about my function body length :(
+    ///
+    /// Some checks produce warnings, while other produce errors.
+    /// This is a deliberate choice, as Windows does still render
+    /// files that should _technically_ be invalid, as per the spec.
+    fn check_invariants(ani: &AniFile) -> Result<()> {
+        let hdr = &ani.header;
+        let num_frames = usize::try_from(hdr.num_frames)?;
+        let num_steps = usize::try_from(hdr.num_steps)?;
 
-        AniHeader::read_le(cursor).context("failed to read 'anih' chunk")
-    }
+        if num_frames != ani.ico_frames.len() {
+            bail!(
+                "expected num_frames={num_frames}, instead got ico_frames.len()={}",
+                ani.ico_frames.len()
+            );
+        }
 
-    /// Helper for [`Self::from_blob`] for the "rate" chunk.
-    #[inline]
-    fn parse_rate(cursor: &mut Cursor<&[u8]>) -> Result<RiffChunkU32> {
-        const RATE_ARGS: RiffChunkU32BinReadArgs = RiffChunkU32BinReadArgs {
-            expected_id: *b"rate",
-        };
+        if let Some(seq) = &ani.sequence
+            && seq.data.iter().max() >= Some(&hdr.num_frames)
+        {
+            bail!("frame indices of 'seq ' chunk go out of bounds");
+        }
 
-        cursor.seek_relative(-4)?;
-        RiffChunkU32::read_le_args(cursor, RATE_ARGS).context("failed to read 'rate' chunk")
-    }
+        if hdr.jiffy_rate == 0 && ani.rate.is_none() {
+            bail!("no frame timings: jiffy_rate=0 and ani.rate is None");
+        }
 
-    /// Helper for [`Self::from_blob`] for the "seq " chunk.
-    #[inline]
-    fn parse_seq(cursor: &mut Cursor<&[u8]>) -> Result<RiffChunkU32> {
-        const SEQ_ARGS: RiffChunkU32BinReadArgs = RiffChunkU32BinReadArgs {
-            expected_id: *b"seq ",
-        };
+        if let Some(rate) = &ani.rate
+            && rate.data.len() != num_steps
+        {
+            bail!(
+                "expected num_steps={num_steps}, instead got rate.len()={}",
+                rate.data.len(),
+            )
+        }
 
-        cursor.seek_relative(-4)?;
-        RiffChunkU32::read_le_args(cursor, SEQ_ARGS).context("failed to read 'seq ' chunk")
+        // because rate is per-frame timings where indices should match
+        // but unsure
+        if let Some(rate) = &ani.rate
+            && rate.data.len() != num_frames
+        {
+            eprintln!(
+                "[warning] 'rate' chunk's length ({}) differs from num_frames={}",
+                rate.data.len(),
+                hdr.num_frames
+            );
+        }
+
+        if hdr.flags == AniFlags::SequencedIcon && ani.sequence.is_none() {
+            eprintln!(
+                "[warning] expected 'seq ' chunk from flags={:?}, found None",
+                hdr.flags
+            );
+        }
+
+        if hdr.flags == AniFlags::UnsequencedIcon && ani.sequence.is_some() {
+            eprintln!(
+                "[warning] expected 'seq ' chunk to be None from flags={:?}, found sequence={:?}",
+                hdr.flags, ani.sequence
+            );
+        }
+
+        Ok(())
     }
 }
