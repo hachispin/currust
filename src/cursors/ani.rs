@@ -430,3 +430,63 @@ impl AniFile {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod test {
+    use std::{fmt::Write, fs};
+
+    use super::*;
+    use crate::root;
+
+    /// Parses a file and checks everything matches expected results.
+    // (sort of lazy but it's better than nothing)
+    #[test]
+    fn good_ani() {
+        const ANI_PATH: &str = concat!(root!(), "/testing/fixtures/neuro_alt.ani");
+        const EXPECTED_ANI_FRAMES: &str =
+            include_str!(concat!(root!(), "/testing/fixtures/neuro_alt_frames"));
+
+        const {
+            assert!(
+                size_of::<AniFile>() == 88,
+                "AniFile fields/types have changed, update tests and this number accordingly"
+            );
+        }
+
+        let blob = fs::read(ANI_PATH).unwrap();
+        let ani = AniFile::from_blob(&blob).unwrap();
+        let hdr = &ani.header;
+
+        assert_eq!(hdr.num_frames, 10);
+        assert_eq!(hdr.num_steps, 21);
+        assert_eq!(hdr.jiffy_rate, 6);
+        assert_eq!(hdr.flags, AniFlags::SequencedIcon);
+
+        assert!(ani.rate.is_none());
+
+        assert_eq!(
+            ani.sequence.as_ref().unwrap().data,
+            &[
+                0, 1, 2, 2, 3, 3, 3, 3, 4, 5, 6, 7, 3, 3, 3, 2, 2, 2, 3, 8, 9
+            ]
+        );
+
+        assert_eq!(
+            usize::try_from(hdr.num_frames).unwrap(),
+            ani.ico_frames.len()
+        );
+
+        assert_eq!(
+            usize::try_from(hdr.num_steps).unwrap(),
+            ani.sequence.as_ref().unwrap().data.len()
+        );
+
+        let mut ani_frames = String::new();
+
+        for frame in ani.ico_frames {
+            writeln!(&mut ani_frames, "{:?}", frame.data).unwrap();
+        }
+
+        assert_eq!(ani_frames, EXPECTED_ANI_FRAMES);
+    }
+}
