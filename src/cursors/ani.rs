@@ -85,7 +85,6 @@ enum AniFlags {
 /// - [Wikipedia: ANI structure](https://en.wikipedia.org/wiki/ANI_(file_format)#File_structure)
 #[binread]
 #[derive(Debug, Default, PartialEq)]
-#[br(magic = b"anih")]
 pub(super) struct AniHeader {
     /// Size field of the "anih" chunk, not part of the header itself.
     #[br(temp)]
