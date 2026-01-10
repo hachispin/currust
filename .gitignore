@@ -1,8 +1,11 @@
 /target
+
+# c build
 /testing/load_xcur
+
+# temp stuff
 /tmp_out/
 left_ptr
 
-# no reupload clauses :(
-testing/data/ani/elysia
-testing/data/ani/herta
+# personal stuff
+testing/ani
