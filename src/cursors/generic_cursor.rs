@@ -70,6 +70,8 @@ impl GenericCursor {
         }
 
         let mut scale_factors = Vec::with_capacity(scaled_images.len());
+        scale_factors.push(1.0);
+
         let base_len = base_images.len();
         let base_dims = base_images.first().dimensions();
 
@@ -211,6 +213,8 @@ impl GenericCursor {
             v.into_iter().map(|idx| &icos[idx]).collect()
         });
 
+        // TODO: figure out if delays should be applied to sequenced icos
+        //       or the order icos were parsed in if rate chunk exists
         let num_steps = usize::try_from(header.num_steps)?;
         let delays_jiffies = ani_file
             .rate
@@ -223,10 +227,9 @@ impl GenericCursor {
             .map(|j| (f64::from(j) * 1000.0 / 60.0).round() as u32)
             .collect();
 
-        let first_entry = &sequenced_icos[0].entries()[0];
-        let base_dims = (first_entry.width(), first_entry.height());
-        let mut base: Vec<CursorImage> = Vec::new();
-        let mut scaled_ungrouped: Vec<CursorImage> = Vec::new();
+        let base_dims = Self::get_base_dimensions(&sequenced_icos);
+        let mut base = Vec::new();
+        let mut scaled_ungrouped = Vec::new();
 
         for (ico, delay) in sequenced_icos.iter().zip(delays_ms) {
             let entries = ico.entries();
@@ -247,10 +250,10 @@ impl GenericCursor {
         }
 
         scaled_ungrouped.sort_unstable_by_key(CursorImage::dimensions);
+        let scaled_ungrouped = scaled_ungrouped;
 
-        let scaled_ungrouped: Vec<CursorImage> = scaled_ungrouped;
-        let mut scaled: Vec<CursorImages> = Vec::new();
-        let mut buffer: Vec<CursorImage> = Vec::new();
+        let mut scaled = Vec::new();
+        let mut buffer = Vec::new();
         let mut current_dims = scaled_ungrouped[0].dimensions();
 
         // group by dimensions
@@ -297,6 +300,23 @@ impl GenericCursor {
         }
 
         Ok(())
+    }
+
+    /// Helper function for [`Self::from_ani_path`].
+    ///
+    /// Tries to use 32x32 as base and checks `icons`. If there are
+    /// no 32x32 entries, defaults to dimensions of first entry.
+    fn get_base_dimensions(icons: &[&IconDir]) -> (u32, u32) {
+        if icons
+            .iter()
+            .flat_map(|ico| ico.entries())
+            .any(|e| (e.width(), e.height()) == (32, 32))
+        {
+            (32, 32)
+        } else {
+            let first_entry = &icons[0].entries()[0];
+            (first_entry.width(), first_entry.height())
+        }
     }
 
     /// Trivial accessor for `base` field.
