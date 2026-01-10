@@ -5,6 +5,10 @@ A **work in progress** tool written in Rust to convert cursors between Windows a
 
 Unlike currently existing tools such as [win2xcur](https://github.com/quantum5/win2xcur), which
 require a substantial amount of manual work, this project aims to be as **easy to use** as possible.
+This also shouldn't require any external dependencies when released as a binary.
+
+The UX point does get a bit weaker now since they've since added theme conversions (sort of)
+after this project was made by parsing installer files. Oh well. &nbsp; ┐(￣ヘ￣)┌
 
 ## Usage [WIP]
 
@@ -12,7 +16,10 @@ This section will be written after this tool is (close to) complete...
 
 ## Goals
 
-Note that I don't include tasks that I had little to no part in, such as parsing the CUR format, which the [`ico`](https://docs.rs/ico/0.5.0/ico/) crate already does.
+Note that I don't include tasks that I had little to no part in, such as parsing the CUR format,
+which is something that the [`ico`](https://docs.rs/ico/0.5.0/ico/) crate already does.
+
+(_though, i did write a CUR parser once, [here](https://github.com/hachispin/rust-cursor-parsing)_)
 
 ### Fundamentals
 
