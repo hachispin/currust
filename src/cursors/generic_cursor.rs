@@ -209,16 +209,17 @@ impl GenericCursor {
             .map(|chunk| chunk.data.into_iter().map(usize::try_from).collect())
             .transpose()?;
 
-        let sequenced_icos: Vec<&IconDir> = sequence.map_or(icos.iter().collect(), |v| {
-            v.into_iter().map(|idx| &icos[idx]).collect()
-        });
+        let sequenced_icos: Vec<&IconDir> = sequence.map_or_else(
+            || icos.iter().collect(),
+            |v| v.into_iter().map(|idx| &icos[idx]).collect(),
+        );
 
         // TODO: figure out if delays should be applied to sequenced icos
         //       or the order icos were parsed in if rate chunk exists
         let num_steps = usize::try_from(header.num_steps)?;
         let delays_jiffies = ani_file
             .rate
-            .map_or(vec![header.jiffy_rate; num_steps], |chunk| chunk.data);
+            .map_or_else(|| vec![header.jiffy_rate; num_steps], |chunk| chunk.data);
 
         // jiffies are 1/60th of a second
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -271,7 +272,7 @@ impl GenericCursor {
             scaled.push(buffer.try_into()?);
         }
 
-        GenericCursor::new_with_scaled(base.try_into()?, scaled)
+        Self::new_with_scaled(base.try_into()?, scaled)
     }
 
     /// Saves `cursor` to `path` in Xcursor format.
@@ -282,14 +283,13 @@ impl GenericCursor {
     /// from the `unsafe` helper functions are propagated.
     pub fn save_as_xcursor<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let path = path.as_ref();
-        let joined: Vec<&CursorImage> = self.joined_images().collect();
 
         let path_str = path
             .to_str()
             .ok_or_else(|| anyhow!("failed to convert path={} to &str", path.display()))?;
 
-        let mut images_vec: Vec<_> = joined
-            .into_iter()
+        let mut images_vec: Vec<_> = self
+            .joined_images()
             .map(construct_images)
             .collect::<Result<_>>()?;
 

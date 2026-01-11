@@ -171,7 +171,7 @@ impl CursorImage {
 
     /// Returns the delay in milliseconds.
     #[must_use]
-    pub fn delay(&self) -> u32 {
+    pub const fn delay(&self) -> u32 {
         self.delay
     }
 

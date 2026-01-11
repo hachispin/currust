@@ -195,7 +195,7 @@ impl AniFile {
     /// > [gdgsoft](https://www.gdgsoft.com/anituner/help/aniformat.htm):
     /// > "Any of the blocks ("ACON", "anih", "rate", or "seq ") can appear in any order."
     // this is the worst format i've ever seen
-    pub fn from_blob(ani_blob: &[u8]) -> Result<AniFile> {
+    pub fn from_blob(ani_blob: &[u8]) -> Result<Self> {
         const MAX_RIFF_SIZE: usize = 2_097_152;
 
         if ani_blob.len() > MAX_RIFF_SIZE {
@@ -207,7 +207,7 @@ impl AniFile {
 
         // for sanity checks against read sizes
         let ani_blob_len_u64 = u64::try_from(ani_blob.len())?;
-        let mut ani = AniFile::default();
+        let mut ani = Self::default();
         let mut cursor = Cursor::new(ani_blob);
         let mut buf = [0u8; 4];
         cursor.read_exact(&mut buf)?;
@@ -285,7 +285,7 @@ impl AniFile {
     ///
     /// This can diverge depending on the subtype, which can
     /// either be "INFO" (skipped) or "fram" (frame data).
-    fn parse_list(cursor: &mut Cursor<&[u8]>, ani: &mut AniFile) -> Result<()> {
+    fn parse_list(cursor: &mut Cursor<&[u8]>, ani: &mut Self) -> Result<()> {
         const MAX_FRAM_SIZE: u32 = 1_048_576; // a megabyte
 
         let ani_blob_size = cursor.get_ref().len();
@@ -371,7 +371,7 @@ impl AniFile {
     /// Some checks produce warnings, while other produce errors.
     /// This is a deliberate choice, as Windows still renders
     /// files that the spec technically considers invalid.
-    fn check_invariants(ani: &AniFile) -> Result<()> {
+    fn check_invariants(ani: &Self) -> Result<()> {
         let hdr = &ani.header;
         let num_frames = usize::try_from(hdr.num_frames)?;
         let num_steps = usize::try_from(hdr.num_steps)?;

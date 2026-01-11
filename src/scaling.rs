@@ -19,11 +19,13 @@ pub(crate) fn scale_nearest(src: &[u8], src_w: u32, src_h: u32, dst_w: u32, dst_
     // no clue what this does. it works though
     for y in 0..dst_h {
         for x in 0..dst_w {
-            let src_x = ((x as f32 + 0.5) * scale_x - 0.5)
+            let src_x = (x as f32 + 0.5)
+                .mul_add(scale_x, -0.5)
                 .round()
                 .clamp(0.0, (src_w - 1) as f32) as u32;
 
-            let src_y = ((y as f32 + 0.5) * scale_y - 0.5)
+            let src_y = (y as f32 + 0.5)
+                .mul_add(scale_y, -0.5)
                 .round()
                 .clamp(0.0, (src_h - 1) as f32) as u32;
 
