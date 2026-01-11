@@ -317,8 +317,6 @@ impl AniFile {
                     bail!("duplicate 'fram' chunk");
                 }
 
-                let mut chunks: Vec<RiffChunkU8> = Vec::new();
-
                 if list_data_size > MAX_FRAM_SIZE {
                     bail!("fram_size={list_data_size} unreasonably large (1MB+)");
                 }
@@ -337,6 +335,9 @@ impl AniFile {
                 if end > ani_blob_size.try_into()? {
                     bail!("fram_size={list_data_size} extends beyond blob");
                 }
+
+                let mut chunks: Vec<RiffChunkU8> =
+                    Vec::with_capacity(usize::try_from(ani.header.num_frames)?);
 
                 while cursor.position() < end {
                     cursor.read_exact(&mut buf)?;
@@ -368,8 +369,8 @@ impl AniFile {
     /// is complaining about my function body length :(
     ///
     /// Some checks produce warnings, while other produce errors.
-    /// This is a deliberate choice, as Windows does still render
-    /// files that should _technically_ be invalid, as per the spec.
+    /// This is a deliberate choice, as Windows still renders
+    /// files that the spec technically considers invalid.
     fn check_invariants(ani: &AniFile) -> Result<()> {
         let hdr = &ani.header;
         let num_frames = usize::try_from(hdr.num_frames)?;
@@ -449,7 +450,7 @@ mod test {
         const {
             assert!(
                 size_of::<AniFile>() == 88,
-                "AniFile fields/types have changed, update tests and this number accordingly"
+                "AniFile fields have changed, update tests and this number accordingly"
             );
         }
 
