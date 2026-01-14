@@ -3,7 +3,7 @@
 use super::{
     ani::AniFile,
     cursor_image::{CursorImage, CursorImages, ScalingType},
-    xcursor::{bundle_images, construct_images, save_images},
+    xcursor::Xcursor,
 };
 
 use std::{
@@ -13,7 +13,8 @@ use std::{
     path::Path,
 };
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, bail};
+use binrw::BinWrite;
 use ico::IconDir;
 
 /// Represents a generic cursor.
@@ -209,6 +210,7 @@ impl GenericCursor {
             .map(|chunk| chunk.data.into_iter().map(usize::try_from).collect())
             .transpose()?;
 
+        // indices validated in-bounds in AniFile
         let sequenced_icos: Vec<&IconDir> = sequence.map_or_else(
             || icos.iter().collect(),
             |v| v.into_iter().map(|idx| &icos[idx]).collect(),
@@ -275,29 +277,16 @@ impl GenericCursor {
         Self::new_with_scaled(base.try_into()?, scaled)
     }
 
-    /// Saves `cursor` to `path` in Xcursor format.
+    /// Saves `self` to `path` as Xcursor.
     ///
     /// ## Errors
     ///
-    /// If `path` has no `&str` representation, or errors
-    /// from the `unsafe` helper functions are propagated.
+    /// If filesystem operations fail, or if propagated from [`Xcursor`].
     pub fn save_as_xcursor<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let path = path.as_ref();
-
-        let path_str = path
-            .to_str()
-            .ok_or_else(|| anyhow!("failed to convert path={} to &str", path.display()))?;
-
-        let mut images_vec: Vec<_> = self
-            .joined_images()
-            .map(construct_images)
-            .collect::<Result<_>>()?;
-
-        let images = unsafe { bundle_images(&mut images_vec) }?;
-
-        unsafe {
-            save_images(path_str, &images)?;
-        }
+        let mut file = File::create(path)?;
+        let xcursor = Xcursor::new(self)?;
+        xcursor.write(&mut file)?;
 
         Ok(())
     }

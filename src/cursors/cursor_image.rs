@@ -180,6 +180,12 @@ impl CursorImage {
     pub fn rgba(&self) -> &[u8] {
         &self.rgba
     }
+
+    /// Returns the max of width and height.
+    #[must_use]
+    pub fn nominal_size(&self) -> u32 {
+        self.dimensions().0.max(self.dimensions().1)
+    }
 }
 
 // skip rgba when debugging
