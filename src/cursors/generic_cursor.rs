@@ -170,14 +170,21 @@ impl GenericCursor {
             bail!("no stored images found in {cur_path_display}");
         }
 
-        let mut images = Vec::with_capacity(entries.len());
+        let mut base = Vec::new();
+        let mut scaled = Vec::new();
+        let base_dims = Self::get_base_dimensions(&[&icon_dir]);
 
         for entry in entries {
             let image = CursorImage::from_entry(entry, CursorImage::STATIC_DELAY)?;
-            images.push(image);
+
+            if image.dimensions() == base_dims {
+                base.push(image);
+            } else {
+                scaled.push(image);
+            }
         }
 
-        Ok(Self::new(images.try_into()?))
+        Self::new_with_scaled(base.try_into()?, vec![scaled.try_into()?])
     }
 
     /// Parses `ani_path`.
