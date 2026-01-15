@@ -167,6 +167,9 @@ pub(super) struct AniFile {
     ///
     /// Each frame, `f_n`, is displayed for `t_n`
     /// jiffies until `f_{n+1}` (modulo length).
+    ///
+    /// The rate is applied **after sequencing**, so `frames`
+    /// is better said as the "display order", see [`Self::sequence`].
     pub rate: Option<RiffChunkU32>,
     /// Stores frame indices to indicate the order in which
     /// frames are played. Frames can also be repeated.

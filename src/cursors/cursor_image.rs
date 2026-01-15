@@ -1,4 +1,6 @@
-//! Contains the [`CursorImage`] struct.
+//! Contains the [`CursorImage`] and [`CursorImages`] struct.
+//!
+//! These represents the frames of static/animated cursors.
 
 use crate::scaling::{scale_box_average, scale_nearest};
 
@@ -242,7 +244,7 @@ impl TryFrom<Vec<CursorImage>> for CursorImages {
 
     fn try_from(vec: Vec<CursorImage>) -> Result<Self> {
         if vec.is_empty() {
-            bail!("can't create CursorImages from empty vec, call new() instead");
+            bail!("can't create CursorImages from empty vec");
         }
 
         if vec.len() == 1 {

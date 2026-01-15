@@ -1,4 +1,6 @@
 //! Contains the [`GenericCursor`] struct.
+//!
+//! This represents a full static/animated cursor.
 
 use super::{
     ani::AniFile,
@@ -191,9 +193,11 @@ impl GenericCursor {
     ///
     /// ## Errors
     ///
-    /// Path `ani_path` is not to a valid ANI cursor.
-    ///
-    /// This also checks for the `.ani` extension.
+    /// - Path `ani_path` does not have `.ani` extension.
+    /// - `ani_path` fails to be parsed as an [`IconDir`]
+    /// - Stored RGBA in ICO frames fail to be decoded.
+    /// - Frames are inconsistent, see [`CursorImages`].
+    /// - [`TryInto`] conversions fail (between primitive types).
     pub fn from_ani_path<P: AsRef<Path>>(ani_path: P) -> Result<Self> {
         let ani_path = ani_path.as_ref();
         let ani_path_display = ani_path.display();
@@ -204,14 +208,16 @@ impl GenericCursor {
 
         let ani_blob = fs::read(ani_path)?;
         let ani_file = AniFile::from_blob(&ani_blob)?;
-        let header = ani_file.header;
+        let header = &ani_file.header;
 
+        // read each ico frame
         let icos: Vec<IconDir> = ani_file
             .ico_frames
             .into_iter()
             .map(|chunk| IconDir::read(&mut Cursor::new(&chunk.data)))
             .collect::<Result<_, _>>()?;
 
+        // get display order as indices into icos
         let sequence: Option<Vec<usize>> = ani_file
             .sequence
             .map(|chunk| chunk.data.into_iter().map(usize::try_from).collect())
@@ -223,8 +229,7 @@ impl GenericCursor {
             |v| v.into_iter().map(|idx| &icos[idx]).collect(),
         );
 
-        // TODO: figure out if delays should be applied to sequenced icos
-        //       or the order icos were parsed in if rate chunk exists
+        // use default timings in header, or custom one if defined
         let num_steps = usize::try_from(header.num_steps)?;
         let delays_jiffies = ani_file
             .rate
@@ -260,8 +265,8 @@ impl GenericCursor {
         }
 
         scaled_ungrouped.sort_unstable_by_key(CursorImage::dimensions);
-        let scaled_ungrouped = scaled_ungrouped;
 
+        let scaled_ungrouped = scaled_ungrouped;
         let mut scaled = Vec::new();
         let mut buffer = Vec::new();
         let mut current_dims = scaled_ungrouped[0].dimensions();
