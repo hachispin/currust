@@ -5,6 +5,7 @@
 //!
 //! You may find it helpful to also read about [RIFF](https://en.wikipedia.org/wiki/Resource_Interchange_File_Format).
 
+use core::fmt;
 use std::io::{Cursor, Read, Seek};
 
 use anyhow::{Context, Result, bail};
@@ -154,7 +155,7 @@ pub(super) struct AniHeader {
 /// ## References
 ///
 /// [Wikipedia: ANI structure](https://en.wikipedia.org/wiki/ANI_(file_format)#File_structure)
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub(super) struct AniFile {
     pub header: AniHeader,
     /// Per-frame timings. Usually [`None`].
@@ -183,6 +184,17 @@ pub(super) struct AniFile {
     ///
     /// _(although redundant, since Windows scales cursors already.)_
     pub ico_frames: Vec<RiffChunkU8>,
+}
+
+// skip ico_frames
+impl fmt::Debug for AniFile {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AniFile")
+            .field("header", &self.header)
+            .field("rate", &self.rate)
+            .field("sequence", &self.sequence)
+            .finish_non_exhaustive()
+    }
 }
 
 impl AniFile {
