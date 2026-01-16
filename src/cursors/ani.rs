@@ -18,13 +18,13 @@ use binrw::{BinRead, binread};
 pub(super) struct RiffChunkU32 {
     // temp because `data` stores its own length
     #[br(temp)]
-    _data_size: u32,
+    data_size: u32,
 
-    #[br(try_calc = usize::try_from(_data_size / 4), temp)]
-    _data_length: usize,
+    #[br(try_calc = usize::try_from(data_size / 4), temp)]
+    data_length: usize,
 
     /// The chunk data.
-    #[br(count = _data_length, pad_after = _data_size % 2)]
+    #[br(count = data_length, pad_after = data_size % 2)]
     pub data: Vec<u32>, // unsure if padding is needed but why not
 }
 
@@ -35,10 +35,10 @@ pub(super) struct RiffChunkU32 {
 pub(super) struct RiffChunkU8 {
     // size == length here since `data` is Vec<u8>
     #[br(temp)]
-    _data_size: u32,
+    data_size: u32,
 
     /// The chunk data.
-    #[br(count = _data_size, pad_after = _data_size % 2)]
+    #[br(count = data_size, pad_after = data_size % 2)]
     pub data: Vec<u8>,
     // padding byte skipped with `pad_after`
 }
@@ -68,32 +68,20 @@ enum AniFlags {
     ///
     /// This is mainly for optimizing repeated frames.
     #[default]
-    UnsequencedIcon = 1,
+    Unsequenced = 1,
     /// Contains ICO frames that play in the
     /// order they're defined (no "seq " chunk).
-    SequencedIcon = 3,
+    Sequenced = 3,
 }
 
-// also side note but frame not being ICO is impossible
-// it would imply it's raw data, most claiming it'd be BMP
-// and you can't store any cursor-related info in BMP
-// so... well that's just speculation
-
 /// Models an ANI file's header (or the "anih" chunk).
-///
-/// ## References
-///
-/// - [Wikipedia: ANI structure](https://en.wikipedia.org/wiki/ANI_(file_format)#File_structure)
 #[binread]
 #[derive(Debug, Default, PartialEq)]
 pub(super) struct AniHeader {
-    /// Size field of the "anih" chunk, not part of the header itself.
     #[br(temp)]
-    _anih_size: u32,
-    /// The size of this header. Must be 36.
-    #[br(assert(_anih_size == _header_size))]
-    #[br(assert(_header_size == 36), temp)]
-    _header_size: u32,
+    anih_size: u32,
+    #[br(assert(anih_size == header_size && header_size == 36), temp)]
+    header_size: u32,
     /// Number of frames in "fram" LIST.
     ///
     /// This is different from [`Self::num_steps`]:
@@ -113,7 +101,6 @@ pub(super) struct AniHeader {
     /// ```
     #[br(pad_after = 16)] // contains unused fields: cx, cy, cBitCount, cPlanes
     pub num_steps: u32,
-
     /// Default jiffy rate if "rate" isn't provided.
     pub jiffy_rate: u32,
     // Flags to indicate whether the "seq " chunk exists.
@@ -151,10 +138,6 @@ pub(super) struct AniHeader {
 ///   * Data size doesn't include padding.
 /// - Brackets around a chunk (like "seq ") indicate that it's optional.
 /// - Chunks like "RIFF" and "LIST" have a second identifier, after the size.
-///
-/// ## References
-///
-/// [Wikipedia: ANI structure](https://en.wikipedia.org/wiki/ANI_(file_format)#File_structure)
 #[derive(Default)]
 pub(super) struct AniFile {
     pub header: AniHeader,
@@ -408,6 +391,7 @@ impl AniFile {
             bail!("no frame timings: jiffy_rate=0 and ani.rate is None");
         }
 
+        // rate maps to sequenced frames
         if let Some(rate) = &ani.rate
             && rate.data.len() != num_steps
         {
@@ -417,24 +401,14 @@ impl AniFile {
             )
         }
 
-        if let Some(rate) = &ani.rate
-            && rate.data.len() != num_steps
-        {
-            eprintln!(
-                "[warning] 'rate' chunk's length ({}) differs from num_frames={}",
-                rate.data.len(),
-                hdr.num_frames
-            );
-        }
-
-        if hdr.flags == AniFlags::SequencedIcon && ani.sequence.is_none() {
+        if hdr.flags == AniFlags::Sequenced && ani.sequence.is_none() {
             eprintln!(
                 "[warning] expected 'seq ' chunk from flags={:?}, found None",
                 hdr.flags
             );
         }
 
-        if hdr.flags == AniFlags::UnsequencedIcon && ani.sequence.is_some() {
+        if hdr.flags == AniFlags::Unsequenced && ani.sequence.is_some() {
             eprintln!(
                 "[warning] expected 'seq ' chunk to be None from flags={:?}, found sequence={:?}",
                 hdr.flags, ani.sequence
@@ -474,7 +448,7 @@ mod test {
         assert_eq!(hdr.num_frames, 10);
         assert_eq!(hdr.num_steps, 21);
         assert_eq!(hdr.jiffy_rate, 6);
-        assert_eq!(hdr.flags, AniFlags::SequencedIcon);
+        assert_eq!(hdr.flags, AniFlags::Sequenced);
 
         assert!(ani.rate.is_none());
 
