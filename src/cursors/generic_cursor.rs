@@ -326,6 +326,15 @@ impl GenericCursor {
         self.base.inner()
     }
 
+    /// Returns the number of `base` and `scaled` images.
+    ///
+    /// Prefer this over calling [`Iterator::count`]
+    /// for [`Self::joined_images`] or equivalent.
+    #[must_use]
+    pub const fn num_images(&self) -> usize {
+        self.base.len() + self.scaled.len()
+    }
+
     /// Trivial accessor for `scaled` field.
     ///
     /// This returns an iterator over `&[CursorImage]`.
