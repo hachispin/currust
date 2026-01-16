@@ -40,46 +40,23 @@ pub struct GenericCursor {
 }
 
 impl GenericCursor {
-    /// Trivial constructor.
+    /// Trivial constructor. `scale_factors` is inferred from `scaled_images`.
     ///
     /// ## Errors
     ///
-    /// If any image in `base_images` have different dimensions.
-    fn new(base_images: CursorImages) -> Self {
-        Self {
-            base: base_images,
-            scaled: Vec::new(),
-            scale_factors: vec![1.0],
-        }
-    }
-
-    /// Constructor for cursors that already store multiple sizes.
-    /// This also infers scale factors from `scaled_images`.
-    ///
-    /// If `scaled_images` is empty, this is the same as [`Self::new`].
-    ///
-    /// ## Errors
-    ///
-    /// - If `base_images` is empty.
-    /// - If `base_images` or each `scaled_image` has inconsistent
-    ///   dimensions for each frame (for animated cursors).
-    /// - If any [`Vec<CursorImage>`] differs in length (may be missing frames?)
-    fn new_with_scaled(
-        base_images: CursorImages,
-        scaled_images: Vec<CursorImages>,
-    ) -> Result<Self> {
+    /// - If `base_images` or `scaled_images` is empty.
+    /// - If propagated from `CursorImages` construction.
+    fn new(base_images: CursorImages, scaled_images: Vec<CursorImages>) -> Result<Self> {
         if scaled_images.is_empty() {
-            return Ok(Self::new(base_images));
+            bail!("scaled_images can't be empty, call Self::new_unscaled() if this is expected");
         }
 
         let mut scale_factors = Vec::with_capacity(scaled_images.len());
         scale_factors.push(1.0);
 
-        let base_len = base_images.len();
-        let base_dims = base_images.first().dimensions();
-
         // used for calculating sf
-        let base_nominal = f64::from(base_dims.0.max(base_dims.1));
+        let base_nominal = f64::from(base_images.first().nominal_size());
+        let base_len = base_images.len();
 
         for images in &scaled_images {
             if images.len() != base_len {
@@ -89,8 +66,7 @@ impl GenericCursor {
                 );
             }
 
-            let scaled_dims = images.first().dimensions();
-            let scaled_nominal = f64::from(scaled_dims.0.max(scaled_dims.1));
+            let scaled_nominal = f64::from(images.first().nominal_size());
             let scale_factor = scaled_nominal / base_nominal;
 
             if scale_factors.contains(&scale_factor) {
@@ -108,6 +84,16 @@ impl GenericCursor {
             scaled: scaled_images,
             scale_factors,
         })
+    }
+
+    /// Constructor without `scaled`.
+    #[inline]
+    fn new_unscaled(base_images: CursorImages) -> Self {
+        Self {
+            base: base_images,
+            scaled: Vec::new(),
+            scale_factors: vec![1.0],
+        }
     }
 
     /// Adds scaled [`CursorImage`] from `base` to `scaled`.
@@ -149,20 +135,14 @@ impl GenericCursor {
     ///
     /// If a file handle to `cur_path` can't be opened,
     /// or the file stored is not a CUR file.
-    ///
-    /// This also checks for the `.cur` extension.
     pub fn from_cur_path<P: AsRef<Path>>(cur_path: P) -> Result<Self> {
         let cur_path = cur_path.as_ref();
         let cur_path_display = cur_path.display();
 
-        if cur_path.extension().is_none_or(|ext| ext != "cur") {
-            bail!("expected {cur_path_display} to have extension 'cur'")
-        }
-
-        let handle = File::open(cur_path)
+        let handle = fs::read(cur_path)
             .with_context(|| format!("failed to read from cur_path={cur_path_display}"))?;
 
-        let icon_dir = IconDir::read(handle).with_context(|| {
+        let icon_dir = IconDir::read(Cursor::new(handle)).with_context(|| {
             format!("failed to read `IconDir` from cur_path={cur_path_display}")
         })?;
 
@@ -186,27 +166,25 @@ impl GenericCursor {
             }
         }
 
-        Self::new_with_scaled(base.try_into()?, vec![scaled.try_into()?])
+        let base = CursorImages::try_from(base)?;
+
+        if scaled.is_empty() {
+            Ok(Self::new_unscaled(base))
+        } else {
+            Self::new(base, vec![scaled.try_into()?])
+        }
     }
 
     /// Parses `ani_path`.
     ///
     /// ## Errors
     ///
-    /// - Path `ani_path` does not have `.ani` extension.
     /// - `ani_path` fails to be parsed as an [`IconDir`]
     /// - Stored RGBA in ICO frames fail to be decoded.
     /// - Frames are inconsistent, see [`CursorImages`].
     /// - [`TryInto`] conversions fail (between primitive types).
     pub fn from_ani_path<P: AsRef<Path>>(ani_path: P) -> Result<Self> {
-        let ani_path = ani_path.as_ref();
-        let ani_path_display = ani_path.display();
-
-        if ani_path.extension().is_none_or(|ext| ext != "ani") {
-            bail!("expected {ani_path_display} to have extension 'ani'")
-        }
-
-        let ani_blob = fs::read(ani_path)?;
+        let ani_blob = fs::read(&ani_path)?;
         let ani_file = AniFile::from_blob(&ani_blob)?;
         let header = &ani_file.header;
 
@@ -236,6 +214,9 @@ impl GenericCursor {
             .map_or_else(|| vec![header.jiffy_rate; num_steps], |chunk| chunk.data);
 
         // jiffies are 1/60th of a second
+        //
+        // NOTE: this might cause slight diffs compared
+        //       to other converters because of rounding
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let delays_ms: Vec<u32> = delays_jiffies
             .into_iter()
@@ -260,12 +241,13 @@ impl GenericCursor {
             }
         }
 
+        let base = CursorImages::try_from(base)?;
+
         if scaled_ungrouped.is_empty() {
-            return Ok(Self::new(base.try_into()?));
+            return Ok(Self::new_unscaled(base));
         }
 
         scaled_ungrouped.sort_unstable_by_key(CursorImage::dimensions);
-
         let scaled_ungrouped = scaled_ungrouped;
         let mut scaled = Vec::new();
         let mut buffer = Vec::new();
@@ -286,7 +268,7 @@ impl GenericCursor {
             scaled.push(buffer.try_into()?);
         }
 
-        Self::new_with_scaled(base.try_into()?, scaled)
+        Self::new(base, scaled)
     }
 
     /// Saves `self` to `path` as Xcursor.
