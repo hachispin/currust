@@ -417,10 +417,8 @@ impl AniFile {
             )
         }
 
-        // because rate is per-frame timings where indices should match
-        // but unsure
         if let Some(rate) = &ani.rate
-            && rate.data.len() != num_frames
+            && rate.data.len() != num_steps
         {
             eprintln!(
                 "[warning] 'rate' chunk's length ({}) differs from num_frames={}",
