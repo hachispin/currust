@@ -321,7 +321,7 @@ impl GenericCursor {
     /// for [`Self::joined_images`] or equivalent.
     #[must_use]
     pub const fn num_images(&self) -> usize {
-        self.base.len() + self.scaled.len()
+        (self.scaled.len() + 1) * self.base.len()
     }
 
     /// Returns an iterator joining `base` and `scaled`, flattened.
