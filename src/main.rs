@@ -19,11 +19,11 @@ fn parse_cursor(args: &ParsedArgs, cursor: &CursorPath) -> Result<()> {
 
     args.downscalings
         .iter()
-        .try_for_each(|&ds| cursor.add_scale(ds, Downscale))?;
+        .try_for_each(|&ds| cursor.add_scale(ds, Downscale, args.downscale_with))?;
 
     args.upscalings
         .iter()
-        .try_for_each(|&us| cursor.add_scale(us, Upscale))?;
+        .try_for_each(|&us| cursor.add_scale(us, Upscale, args.upscale_with))?;
 
     cursor.save_as_xcursor(out)?;
 

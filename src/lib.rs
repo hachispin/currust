@@ -16,7 +16,6 @@
 
 pub mod cli;
 pub mod cursors;
-pub mod scaling;
 
 /// The project root for tests.
 ///

@@ -17,6 +17,7 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use binrw::BinWrite;
+use fast_image_resize::ResizeAlg;
 use ico::IconDir;
 
 /// Represents a generic cursor.
@@ -104,7 +105,12 @@ impl GenericCursor {
     ///
     /// If the newly made [`CursorImage`] doesn't
     /// have a unique (canon) scale factor.
-    pub fn add_scale(&mut self, scale_factor: u32, scale_type: ScalingType) -> Result<()> {
+    pub fn add_scale(
+        &mut self,
+        scale_factor: u32,
+        scale_type: ScalingType,
+        algorithm: ResizeAlg,
+    ) -> Result<()> {
         let canon_scale_factor: f64 = match scale_type {
             ScalingType::Upscale => f64::from(scale_factor),
             ScalingType::Downscale => 1.0 / f64::from(scale_factor),
@@ -120,7 +126,7 @@ impl GenericCursor {
             .base
             .inner()
             .iter()
-            .map(|c| c.scaled_to(scale_factor, scale_type))
+            .map(|c| c.scaled_to(scale_factor, algorithm))
             .collect::<Result<_>>()?;
 
         self.scaled.push(scaled_images.try_into()?);

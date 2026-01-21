@@ -9,8 +9,9 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use dialoguer::Confirm;
+use fast_image_resize::{FilterType, ResizeAlg};
 
 /// Raw arguments from CLI. Has the [`Parser`] trait.
 #[derive(Parser)]
@@ -32,6 +33,20 @@ pub struct Args {
     /// can be slower on lighter ones (e.g, parsing 25 cursors or less).
     #[arg(long)]
     parallel: bool,
+
+    /// Uses the provided scaling algorithm for scaling.
+    ///
+    /// This is overriden by `upscale_with` and `downscale_with`, if set.
+    #[arg(long, default_value = "lanczos3")]
+    scale_with: ScalingAlgorithm,
+
+    /// Uses the provided scaling algorithm for upscaling.
+    #[arg(long)]
+    upscale_with: Option<ScalingAlgorithm>,
+
+    /// Uses the provided scaling algorithm for downscaling.
+    #[arg(long)]
+    downscale_with: Option<ScalingAlgorithm>,
 
     /// A list of scale factors to upscale the original cursor to.
     ///
@@ -61,6 +76,38 @@ impl Args {
     pub const MAX_DOWNSCALE_FACTOR: u32 = 5;
 }
 
+/// User-facing enum for usable scaling algorithms.
+#[derive(Debug, Clone, ValueEnum)]
+enum ScalingAlgorithm {
+    Nearest,
+    Box,
+    Bilinear,
+    Mitchell,
+    Lanczos3,
+}
+
+// not meant to be used directly; use ResizeAlg impl.
+impl From<&ScalingAlgorithm> for FilterType {
+    fn from(alg: &ScalingAlgorithm) -> Self {
+        match alg {
+            ScalingAlgorithm::Nearest => unreachable!(),
+            ScalingAlgorithm::Box => Self::Box,
+            ScalingAlgorithm::Bilinear => Self::Bilinear,
+            ScalingAlgorithm::Mitchell => Self::Mitchell,
+            ScalingAlgorithm::Lanczos3 => Self::Lanczos3,
+        }
+    }
+}
+
+impl From<&ScalingAlgorithm> for ResizeAlg {
+    fn from(alg: &ScalingAlgorithm) -> Self {
+        match alg {
+            ScalingAlgorithm::Nearest => Self::Nearest,
+            v => Self::Convolution(FilterType::from(v)),
+        }
+    }
+}
+
 /// A path and whether if it's ANI or CUR.
 #[derive(Debug)]
 pub struct CursorPath {
@@ -77,6 +124,10 @@ pub struct ParsedArgs {
     pub cursor_paths: Vec<CursorPath>,
     /// Whether to use `rayon` or not.
     pub use_rayon: bool,
+    /// Algorithm for upscaling.
+    pub upscale_with: ResizeAlg,
+    /// Algorithm for downscaling.
+    pub downscale_with: ResizeAlg,
     /// Scale factors.
     pub upscalings: Vec<u32>,
     /// Reciprocal scale factors.
@@ -115,6 +166,10 @@ impl ParsedArgs {
 
         let out = PathBuf::from(&args.out);
         fs::create_dir_all(&out).with_context(|| format!("failed to create out={}", args.out))?;
+
+        let upscale_with = ResizeAlg::from(args.upscale_with.as_ref().unwrap_or(&args.scale_with));
+        let downscale_with =
+            ResizeAlg::from(args.downscale_with.as_ref().unwrap_or(&args.scale_with));
 
         // deduplicate scaling factors
         let mut upscalings = args.upscalings;
@@ -161,6 +216,8 @@ impl ParsedArgs {
         Ok(Self {
             cursor_paths,
             use_rayon,
+            upscale_with,
+            downscale_with,
             upscalings,
             downscalings,
             out,

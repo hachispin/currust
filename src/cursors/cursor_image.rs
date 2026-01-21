@@ -2,11 +2,13 @@
 //!
 //! These represents the frames of static/animated cursors.
 
-use crate::scaling::{scale_box_average, scale_nearest};
-
 use core::fmt;
 
 use anyhow::{Context, Result, bail};
+use fast_image_resize::{
+    PixelType, ResizeAlg, ResizeOptions, Resizer,
+    images::{Image, ImageRef},
+};
 use ico::{IconDirEntry, ResourceType};
 
 /// Used in scaling functions.
@@ -128,62 +130,63 @@ impl CursorImage {
     ///
     /// If `scale_factor` is greater than [`Self::MAX_UPSCALE_FACTOR`]
     /// or [`Self::MAX_DOWNSCALE_FACTOR`], depending on `scaling_type`.
-    pub fn scaled_to(&self, scale_factor: u32, scale_type: ScalingType) -> Result<Self> {
-        let (width, height) = self.dimensions();
-        let (scaled_width, scaled_height) = match scale_type {
-            ScalingType::Upscale => (width * scale_factor, height * scale_factor),
-            ScalingType::Downscale => (width / scale_factor, height / scale_factor),
-        };
-
-        let scaling_algorithm = match scale_type {
-            ScalingType::Upscale => scale_nearest,
-            ScalingType::Downscale => scale_box_average,
-        };
-
-        let scaled_rgba =
-            scaling_algorithm(self.rgba(), width, height, scaled_width, scaled_height);
-
-        let (hotspot_x, hotspot_y) = self.hotspot();
-        let (scaled_hotspot_x, scaled_hotspot_y) = match scale_type {
-            ScalingType::Upscale => (hotspot_x * scale_factor, hotspot_y * scale_factor),
-            ScalingType::Downscale => (hotspot_x / scale_factor, hotspot_y / scale_factor),
-        };
+    pub fn scaled_to(&self, scale_factor: u32, algorithm: ResizeAlg) -> Result<Self> {
+        let (w1, h1) = self.dimensions();
+        let (w2, h2) = Self::scale_point((w1, h1), scale_factor);
+        let (hx2, hy2) = Self::scale_point(self.hotspot(), scale_factor);
+        let src = ImageRef::new(w1, h1, self.rgba(), PixelType::U8x4)?;
+        let mut dst = Image::new(w2, h2, PixelType::U8x4);
+        let mut resizer = Resizer::new();
+        let options = ResizeOptions::new().resize_alg(algorithm);
+        resizer.resize(&src, &mut dst, &options)?;
 
         Ok(Self {
-            width: scaled_width,
-            height: scaled_height,
-            hotspot_x: scaled_hotspot_x,
-            hotspot_y: scaled_hotspot_y,
-            rgba: scaled_rgba,
+            width: w2,
+            height: h2,
+            hotspot_x: hx2,
+            hotspot_y: hy2,
+            rgba: dst.into_vec(),
             delay: self.delay,
         })
     }
 
+    /// Helper function for [`Self::scaled_to`].
+    #[inline]
+    #[must_use]
+    pub const fn scale_point(point: (u32, u32), scale_factor: u32) -> (u32, u32) {
+        (point.0 * scale_factor, point.1 * scale_factor)
+    }
+
     /// Returns image dimensions as (width, height).
+    #[inline]
     #[must_use]
     pub const fn dimensions(&self) -> (u32, u32) {
         (self.width, self.height)
     }
 
     /// Returns hotspot coordinates as (x, y).
+    #[inline]
     #[must_use]
     pub const fn hotspot(&self) -> (u32, u32) {
         (self.hotspot_x, self.hotspot_y)
     }
 
     /// Returns the delay in milliseconds.
+    #[inline]
     #[must_use]
     pub const fn delay(&self) -> u32 {
         self.delay
     }
 
     /// Returns a reference to the stored RGBA.
+    #[inline]
     #[must_use]
     pub fn rgba(&self) -> &[u8] {
         &self.rgba
     }
 
     /// Returns the max of width and height.
+    #[inline]
     #[must_use]
     pub fn nominal_size(&self) -> u32 {
         self.dimensions().0.max(self.dimensions().1)
