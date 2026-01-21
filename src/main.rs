@@ -1,6 +1,6 @@
 use currust::{
     cli::{Args, CursorPath, ParsedArgs},
-    cursors::{cursor_image::ScalingType::*, generic_cursor::GenericCursor},
+    cursors::generic_cursor::GenericCursor,
 };
 
 use anyhow::Result;
@@ -17,13 +17,15 @@ fn parse_cursor(args: &ParsedArgs, cursor: &CursorPath) -> Result<()> {
         GenericCursor::from_cur_path(&cursor.path)
     }?;
 
-    args.downscalings
-        .iter()
-        .try_for_each(|&ds| cursor.add_scale(ds, Downscale, args.downscale_with))?;
+    args.scale_to.iter().try_for_each(|&sf| {
+        let alg = if sf > 1.0 {
+            args.upscale_with
+        } else {
+            args.downscale_with
+        };
 
-    args.upscalings
-        .iter()
-        .try_for_each(|&us| cursor.add_scale(us, Upscale, args.upscale_with))?;
+        cursor.add_scale(sf, alg)
+    })?;
 
     cursor.save_as_xcursor(out)?;
 

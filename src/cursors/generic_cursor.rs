@@ -4,7 +4,7 @@
 
 use super::{
     ani::AniFile,
-    cursor_image::{CursorImage, CursorImages, ScalingType},
+    cursor_image::{CursorImage, CursorImages},
     xcursor::Xcursor,
 };
 
@@ -105,22 +105,12 @@ impl GenericCursor {
     ///
     /// If the newly made [`CursorImage`] doesn't
     /// have a unique (canon) scale factor.
-    pub fn add_scale(
-        &mut self,
-        scale_factor: u32,
-        scale_type: ScalingType,
-        algorithm: ResizeAlg,
-    ) -> Result<()> {
-        let canon_scale_factor: f64 = match scale_type {
-            ScalingType::Upscale => f64::from(scale_factor),
-            ScalingType::Downscale => 1.0 / f64::from(scale_factor),
-        };
-
-        if self.scale_factors.contains(&canon_scale_factor) {
+    pub fn add_scale(&mut self, scale_factor: f64, algorithm: ResizeAlg) -> Result<()> {
+        if self.scale_factors.contains(&scale_factor) {
             bail!("scale_factor={scale_factor} already added");
         }
 
-        self.scale_factors.push(canon_scale_factor);
+        self.scale_factors.push(scale_factor);
 
         let scaled_images: Vec<CursorImage> = self
             .base

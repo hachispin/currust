@@ -2,7 +2,7 @@
 //!
 //! These represents the frames of static/animated cursors.
 
-use core::fmt;
+use std::fmt;
 
 use anyhow::{Context, Result, bail};
 use fast_image_resize::{
@@ -10,14 +10,6 @@ use fast_image_resize::{
     images::{Image, ImageRef},
 };
 use ico::{IconDirEntry, ResourceType};
-
-/// Used in scaling functions.
-#[derive(Debug, Clone, Copy)]
-#[allow(missing_docs)]
-pub enum ScalingType {
-    Upscale,
-    Downscale,
-}
 
 /// Represents a generic cursor *image*.
 ///
@@ -130,7 +122,7 @@ impl CursorImage {
     ///
     /// If `scale_factor` is greater than [`Self::MAX_UPSCALE_FACTOR`]
     /// or [`Self::MAX_DOWNSCALE_FACTOR`], depending on `scaling_type`.
-    pub fn scaled_to(&self, scale_factor: u32, algorithm: ResizeAlg) -> Result<Self> {
+    pub fn scaled_to(&self, scale_factor: f64, algorithm: ResizeAlg) -> Result<Self> {
         let (w1, h1) = self.dimensions();
         let (w2, h2) = Self::scale_point((w1, h1), scale_factor);
         let (hx2, hy2) = Self::scale_point(self.hotspot(), scale_factor);
@@ -153,8 +145,12 @@ impl CursorImage {
     /// Helper function for [`Self::scaled_to`].
     #[inline]
     #[must_use]
-    pub const fn scale_point(point: (u32, u32), scale_factor: u32) -> (u32, u32) {
-        (point.0 * scale_factor, point.1 * scale_factor)
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    pub fn scale_point(point: (u32, u32), scale_factor: f64) -> (u32, u32) {
+        (
+            (f64::from(point.0) * scale_factor) as u32,
+            (f64::from(point.1) * scale_factor) as u32,
+        )
     }
 
     /// Returns image dimensions as (width, height).

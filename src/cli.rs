@@ -10,7 +10,6 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, ValueEnum};
-use dialoguer::Confirm;
 use fast_image_resize::{FilterType, ResizeAlg};
 
 /// Raw arguments from CLI. Has the [`Parser`] trait.
@@ -37,34 +36,31 @@ pub struct Args {
     /// Uses the provided scaling algorithm for scaling.
     ///
     /// This is overriden by `upscale_with` and `downscale_with`, if set.
-    #[arg(long, default_value = "lanczos3")]
+    #[arg(long, default_value = "lanczos3", value_name = "ALGORITHM")]
     scale_with: ScalingAlgorithm,
 
     /// Uses the provided scaling algorithm for upscaling.
-    #[arg(long)]
+    #[arg(long, value_name = "ALGORITHM")]
     upscale_with: Option<ScalingAlgorithm>,
 
     /// Uses the provided scaling algorithm for downscaling.
-    #[arg(long)]
+    #[arg(long, value_name = "ALGORITHM")]
     downscale_with: Option<ScalingAlgorithm>,
 
-    /// A list of scale factors to upscale the original cursor to.
+    /// A list of scale factors to scale the original cursor to.
+    ///
+    /// Scale factors can be floats. 0.0, 1.0, and any negative
+    /// values are considered invalid scale factors.
     ///
     /// All scaled variations and the original cursor
-    /// are included in the produced Xcursor files.
-    #[arg(long, value_parser, num_args(1..), value_name = "U32_SCALE_FACTORS")]
-    upscalings: Vec<u32>,
-    /// A list of scale factors to downscale the original cursor to.
-    ///
-    /// All scaled variations and the original cursor
-    /// are included in the produced Xcursor files.
-    #[arg(long, value_parser, num_args(1..), value_name = "U32_SCALE_FACTORS")]
-    downscalings: Vec<u32>,
+    /// are included in the produced Xcursor file(s).
+    #[arg(long, value_parser, num_args(1..), value_name = "F64_SCALE_FACTORS")]
+    scale_to: Vec<f64>,
 
     /// Where to place parsed Xcursors.
     ///
     /// If the provided path doesn't exist yet, this
-    /// attempts to create them (including parents).
+    /// attempts to create it, including parents.
     #[arg(short, long, default_value = "./")]
     out: String,
 }
@@ -124,14 +120,12 @@ pub struct ParsedArgs {
     pub cursor_paths: Vec<CursorPath>,
     /// Whether to use `rayon` or not.
     pub use_rayon: bool,
+    /// Scale factors.
+    pub scale_to: Vec<f64>,
     /// Algorithm for upscaling.
     pub upscale_with: ResizeAlg,
     /// Algorithm for downscaling.
     pub downscale_with: ResizeAlg,
-    /// Scale factors.
-    pub upscalings: Vec<u32>,
-    /// Reciprocal scale factors.
-    pub downscalings: Vec<u32>,
     /// Where to put parsed Xcursor files.
     pub out: PathBuf,
 }
@@ -141,6 +135,10 @@ impl ParsedArgs {
     ///
     /// This may also do extra work, like extracting
     /// all paths to CUR for the provided path.
+    ///
+    /// ## Panics
+    ///
+    /// If `NaN` is somehow entered as a scale factor.
     ///
     /// ## Errors
     ///
@@ -171,55 +169,26 @@ impl ParsedArgs {
         let downscale_with =
             ResizeAlg::from(args.downscale_with.as_ref().unwrap_or(&args.scale_with));
 
-        // deduplicate scaling factors
-        let mut upscalings = args.upscalings;
-        let mut downscalings = args.downscalings;
+        // deduplicate and validate scaling factors
+        let mut scale_to = args.scale_to;
 
-        upscalings.sort_unstable();
-        downscalings.sort_unstable();
-        upscalings.dedup();
-        downscalings.dedup();
-
-        if upscalings
+        if scale_to
             .iter()
-            .chain(&downscalings)
-            .any(|sf| [0, 1].contains(sf))
+            .any(|&sf| sf <= 0.1 || (sf - 1.0).abs() <= 0.1)
         {
-            bail!("scaling factors cannot include 1 or 0");
+            bail!("invalid scale factors: can't (w/ 0.1 margin) include 1.0, 0.0, or be negative");
         }
 
-        if upscalings.iter().max() > Some(&Args::MAX_UPSCALE_FACTOR) {
-            bail!(
-                "max upscaling factor can't be greater than {}",
-                Args::MAX_UPSCALE_FACTOR
-            );
-        }
-
-        if downscalings.iter().max() > Some(&Args::MAX_DOWNSCALE_FACTOR) {
-            bail!(
-                "max downscaling factor can't be greater than {}",
-                Args::MAX_DOWNSCALE_FACTOR
-            );
-        }
-
-        if upscalings.len() >= 5
-            && !Confirm::new()
-                .with_prompt(
-                    "you've chosen more than five upscalings, this may create large files--continue?",
-                )
-                .default(true)
-                .interact()?
-        {
-            std::process::exit(0);
-        }
+        // we can be pretty sure NaN isn't in here
+        scale_to.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+        scale_to.dedup();
 
         Ok(Self {
             cursor_paths,
             use_rayon,
+            scale_to,
             upscale_with,
             downscale_with,
-            upscalings,
-            downscalings,
             out,
         })
     }
