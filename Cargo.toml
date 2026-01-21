@@ -1,6 +1,6 @@
 [package]
 name = "currust"
-version = "0.1.0"
+version = "0.5.0"
 edition = "2024"
 description = "A tool to convert Windows cursors to Linux"
 authors = ["hachispin"]
