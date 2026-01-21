@@ -9,7 +9,6 @@ authors = ["hachispin"]
 anyhow = "1.0.100"
 binrw = "0.15.0"
 clap = { version = "4.5.53", features = ["derive"] }
-dialoguer = "0.12.0"
 fast_image_resize = { version = "6.0.0", features = ["rayon"] }
 ico = "0.5.0"
 rayon = "1.11.0"
