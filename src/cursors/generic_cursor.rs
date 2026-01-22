@@ -21,9 +21,6 @@ use fast_image_resize::ResizeAlg;
 use ico::IconDir;
 
 /// Represents a generic cursor.
-///
-/// `images` is guaranteed to not have any images
-/// that share the same dimensions.
 #[derive(Debug)]
 pub struct GenericCursor {
     /// The base images, used for scaling.
@@ -31,12 +28,10 @@ pub struct GenericCursor {
 
     /// Scaled cursors derived from `base`.
     ///
-    /// Each vector should have the same length as `base`.
+    /// Each vector has the same length as `base`.
     scaled: Vec<CursorImages>,
 
     /// Used scale factors. Always includes 1.0.
-    ///
-    /// Downscaled factors are added as 1/SF.
     scale_factors: Vec<f64>,
 }
 
@@ -46,7 +41,7 @@ impl GenericCursor {
     /// ## Errors
     ///
     /// - If `base_images` or `scaled_images` is empty.
-    /// - If propagated from `CursorImages` construction.
+    /// - If propagated from [`CursorImages`] construction.
     fn new(base_images: CursorImages, scaled_images: Vec<CursorImages>) -> Result<Self> {
         if scaled_images.is_empty() {
             bail!("scaled_images can't be empty, call Self::new_unscaled() if this is expected");
@@ -321,7 +316,7 @@ impl GenericCursor {
     /// Returns the number of `base` and `scaled` images.
     ///
     /// Prefer this over calling [`Iterator::count`]
-    /// for [`Self::joined_images`] or equivalent.
+    /// on [`Self::joined_images`] or equivalent.
     #[inline]
     #[must_use]
     pub const fn num_images(&self) -> usize {

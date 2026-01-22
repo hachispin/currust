@@ -12,9 +12,6 @@ use fast_image_resize::{
 use ico::{IconDirEntry, ResourceType};
 
 /// Represents a generic cursor *image*.
-///
-/// An actual cursor is usually expressed as a
-/// vector of cursor images. See [`GenericCursor`].
 #[derive(Clone)]
 pub struct CursorImage {
     width: u32,
@@ -113,15 +110,11 @@ impl CursorImage {
         )
     }
 
-    /// Returns a new [`CursorImage`] scaled up/down to `scale_factor`.
-    ///
-    /// - Upscaling uses [nearest-neighbour](https://en.wikipedia.org/wiki/Image_scaling#Nearest-neighbor_interpolation).
-    /// - Downscaling uses [box averaging](https://en.wikipedia.org/wiki/Image_scaling#Box_sampling).
+    /// Returns a new [`CursorImage`] scaled to `scale_factor`.
     ///
     /// ## Errors
     ///
-    /// If `scale_factor` is greater than [`Self::MAX_UPSCALE_FACTOR`]
-    /// or [`Self::MAX_DOWNSCALE_FACTOR`], depending on `scaling_type`.
+    /// If resizing or [`Image`]/[`ImageRef`] constructors fail.
     pub fn scaled_to(&self, scale_factor: f64, algorithm: ResizeAlg) -> Result<Self> {
         let (w1, h1) = self.dimensions();
         let (w2, h2) = Self::scale_point((w1, h1), scale_factor);
@@ -219,13 +212,13 @@ pub(super) struct CursorImages {
 }
 
 impl CursorImages {
-    /// Returns a reference to the first stored element in [`Self::inner`].
+    /// Returns a reference to the first stored element in `inner`.
     #[inline]
     pub fn first(&self) -> &CursorImage {
         &self.inner[0]
     }
 
-    /// Equivalent to `self.inner.len()`.
+    /// Equivalent to `inner.len()`.
     #[inline]
     pub const fn len(&self) -> usize {
         self.inner.len()
