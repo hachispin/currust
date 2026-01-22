@@ -136,7 +136,6 @@ impl CursorImage {
     }
 
     /// Helper function for [`Self::scaled_to`].
-    #[inline]
     #[must_use]
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub fn scale_point(point: (u32, u32), scale_factor: f64) -> (u32, u32) {
@@ -147,35 +146,30 @@ impl CursorImage {
     }
 
     /// Returns image dimensions as (width, height).
-    #[inline]
     #[must_use]
     pub const fn dimensions(&self) -> (u32, u32) {
         (self.width, self.height)
     }
 
     /// Returns hotspot coordinates as (x, y).
-    #[inline]
     #[must_use]
     pub const fn hotspot(&self) -> (u32, u32) {
         (self.hotspot_x, self.hotspot_y)
     }
 
     /// Returns the delay in milliseconds.
-    #[inline]
     #[must_use]
     pub const fn delay(&self) -> u32 {
         self.delay
     }
 
     /// Returns a reference to the stored RGBA.
-    #[inline]
     #[must_use]
     pub fn rgba(&self) -> &[u8] {
         &self.rgba
     }
 
     /// Returns the max of width and height.
-    #[inline]
     #[must_use]
     pub fn nominal_size(&self) -> u32 {
         self.dimensions().0.max(self.dimensions().1)
@@ -213,19 +207,16 @@ pub(super) struct CursorImages {
 
 impl CursorImages {
     /// Returns a reference to the first stored element in `inner`.
-    #[inline]
     pub fn first(&self) -> &CursorImage {
         &self.inner[0]
     }
 
     /// Equivalent to `inner.len()`.
-    #[inline]
     pub const fn len(&self) -> usize {
         self.inner.len()
     }
 
     /// Accessor for `inner`.
-    #[inline]
     pub fn inner(&self) -> &[CursorImage] {
         &self.inner
     }

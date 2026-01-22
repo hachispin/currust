@@ -83,7 +83,6 @@ impl GenericCursor {
     }
 
     /// Constructor without `scaled`.
-    #[inline]
     fn new_unscaled(base_images: CursorImages) -> Self {
         Self {
             base: base_images,
@@ -299,7 +298,6 @@ impl GenericCursor {
     }
 
     /// Trivial accessor for `base` field.
-    #[inline]
     #[must_use]
     pub fn base_images(&self) -> &[CursorImage] {
         self.base.inner()
@@ -308,7 +306,6 @@ impl GenericCursor {
     /// Trivial accessor for `scaled` field.
     ///
     /// This returns an iterator over `&[CursorImage]`.
-    #[inline]
     pub fn scaled_images(&self) -> impl Iterator<Item = &[CursorImage]> {
         self.scaled.iter().map(CursorImages::inner)
     }
@@ -317,14 +314,12 @@ impl GenericCursor {
     ///
     /// Prefer this over calling [`Iterator::count`]
     /// on [`Self::joined_images`] or equivalent.
-    #[inline]
     #[must_use]
     pub const fn num_images(&self) -> usize {
         (self.scaled.len() + 1) * self.base.len()
     }
 
     /// Returns an iterator joining `base` and `scaled`, flattened.
-    #[inline]
     pub fn joined_images(&self) -> impl Iterator<Item = &CursorImage> {
         self.base
             .inner()
