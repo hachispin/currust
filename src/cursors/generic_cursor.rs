@@ -106,8 +106,10 @@ impl GenericCursor {
     /// If the newly made [`CursorImage`] doesn't
     /// have a unique (canon) scale factor.
     pub fn add_scale(&mut self, scale_factor: f64, algorithm: ResizeAlg) -> Result<()> {
+        // some cursors already store scaled versions
         if self.scale_factors.contains(&scale_factor) {
-            bail!("scale_factor={scale_factor} already added");
+            eprintln!("scale_factor={scale_factor} already added, skipping");
+            return Ok(());
         }
 
         self.scale_factors.push(scale_factor);
@@ -243,6 +245,7 @@ impl GenericCursor {
             return Ok(Self::new_unscaled(base));
         }
 
+        // could use hashmap here but ehh
         scaled_ungrouped.sort_unstable_by_key(CursorImage::dimensions);
         let scaled_ungrouped = scaled_ungrouped;
         let mut scaled = Vec::new();
@@ -276,6 +279,8 @@ impl GenericCursor {
         let path = path.as_ref();
         let mut file = File::create(path)?;
         let xcursor = Xcursor::new(self)?;
+
+        // this can create partial writes. consider fixing
         xcursor.write(&mut file)?;
 
         Ok(())
@@ -299,6 +304,7 @@ impl GenericCursor {
     }
 
     /// Trivial accessor for `base` field.
+    #[inline]
     #[must_use]
     pub fn base_images(&self) -> &[CursorImage] {
         self.base.inner()
@@ -307,6 +313,7 @@ impl GenericCursor {
     /// Trivial accessor for `scaled` field.
     ///
     /// This returns an iterator over `&[CursorImage]`.
+    #[inline]
     pub fn scaled_images(&self) -> impl Iterator<Item = &[CursorImage]> {
         self.scaled.iter().map(CursorImages::inner)
     }
@@ -315,12 +322,14 @@ impl GenericCursor {
     ///
     /// Prefer this over calling [`Iterator::count`]
     /// for [`Self::joined_images`] or equivalent.
+    #[inline]
     #[must_use]
     pub const fn num_images(&self) -> usize {
         (self.scaled.len() + 1) * self.base.len()
     }
 
     /// Returns an iterator joining `base` and `scaled`, flattened.
+    #[inline]
     pub fn joined_images(&self) -> impl Iterator<Item = &CursorImage> {
         self.base
             .inner()
