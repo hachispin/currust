@@ -15,36 +15,36 @@ pub enum CursorType {
     // using https://github.com/khayalhus/win2xcur-batch/blob/main/map.json
     /// The default, left pointer.
     Arrow,
-    /// Displayed when hovering over a link, usually a hand (👆).
+    /// Displayed when hovering over a link, usually a hand ( 👆 ).
     Hand,
-    /// Displayed when something's loading, usually a spinning wheel (🔃).
+    /// Displayed when something's loading, usually a spinning wheel ( 🔃 ).
     Wait,
-    /// Usually a question mark. (?, ❔, ❓)
+    /// Usually a question mark. ( ?/❔/❓ )
     Help,
     /// Displayed when hovering over a text field, usually looks like an "I".
     Text,
-    /// Displayed when drawing, usually a pencil. (✏️)
+    /// Displayed when drawing, usually a pencil. ( ✏️ )
     Pencil,
-    /// Usually a "plus symbol". (+/➕/✛)
+    /// Usually a "plus symbol". ( +/➕/✛ )
     Crosshair,
-    /// Usually a "no symbol". (🚫)
+    /// Usually a "no symbol". ( 🚫 )
     Forbidden,
     /// Displayed when scaling vertically, usually
-    /// a bi-directional, vertical arrow. (↕)
+    /// a bi-directional, vertical arrow. ( ↕ )
     NsResize,
     /// Displayed when scaling horizontally, usually
-    /// a bi-directional, horizontal arrow. (↔)
+    /// a bi-directional, horizontal arrow. ( ↔ )
     EwResize,
     /// Displayed when scaling from the bottom-right/top-left
-    /// corner, usually a bi-directional, diagonal arrow. (⤡ )
+    /// corner, usually a bi-directional, diagonal arrow. ( ⤡ )
     NwseResize,
     /// Displayed when scaling from the top-right/bottom-left corner,
-    /// usually a bi-directional, diagonal arrow. (⤢ )
+    /// usually a bi-directional, diagonal arrow. ( ⤢ )
     NeswResize,
     /// Displayed when moving something, usually two bi-directional
     /// vertical and horizontal arrows, stacked on top of each other.
     Move,
-    /// Usually a centered pointer. (↑)
+    /// Usually a centered pointer. ( ↑ )
     ///
     /// This has a lot of symlinks to some cursors that aren't really
     /// closely related, since this is mapping "alternate" from Windows.
@@ -56,7 +56,7 @@ impl CursorType {
 }
 
 #[derive(Debug)]
-pub(super) struct TypedCursor {
+pub struct TypedCursor {
     inner: GenericCursor,
     r#type: CursorType,
     symlinks: &'static [&'static str],
@@ -72,10 +72,26 @@ impl TypedCursor {
             symlinks,
         }
     }
+
+    fn save_as_xcursor(&self, dir: &Path) -> Result<()> {
+        if !dir.is_dir() {
+            bail!("path={} must be dir", dir.display());
+        }
+
+        self.inner.save_as_xcursor(&dir.join(self.symlinks[0]))?;
+
+        // relative symlink
+        for symlink in &self.symlinks[1..] {
+            #[cfg(not(target_os = "windows"))]
+            unix::fs::symlink(self.symlinks[0], dir.join(symlink))?;
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
-pub(super) struct CursorTheme {
+pub struct CursorTheme {
     cursors: Vec<TypedCursor>,
 }
 
@@ -87,8 +103,9 @@ impl CursorTheme {
 
         if cursors.len() > CursorType::NUM_VARIANTS {
             bail!(
-                "too many cursors; expected {} max for theme",
-                CursorType::NUM_VARIANTS
+                "too many cursors; expected {} max for theme, got {}",
+                CursorType::NUM_VARIANTS,
+                cursors.len(),
             );
         }
 
@@ -104,19 +121,58 @@ impl CursorTheme {
         Ok(Self { cursors })
     }
 
-    fn save_as_xcursor(&self, dir: &Path) -> Result<()> {
+    pub fn from_theme_dir(dir: &Path) -> Result<Self> {
+        // EXPERIMENTAL !!
+        const VARIANTS: [CursorType; 14] = [
+            CursorType::Arrow,
+            CursorType::Hand,
+            CursorType::Wait,
+            CursorType::Help,
+            CursorType::Text,
+            CursorType::Pencil,
+            CursorType::Crosshair,
+            CursorType::Forbidden,
+            CursorType::NsResize,
+            CursorType::EwResize,
+            CursorType::NwseResize,
+            CursorType::NeswResize,
+            CursorType::Move,
+            CursorType::CenterPtr,
+        ];
+
         if !dir.is_dir() {
-            bail!("theme must be written to dir (path={})", dir.display());
+            bail!("theme path must be dir");
         }
 
-        for cursor in &self.cursors {
-            let cursor_path = dir.join(cursor.symlinks[0]);
-            cursor.inner.save_as_xcursor(&cursor_path)?;
+        let mut cursor_paths = Vec::new();
+        for entry in dir.read_dir()? {
+            let path = entry?.path();
+            eprintln!("entry_path={}", path.display());
 
-            for symlink in &cursor.symlinks[1..] {
-                let symlink_path = dir.join(symlink);
-                unix::fs::symlink(&cursor_path, symlink_path)?;
+            if let Some(ext) = path.extension()
+                && ext == "ani"
+            {
+                cursor_paths.push(path);
             }
+        }
+
+        let mut cursors = Vec::with_capacity(VARIANTS.len());
+        for (cursor_path, cursor_type) in cursor_paths.iter().zip(VARIANTS) {
+            let cursor = GenericCursor::from_ani_path(cursor_path)?;
+            let typed_cursor = TypedCursor::new(cursor, cursor_type);
+            cursors.push(typed_cursor);
+        }
+
+        Ok(Self { cursors })
+    }
+
+    pub fn save_as_xcursors(&self, dir: &Path) -> Result<()> {
+        // could create copies instead but that doesn't scale well...
+        #[cfg(target_os = "windows")]
+        eprintln!("[warning] symlinks won't be created as we're on windows");
+
+        for cursor in &self.cursors {
+            cursor.save_as_xcursor(dir)?;
         }
 
         Ok(())
