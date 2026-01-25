@@ -4,7 +4,11 @@
 use super::generic_cursor::GenericCursor;
 use anyhow::{Context, Result, anyhow, bail};
 use binrw::BinWrite;
-use std::{fs::File, os::unix, path::Path};
+use std::{
+    fs::File,
+    os::unix,
+    path::{Path, PathBuf},
+};
 
 /// Represents the possible cursors that exist in both Windows and Linux (X11).
 ///
@@ -55,6 +59,7 @@ impl CursorType {
     const NUM_VARIANTS: usize = 14;
 }
 
+/// A [`GenericCursor`] with a [`CursorType`].
 #[derive(Debug)]
 pub struct TypedCursor {
     inner: GenericCursor,
@@ -90,6 +95,7 @@ impl TypedCursor {
     }
 }
 
+/// Represents a generic cursor theme.
 #[derive(Debug)]
 pub struct CursorTheme {
     cursors: Vec<TypedCursor>,
@@ -121,51 +127,12 @@ impl CursorTheme {
         Ok(Self { cursors })
     }
 
-    pub fn from_theme_dir(dir: &Path) -> Result<Self> {
-        // EXPERIMENTAL !!
-        const VARIANTS: [CursorType; 14] = [
-            CursorType::Arrow,
-            CursorType::Hand,
-            CursorType::Wait,
-            CursorType::Help,
-            CursorType::Text,
-            CursorType::Pencil,
-            CursorType::Crosshair,
-            CursorType::Forbidden,
-            CursorType::NsResize,
-            CursorType::EwResize,
-            CursorType::NwseResize,
-            CursorType::NeswResize,
-            CursorType::Move,
-            CursorType::CenterPtr,
-        ];
-
-        if !dir.is_dir() {
-            bail!("theme path must be dir");
-        }
-
-        let mut cursor_paths = Vec::new();
-        for entry in dir.read_dir()? {
-            let path = entry?.path();
-            eprintln!("entry_path={}", path.display());
-
-            if let Some(ext) = path.extension()
-                && ext == "ani"
-            {
-                cursor_paths.push(path);
-            }
-        }
-
-        let mut cursors = Vec::with_capacity(VARIANTS.len());
-        for (cursor_path, cursor_type) in cursor_paths.iter().zip(VARIANTS) {
-            let cursor = GenericCursor::from_ani_path(cursor_path)?;
-            let typed_cursor = TypedCursor::new(cursor, cursor_type);
-            cursors.push(typed_cursor);
-        }
-
-        Ok(Self { cursors })
+    /// Reads provided cursors as a path using `inf_path` for mappings.
+    pub fn from_theme_dir(cursor_paths: &[&Path], inf_path: &Path) -> Result<Self> {
+        todo!();
     }
 
+    /// Saves current theme.
     pub fn save_as_xcursors(&self, dir: &Path) -> Result<()> {
         // could create copies instead but that doesn't scale well...
         #[cfg(target_os = "windows")]
@@ -238,7 +205,7 @@ mod symlinks {
         "crosshair",
         "diamond_cross",
         "plus",
-        "size_all",
+        // "size_all", -- better as move
         "tcross",
     ];
 
@@ -254,6 +221,7 @@ mod symlinks {
     ];
 
     pub const NS_RESIZE: &[&str] = &[
+        "top_side",
         "bottom_side",
         "n-resize",
         "ns-resize",
@@ -310,6 +278,7 @@ mod symlinks {
     ];
 
     pub const MOVE: &[&str] = &[
+        "size_all",
         "all-scroll",
         "closedhand",
         "dnd-move",
@@ -323,7 +292,7 @@ mod symlinks {
     ];
 
     pub const CENTER_PTR: &[&str] = &[
-        "top_side",
+        // "top_side", -- better mapped to ns-resize
         "up_arrow",
         "right_ptr",
         "draft_large",
