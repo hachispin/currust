@@ -1,14 +1,15 @@
 //! Generic cursor theme.
 
-#![allow(unused)] // remove later
 use super::generic_cursor::GenericCursor;
-use anyhow::{Context, Result, anyhow, bail};
-use binrw::BinWrite;
+
 use std::{
-    fs::File,
+    fs::{self},
     os::unix,
-    path::{Path, PathBuf},
+    path::Path,
 };
+
+use anyhow::{Result, anyhow, bail};
+use configparser::ini::Ini;
 
 /// Represents the possible cursors that exist in both Windows and Linux (X11).
 ///
@@ -22,7 +23,10 @@ pub enum CursorType {
     /// Displayed when hovering over a link, usually a hand ( 👆 ).
     Hand,
     /// Displayed when something's loading, usually a spinning wheel ( 🔃 ).
-    Wait,
+    Watch,
+    /// Similar to [`CursorType::Watch`], but with the loading
+    /// wheel to the side of [`CursorType::Arrow`], usually.
+    LeftPtrWatch,
     /// Usually a question mark. ( ?/❔/❓ )
     Help,
     /// Displayed when hovering over a text field, usually looks like an "I".
@@ -55,8 +59,35 @@ pub enum CursorType {
     CenterPtr,
 }
 
+// for [Strings] section in installer files in cursor themes
+// used in CursorTheme::from_theme_dir()
+
 impl CursorType {
-    const NUM_VARIANTS: usize = 14;
+    const NUM_VARIANTS: usize = 15;
+
+    fn from_inf_key(key: &str) -> Option<Self> {
+        Some(match key {
+            "pointer" => Self::Arrow,
+            "help" => Self::Help,
+            "work" => Self::LeftPtrWatch,
+            "busy" => Self::Watch,
+            "cross" => Self::Crosshair,
+            "text" => Self::Text,
+            "hand" => Self::Pencil,
+            "unavailable" | "unavailiable" => Self::Forbidden,
+            "vert" => Self::NsResize,
+            "horz" => Self::EwResize,
+            "dgn1" => Self::NwseResize,
+            "dgn2" => Self::NeswResize,
+            "move" => Self::Move,
+            "alternate" => Self::CenterPtr,
+            "link" => Self::Hand,
+            _ => {
+                eprintln!("unexpected INF key={key}");
+                return None;
+            }
+        })
+    }
 }
 
 /// A [`GenericCursor`] with a [`CursorType`].
@@ -83,7 +114,7 @@ impl TypedCursor {
             bail!("path={} must be dir", dir.display());
         }
 
-        self.inner.save_as_xcursor(&dir.join(self.symlinks[0]))?;
+        self.inner.save_as_xcursor(dir.join(self.symlinks[0]))?;
 
         // relative symlink
         for symlink in &self.symlinks[1..] {
@@ -128,13 +159,55 @@ impl CursorTheme {
     }
 
     /// Reads provided cursors as a path using `inf_path` for mappings.
-    pub fn from_theme_dir(cursor_paths: &[&Path], inf_path: &Path) -> Result<Self> {
-        todo!();
+    pub fn from_theme_dir(theme_dir: &Path, inf_path: &Path) -> Result<Self> {
+        if !theme_dir.is_dir() {
+            bail!("theme_dir={} must be a dir", theme_dir.display());
+        }
+
+        let raw_ini = fs::read_to_string(inf_path)?;
+        let ini = Ini::new()
+            .read(raw_ini)
+            .map_err(|e| anyhow!("couldn't parse inf_path={}: {e}", inf_path.display()))?;
+
+        // strings section has key-value pairs like:
+        // cursor_type = path_to_cursor
+        // e.g, pointer = "01-Normal.ani"
+        let mappings = &ini
+            .get("strings")
+            .ok_or(anyhow!("no 'strings' section found in ini"))?;
+
+        let mut typed_cursors = Vec::with_capacity(mappings.len());
+        for (key, cursor_path) in mappings.iter() {
+            let Some(r#type) = CursorType::from_inf_key(key) else {
+                continue;
+            };
+
+            let cursor_path = theme_dir.join(cursor_path.as_ref().unwrap());
+            let Some(ext) = cursor_path.extension() else {
+                bail!("no extension")
+            };
+
+            let is_animated = ext == "ani";
+            let cursor = if is_animated {
+                GenericCursor::from_ani_path(cursor_path)
+            } else {
+                GenericCursor::from_cur_path(cursor_path)
+            }?;
+
+            let typed_cursor = TypedCursor::new(cursor, r#type);
+            typed_cursors.push(typed_cursor);
+        }
+
+        Self::new(typed_cursors)
     }
 
     /// Saves current theme.
     pub fn save_as_xcursors(&self, dir: &Path) -> Result<()> {
         // could create copies instead but that doesn't scale well...
+        // xcursor themes can already be fat (uncompressed bitmaps...)
+        // multiply by symlinks and -- 💥 boom. hundreds of megabytes...
+        //
+        // for reference, breeze dark theme on fedora kde is 15MB (!)
         #[cfg(target_os = "windows")]
         eprintln!("[warning] symlinks won't be created as we're on windows");
 
@@ -174,12 +247,11 @@ mod symlinks {
         "e29285e634086352946a0e7090d73106",
     ];
 
-    pub const WAIT: &[&str] = &[
+    pub const WATCH: &[&str] = &["wait", "watch"];
+    pub const LEFT_PTR_WATCH: &[&str] = &[
         "half-busy",
         "left_ptr_watch",
         "progress",
-        "wait",
-        "watch",
         "00000000000000020006000e7e9ffc3f",
         "08e8e1c95fe2fc01f976f1e063a24ccd",
         "3ecb610c1bf2410f44200f48c40d3599",
@@ -305,7 +377,8 @@ mod symlinks {
         match r#type {
             CursorType::Arrow => ARROW,
             CursorType::Hand => HAND,
-            CursorType::Wait => WAIT,
+            CursorType::Watch => WATCH,
+            CursorType::LeftPtrWatch => LEFT_PTR_WATCH,
             CursorType::Help => HELP,
             CursorType::Text => TEXT,
             CursorType::Pencil => PENCIL,
