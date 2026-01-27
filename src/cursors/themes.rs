@@ -59,9 +59,6 @@ pub enum CursorType {
     CenterPtr,
 }
 
-// for [Strings] section in installer files in cursor themes
-// used in CursorTheme::from_theme_dir()
-
 impl CursorType {
     const NUM_VARIANTS: usize = 15;
 
@@ -159,6 +156,10 @@ impl CursorTheme {
     }
 
     /// Reads provided cursors as a path using `inf_path` for mappings.
+    ///
+    /// ## Errors
+    ///
+    /// Mostly from parsing the INF file and filesystem operations.
     pub fn from_theme_dir(theme_dir: &Path, inf_path: &Path) -> Result<Self> {
         if !theme_dir.is_dir() {
             bail!("theme_dir={} must be a dir", theme_dir.display());
@@ -174,15 +175,19 @@ impl CursorTheme {
         // e.g, pointer = "01-Normal.ani"
         let mappings = &ini
             .get("strings")
-            .ok_or(anyhow!("no 'strings' section found in ini"))?;
+            .ok_or_else(|| anyhow!("no 'strings' section found in ini"))?;
 
         let mut typed_cursors = Vec::with_capacity(mappings.len());
-        for (key, cursor_path) in mappings.iter() {
+        for (key, cursor_path) in *mappings {
             let Some(r#type) = CursorType::from_inf_key(key) else {
                 continue;
             };
 
-            let cursor_path = theme_dir.join(cursor_path.as_ref().unwrap());
+            let Some(cursor_path) = cursor_path else {
+                bail!("no path found for key={key}");
+            };
+
+            let cursor_path = theme_dir.join(cursor_path);
             let Some(ext) = cursor_path.extension() else {
                 bail!("no extension")
             };
@@ -202,6 +207,13 @@ impl CursorTheme {
     }
 
     /// Saves current theme.
+    ///
+    /// This creates symlinks unless the target OS is Windows,
+    /// in which case, a warning is logged and we continue.
+    ///
+    /// ## Errors
+    ///
+    /// If writing Xcursor/symlinks fail.
     pub fn save_as_xcursors(&self, dir: &Path) -> Result<()> {
         // could create copies instead but that doesn't scale well...
         // xcursor themes can already be fat (uncompressed bitmaps...)
