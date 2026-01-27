@@ -2,11 +2,7 @@
 
 use super::generic_cursor::GenericCursor;
 
-use std::{
-    fs::{self},
-    os::unix,
-    path::Path,
-};
+use std::{fs, os::unix, path::Path};
 
 use anyhow::{Result, anyhow, bail};
 use configparser::ini::Ini;
@@ -187,7 +183,7 @@ impl CursorTheme {
                 bail!("no path found for key={key}");
             };
 
-            let cursor_path = theme_dir.join(cursor_path);
+            let cursor_path = theme_dir.join(cursor_path.trim_matches(|c| c == '"'));
             let Some(ext) = cursor_path.extension() else {
                 bail!("no extension")
             };

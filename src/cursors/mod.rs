@@ -3,4 +3,5 @@
 pub mod ani;
 pub mod cursor_image;
 pub mod generic_cursor;
+pub mod themes;
 pub mod xcursor;
