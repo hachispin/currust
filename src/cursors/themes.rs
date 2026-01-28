@@ -2,7 +2,12 @@
 
 use super::generic_cursor::GenericCursor;
 
-use std::{fs, os::unix, path::Path};
+use std::{
+    fs::{self, File},
+    io::Write,
+    os::unix,
+    path::Path,
+};
 
 use anyhow::{Result, anyhow, bail};
 use configparser::ini::Ini;
@@ -62,9 +67,9 @@ impl CursorType {
         Some(match key {
             "pointer" => Self::Arrow,
             "help" => Self::Help,
-            "work" => Self::LeftPtrWatch,
+            "work" | "working" => Self::LeftPtrWatch,
             "busy" => Self::Watch,
-            "cross" => Self::Crosshair,
+            "cross" | "precision" => Self::Crosshair,
             "text" => Self::Text,
             "hand" => Self::Pencil,
             "unavailable" | "unavailiable" => Self::Forbidden,
@@ -123,10 +128,12 @@ impl TypedCursor {
 #[derive(Debug)]
 pub struct CursorTheme {
     cursors: Vec<TypedCursor>,
+    name: String,
 }
 
 impl CursorTheme {
-    fn new(cursors: Vec<TypedCursor>) -> Result<Self> {
+    fn new(cursors: Vec<TypedCursor>, name: &str) -> Result<Self> {
+        let name = name.to_string();
         if cursors.is_empty() {
             bail!("can't create theme with no cursors (empty)");
         }
@@ -148,7 +155,7 @@ impl CursorTheme {
             seen.push(cursor.r#type.clone());
         }
 
-        Ok(Self { cursors })
+        Ok(Self { cursors, name })
     }
 
     /// Reads provided cursors as a path using `inf_path` for mappings.
@@ -173,8 +180,20 @@ impl CursorTheme {
             .get("strings")
             .ok_or_else(|| anyhow!("no 'strings' section found in ini"))?;
 
+        // could cause conflicts if there are
+        // multiple unnamed themes, should fix
+        let name = &mappings["scheme_name"]
+            .clone()
+            .unwrap_or_else(|| "unnamed theme".to_string());
+
         let mut typed_cursors = Vec::with_capacity(mappings.len());
         for (key, cursor_path) in *mappings {
+            // info that's not related to cursor mappings
+            const SKIP_KEYS: &[&str] = &["cur_dir", "scheme_name"];
+            if SKIP_KEYS.contains(&key.as_str()) {
+                continue;
+            }
+
             let Some(r#type) = CursorType::from_inf_key(key) else {
                 continue;
             };
@@ -184,11 +203,31 @@ impl CursorTheme {
             };
 
             let cursor_path = theme_dir.join(cursor_path.trim_matches(|c| c == '"'));
-            let Some(ext) = cursor_path.extension() else {
+            let Some(ext) = &cursor_path.extension() else {
                 bail!("no extension")
             };
 
-            let is_animated = ext == "ani";
+            let is_animated = *ext == "ani";
+
+            // usually occurs because windows has case-insensitive paths
+            // e.g, precision == Precision and what-not
+            let cursor_path = if cursor_path.exists() {
+                cursor_path
+            } else {
+                let cursor_path_cmp = cursor_path.as_os_str().to_ascii_lowercase();
+                let parent = &cursor_path
+                    .parent()
+                    .ok_or_else(|| anyhow!("no parent ??"))?;
+
+                let entries: Vec<_> = parent.read_dir()?.collect::<Result<_, _>>()?;
+
+                entries
+                    .into_iter()
+                    .map(|e| e.path())
+                    .find(|p| p.as_os_str().to_ascii_lowercase() == cursor_path_cmp)
+                    .ok_or_else(|| anyhow!("can't find cursor path"))?
+            };
+
             let cursor = if is_animated {
                 GenericCursor::from_ani_path(cursor_path)
             } else {
@@ -199,7 +238,7 @@ impl CursorTheme {
             typed_cursors.push(typed_cursor);
         }
 
-        Self::new(typed_cursors)
+        Self::new(typed_cursors, name)
     }
 
     /// Saves current theme.
@@ -210,18 +249,22 @@ impl CursorTheme {
     /// ## Errors
     ///
     /// If writing Xcursor/symlinks fail.
-    pub fn save_as_xcursors(&self, dir: &Path) -> Result<()> {
-        // could create copies instead but that doesn't scale well...
-        // xcursor themes can already be fat (uncompressed bitmaps...)
-        // multiply by symlinks and -- 💥 boom. hundreds of megabytes...
-        //
-        // for reference, breeze dark theme on fedora kde is 15MB (!)
+    pub fn save_as_x11_theme(&self, dir: &Path) -> Result<()> {
+        // copies are *not* a good alternative here.
+        // xcursor can get very large, very quickly
+        // and there are wayy too many symlinks.
         #[cfg(target_os = "windows")]
         eprintln!("[warning] symlinks won't be created as we're on windows");
 
+        let cursor_dir = dir.join("cursors");
+        fs::create_dir_all(&cursor_dir)?;
         for cursor in &self.cursors {
-            cursor.save_as_xcursor(dir)?;
+            cursor.save_as_xcursor(&cursor_dir)?;
         }
+
+        let mut f = File::create(dir.join("index.theme"))?;
+        writeln!(&mut f, "[Icon Theme]")?;
+        writeln!(&mut f, "Name={}", self.name)?;
 
         Ok(())
     }
@@ -232,7 +275,8 @@ impl CursorTheme {
 /// The first string in each list is treated as
 /// the "concrete" file that symlinks point to.
 ///
-/// Courtesy of [win2xcur-batch](https://github.com/khayalhus/win2xcur-batch/blob/main/map.json).
+/// Derived from [win2xcur-batch](https://github.com/khayalhus/win2xcur-batch/blob/main/map.json),
+/// with some modifications.
 mod symlinks {
     use super::CursorType;
 
