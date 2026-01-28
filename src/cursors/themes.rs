@@ -11,6 +11,7 @@ use std::{
 
 use anyhow::{Result, anyhow, bail};
 use configparser::ini::Ini;
+use fast_image_resize::ResizeAlg;
 
 /// Represents the possible cursors that exist in both Windows and Linux (X11).
 ///
@@ -241,6 +242,17 @@ impl CursorTheme {
         Self::new(typed_cursors, name)
     }
 
+    /// Adds scale to all cursors for the current theme.
+    ///
+    /// ## Errors
+    ///
+    /// From [`GenericCursor::add_scale`].
+    pub fn add_scale(&mut self, scale_factor: f64, algorithm: ResizeAlg) -> Result<()> {
+        self.cursors
+            .iter_mut()
+            .try_for_each(|c| c.inner.add_scale(scale_factor, algorithm))
+    }
+
     /// Saves current theme.
     ///
     /// This creates symlinks unless the target OS is Windows,
@@ -262,9 +274,31 @@ impl CursorTheme {
             cursor.save_as_xcursor(&cursor_dir)?;
         }
 
+        /* ... write index.theme ... */
         let mut f = File::create(dir.join("index.theme"))?;
         writeln!(&mut f, "[Icon Theme]")?;
-        writeln!(&mut f, "Name={}", self.name)?;
+        writeln!(&mut f, "Name={}", self.name.trim_matches(|c| c == '"'))?;
+        writeln!(&mut f, "Comment=Made with currust :)")?;
+        write!(&mut f, "Sizes=")?;
+
+        let first_cursor = &self.cursors[0].inner;
+        let base_size = first_cursor.base_images().first().nominal_size();
+        let scaled_sizes: Vec<u32> = first_cursor
+            .scaled_images()
+            .map(|img| img.first().nominal_size())
+            .collect();
+
+        write!(&mut f, "{base_size}")?;
+        if scaled_sizes.is_empty() {
+            return Ok(());
+        }
+
+        write!(&mut f, ",")?;
+        for size in &scaled_sizes[0..(scaled_sizes.len() - 1)] {
+            write!(&mut f, "{size},")?;
+        }
+
+        writeln!(&mut f, "{}", scaled_sizes[scaled_sizes.len() - 1])?;
 
         Ok(())
     }
