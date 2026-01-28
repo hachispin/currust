@@ -201,22 +201,26 @@ impl fmt::Debug for CursorImage {
 /// - If there is one frame, the delay of it is zero.
 /// - If there are multiple frames, all delays are non-zero.
 #[derive(Debug)]
-pub(super) struct CursorImages {
+#[allow(clippy::len_without_is_empty)] // it's never empty
+pub struct CursorImages {
     inner: Vec<CursorImage>,
 }
 
 impl CursorImages {
     /// Returns a reference to the first stored element in `inner`.
+    #[must_use]
     pub fn first(&self) -> &CursorImage {
         &self.inner[0]
     }
 
     /// Equivalent to `inner.len()`.
+    #[must_use]
     pub const fn len(&self) -> usize {
         self.inner.len()
     }
 
     /// Accessor for `inner`.
+    #[must_use]
     pub fn inner(&self) -> &[CursorImage] {
         &self.inner
     }
