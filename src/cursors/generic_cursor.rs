@@ -299,15 +299,13 @@ impl GenericCursor {
 
     /// Trivial accessor for `base` field.
     #[must_use]
-    pub fn base_images(&self) -> &[CursorImage] {
-        self.base.inner()
+    pub fn base_images(&self) -> &CursorImages {
+        &self.base
     }
 
     /// Trivial accessor for `scaled` field.
-    ///
-    /// This returns an iterator over `&[CursorImage]`.
-    pub fn scaled_images(&self) -> impl Iterator<Item = &[CursorImage]> {
-        self.scaled.iter().map(CursorImages::inner)
+    pub fn scaled_images(&self) -> impl Iterator<Item = &CursorImages> {
+        self.scaled.iter()
     }
 
     /// Returns the number of `base` and `scaled` images.
@@ -319,11 +317,12 @@ impl GenericCursor {
         (self.scaled.len() + 1) * self.base.len()
     }
 
-    /// Returns an iterator joining `base` and `scaled`, flattened.
+    /// Returns an iterator joining `base` and `scaled` flattened
+    /// over [`CursorImage`] (rather than [`CursorImages`]).
     pub fn joined_images(&self) -> impl Iterator<Item = &CursorImage> {
         self.base
             .inner()
             .iter()
-            .chain(self.scaled_images().flatten())
+            .chain(self.scaled.iter().flat_map(CursorImages::inner))
     }
 }
