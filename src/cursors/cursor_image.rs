@@ -1,6 +1,6 @@
 //! Contains the [`CursorImage`] and [`CursorImages`] struct.
 //!
-//! These represents the frames of static/animated cursors.
+//! These represent the frames of static/animated cursors.
 
 use std::fmt;
 
@@ -125,14 +125,7 @@ impl CursorImage {
         let options = ResizeOptions::new().resize_alg(algorithm);
         resizer.resize(&src, &mut dst, &options)?;
 
-        Ok(Self {
-            width: w2,
-            height: h2,
-            hotspot_x: hx2,
-            hotspot_y: hy2,
-            rgba: dst.into_vec(),
-            delay: self.delay,
-        })
+        Self::new(w2, h2, hx2, hy2, dst.into_vec(), self.delay)
     }
 
     /// Helper function for [`Self::scaled_to`].
@@ -243,12 +236,14 @@ impl TryFrom<Vec<CursorImage>> for CursorImages {
         }
 
         let expected_dims = vec[0].dimensions();
-        if vec.iter().any(|img| img.dimensions() != expected_dims) {
-            bail!("can't create CursorImages with inconsistent image dimensions");
-        }
+        for img in &vec {
+            if img.dimensions() != expected_dims {
+                bail!("can't create CursorImages with inconsistent image dimensions");
+            }
 
-        if vec.iter().any(|img| img.delay == 0) {
-            bail!("animated cursors can't have frames with zero delay");
+            if img.delay == 0 {
+                bail!("animated cursors can't have frames with zero delay");
+            }
         }
 
         Ok(Self { inner: vec })
