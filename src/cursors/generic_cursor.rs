@@ -149,7 +149,7 @@ impl GenericCursor {
         let base_dims = Self::get_base_dimensions(&[&icon_dir]);
 
         for entry in entries {
-            let image = CursorImage::from_entry(entry, CursorImage::STATIC_DELAY)?;
+            let image = CursorImage::from_entry(entry, 0)?;
 
             if image.dimensions() == base_dims {
                 base.push(image);
@@ -212,7 +212,7 @@ impl GenericCursor {
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let delays_ms: Vec<u32> = delays_jiffies
             .into_iter()
-            .map(|j| (f64::from(j) * 1000.0 / 60.0).round() as u32)
+            .map(|j| j + 30 * 1000 / 60) // round by adding 30
             .collect();
 
         let base_dims = Self::get_base_dimensions(&sequenced_icos);

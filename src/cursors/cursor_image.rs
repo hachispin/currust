@@ -11,7 +11,7 @@ use fast_image_resize::{
 };
 use ico::{IconDirEntry, ResourceType};
 
-/// Represents a generic cursor *image*.
+/// Represents a generic cursor image.
 #[derive(Clone)]
 pub struct CursorImage {
     width: u32,
@@ -23,11 +23,7 @@ pub struct CursorImage {
 }
 
 impl CursorImage {
-    /// A delay value of zero is used for static (i.e, non-animated) cursors.
-    pub(crate) const STATIC_DELAY: u32 = 0;
-
-    /// Contructor for a static [`CursorImage`].
-    /// The `delay` field is set to zero.
+    /// Contructor for a [`CursorImage`].
     ///
     /// ## Errors
     ///
@@ -133,8 +129,8 @@ impl CursorImage {
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub fn scale_point(point: (u32, u32), scale_factor: f64) -> (u32, u32) {
         (
-            (f64::from(point.0) * scale_factor) as u32,
-            (f64::from(point.1) * scale_factor) as u32,
+            (f64::from(point.0) * scale_factor).floor() as u32,
+            (f64::from(point.1) * scale_factor).floor() as u32,
         )
     }
 
