@@ -3,6 +3,7 @@
 use super::generic_cursor::GenericCursor;
 
 use std::{
+    collections::HashMap,
     fs::{self, File},
     io::Write,
     os::unix,
@@ -12,6 +13,7 @@ use std::{
 use anyhow::{Result, anyhow, bail};
 use configparser::ini::Ini;
 use fast_image_resize::ResizeAlg;
+use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
 /// Represents the possible cursors that exist in both Windows and Linux (X11).
 ///
@@ -82,7 +84,6 @@ impl CursorType {
             "alternate" => Self::CenterPtr,
             "link" => Self::Hand,
             _ => {
-                eprintln!("unexpected INF key={key}");
                 return None;
             }
         })
@@ -122,6 +123,22 @@ impl TypedCursor {
         }
 
         Ok(())
+    }
+}
+
+/// Helper function for filtering.
+///
+/// This trims quotes, since [`configparser`] takes _everything_ as a string.
+///
+/// For example: `key = "value"` means `config["key"] == "\"value\""`.
+fn normalize_key(entry: (&String, &Option<String>)) -> Option<(String, String)> {
+    match entry {
+        (k, Some(v)) => Some((k.to_string(), v.trim_matches('"').to_string())),
+        (k, None) => {
+            // side effect but shhh
+            eprintln!("key={k} has value None");
+            None
+        }
     }
 }
 
@@ -169,43 +186,52 @@ impl CursorTheme {
             bail!("theme_dir={} must be a dir", theme_dir.display());
         }
 
-        let raw_ini = fs::read_to_string(inf_path)?;
-        let ini = Ini::new()
-            .read(raw_ini)
-            .map_err(|e| anyhow!("couldn't parse inf_path={}: {e}", inf_path.display()))?;
+        // ini is pretty similar to inf so this should work
+        let inf_path_display = inf_path.display();
+        let raw_inf = fs::read_to_string(inf_path)?;
+        let inf = Ini::new()
+            .read(raw_inf)
+            .map_err(|e| anyhow!("couldn't parse inf_path={inf_path_display}: {e}"))?;
 
         // strings section has key-value pairs like:
         // cursor_type = path_to_cursor
         // e.g, pointer = "01-Normal.ani"
-        let mappings = &ini
+        let mappings: HashMap<_, _> = inf
             .get("strings")
-            .ok_or_else(|| anyhow!("no 'strings' section found in ini"))?;
+            .ok_or_else(|| anyhow!("no 'strings' section found in inf_path={inf_path_display}"))?
+            .iter()
+            .filter_map(normalize_key)
+            .collect();
 
         // could cause conflicts if there are
         // multiple unnamed themes, should fix
-        let name = &mappings["scheme_name"]
-            .clone()
-            .unwrap_or_else(|| "unnamed theme".to_string());
+        let name = mappings
+            .get("scheme_name")
+            .map(String::as_str)
+            .unwrap_or_else(|| "unnamed theme");
 
         let mut typed_cursors = Vec::with_capacity(mappings.len());
-        for (key, cursor_path) in *mappings {
+        for (key, cursor_path) in &mappings {
             // info that's not related to cursor mappings
-            const SKIP_KEYS: &[&str] = &["cur_dir", "scheme_name"];
+            const SKIP_KEYS: [&str; 2] = ["cur_dir", "scheme_name"];
             if SKIP_KEYS.contains(&key.as_str()) {
                 continue;
             }
 
-            let Some(r#type) = CursorType::from_inf_key(key) else {
+            let Some(r#type) = CursorType::from_inf_key(&key) else {
+                eprintln!("unknown key={key}, skipping");
                 continue;
             };
 
-            let Some(cursor_path) = cursor_path else {
-                bail!("no path found for key={key}");
-            };
+            let cursor_path = theme_dir.join(&cursor_path);
 
-            let cursor_path = theme_dir.join(cursor_path.trim_matches(|c| c == '"'));
+            // technically we could make a guess here instead
+            // or peek at magic, but that needs a read
             let Some(ext) = &cursor_path.extension() else {
-                bail!("no extension")
+                bail!(
+                    "no extension in path for key={key} -- this \
+                    is needed for discerning between CUR and ANI"
+                )
             };
 
             let is_animated = *ext == "ani";
@@ -218,15 +244,20 @@ impl CursorTheme {
                 let cursor_path_cmp = cursor_path.as_os_str().to_ascii_lowercase();
                 let parent = &cursor_path
                     .parent()
-                    .ok_or_else(|| anyhow!("no parent ??"))?;
+                    .ok_or_else(|| anyhow!("no parent in cursor path for key={key}"))?;
 
-                let entries: Vec<_> = parent.read_dir()?.collect::<Result<_, _>>()?;
-
-                entries
-                    .into_iter()
+                parent
+                    .read_dir()?
+                    .filter_map(Result::ok)
                     .map(|e| e.path())
                     .find(|p| p.as_os_str().to_ascii_lowercase() == cursor_path_cmp)
-                    .ok_or_else(|| anyhow!("can't find cursor path"))?
+                    .ok_or_else(|| {
+                        anyhow!(
+                            "can't find cursor_path={} in its parent={}",
+                            cursor_path.display(),
+                            parent.display()
+                        )
+                    })?
             };
 
             let cursor = if is_animated {
@@ -247,13 +278,26 @@ impl CursorTheme {
     /// ## Errors
     ///
     /// From [`GenericCursor::add_scale`].
-    pub fn add_scale(&mut self, scale_factor: f64, algorithm: ResizeAlg) -> Result<()> {
-        self.cursors
-            .iter_mut()
-            .try_for_each(|c| c.inner.add_scale(scale_factor, algorithm))
+    pub fn add_scale(
+        &mut self,
+        scale_factor: f64,
+        algorithm: ResizeAlg,
+        use_rayon: bool,
+    ) -> Result<()> {
+        if use_rayon {
+            self.cursors
+                .par_iter_mut()
+                .try_for_each(|c| c.inner.add_scale(scale_factor, algorithm))
+        } else {
+            self.cursors
+                .iter_mut()
+                .try_for_each(|c| c.inner.add_scale(scale_factor, algorithm))
+        }?;
+
+        Ok(())
     }
 
-    /// Saves current theme.
+    /// Saves current theme in `dir`, which is created if it doesn't already exist.
     ///
     /// This creates symlinks unless the target OS is Windows,
     /// in which case, a warning is logged and we continue.
@@ -277,8 +321,11 @@ impl CursorTheme {
         /* ... write index.theme ... */
         let mut f = File::create(dir.join("index.theme"))?;
         writeln!(&mut f, "[Icon Theme]")?;
-        writeln!(&mut f, "Name={}", self.name.trim_matches(|c| c == '"'))?;
-        writeln!(&mut f, "Comment=Made with currust :)")?;
+        writeln!(&mut f, "Name={}", &self.name)?;
+        writeln!(
+            &mut f,
+            "Comment=made with currust; edit index.theme to change this"
+        )?;
         write!(&mut f, "Sizes=")?;
 
         let first_cursor = &self.cursors[0].inner;
@@ -290,6 +337,7 @@ impl CursorTheme {
 
         write!(&mut f, "{base_size}")?;
         if scaled_sizes.is_empty() {
+            writeln!(&mut f)?;
             return Ok(());
         }
 
@@ -363,7 +411,6 @@ mod symlinks {
         "crosshair",
         "diamond_cross",
         "plus",
-        // "size_all", -- better as move
         "tcross",
     ];
 
@@ -450,7 +497,6 @@ mod symlinks {
     ];
 
     pub const CENTER_PTR: &[&str] = &[
-        // "top_side", -- better mapped to ns-resize
         "up_arrow",
         "right_ptr",
         "draft_large",
