@@ -16,60 +16,99 @@ use fast_image_resize::{FilterType, ResizeAlg};
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 pub struct Args {
-    /// The path to a CUR/ANI file, or a directory containing CUR/ANI files.
-    path: String,
+    /// The path to either:
+    /// - one or more cursor files
+    /// - one or directories (cursor themes)
+    ///
+    /// Note that you can't have paths to both directories AND files.
+    ///
+    /// A path to a directory is implicitly taken as a cursor theme.
+    /// To override this behaviour, use the "--no-theme" flag.
+    ///
+    /// A cursor theme is a directory that contains some related
+    /// cursors and an installer file using the INF format. If
+    /// this INF file isn't located within this directory, specify
+    /// the file's path using the "--convert-with" argument.
+    #[arg(verbatim_doc_comment)]
+    path: Vec<String>,
 
-    /// Forces sequential processing (i.e, no `rayon`).
+    /// Indicates that the directory provided is NOT a theme.
+    ///
+    /// This means that any installer files are ignored unless explicitly
+    /// provided by the "--convert-with" argument. This isn't recommended
+    /// for most use-cases as it makes conversion more manual.
+    #[arg(long)]
+    no_theme: bool,
+
+    /// Path to an INF file to process a cursor theme with.
+    ///
+    /// This isn't needed if the INF file is already
+    /// within the theme directory provided.
+    #[arg(long, value_name = "PATH_TO_INF")]
+    convert_with: Option<String>,
+
+    /// Forces sequential processing (i.e, no rayon usage).
     ///
     /// Sequential processing is used by default for light workloads.
     #[arg(long)]
     sequential: bool,
 
-    /// Forces `rayon` usage.
+    /// Forces parallel processing (i.e, rayon usage).
     ///
     /// This is enabled by default when parsing a large amount of cursors.
-    /// Note that `rayon` is only effective with heavier workloads and
+    /// Note that this is only effective with heavier workloads and
     /// can be slower on lighter ones (e.g, parsing 25 cursors or less).
     #[arg(long)]
     parallel: bool,
 
-    /// Uses the provided scaling algorithm for scaling.
+    /// Uses the provided scaling algorithm.
     ///
-    /// This is overriden by `upscale_with` and `downscale_with`, if set.
-    #[arg(long, default_value = "lanczos3", value_name = "ALGORITHM")]
+    /// This is overridden by "--upscale-with" and "--downscale-with", if set.
+    ///
+    ///  algorithm  use case
+    /// nearest   pixel art if scaling to integers (e.g, 2x, 3x).
+    /// box       pixel art if scaling includes decimals (e.g, 1.5x, 2x, 3x).
+    /// bilinear  smooth shapes, not recommended if sharpness is desired.   
+    /// mitchell  general-purpose upscaling, balances smoothness and sharpness.
+    /// lanczos3  general-purpose downscaling, perserves details but may cause artifacts.
+    #[arg(
+        long,
+        default_value = "lanczos3",
+        value_name = "ALGORITHM",
+        verbatim_doc_comment
+    )]
     scale_with: ScalingAlgorithm,
 
     /// Uses the provided scaling algorithm for upscaling.
+    ///
+    /// This algorithm overrides the "--scale-with"
+    /// algorithm when upscaling, if it's provided.
     #[arg(long, value_name = "ALGORITHM")]
     upscale_with: Option<ScalingAlgorithm>,
 
     /// Uses the provided scaling algorithm for downscaling.
+    ///
+    /// This algorithm overrides the "--scale-with"
+    /// algorithm when downscaling, if it's provided.
     #[arg(long, value_name = "ALGORITHM")]
     downscale_with: Option<ScalingAlgorithm>,
 
-    /// A list of scale factors to scale the original cursor to.
+    /// A list of scale factors to scale the original cursor(s) to.
     ///
-    /// Scale factors can be floats. 0.0, 1.0, and any negative
-    /// values are considered invalid scale factors.
+    /// Scale factors can be floats (decimals) e.g: 0.0, 1.0, 1.5, etc.
+    /// Any negative values are considered invalid scale factors.
     ///
     /// All scaled variations and the original cursor
     /// are included in the produced Xcursor file(s).
     #[arg(long, value_parser, num_args(1..), value_name = "F64_SCALE_FACTORS")]
     scale_to: Vec<f64>,
 
-    /// Where to place parsed Xcursors.
+    /// The directory to place the parsed Xcursor file(s).
     ///
     /// If the provided path doesn't exist yet, this
     /// attempts to create it, including parents.
-    #[arg(short, long, default_value = "./")]
+    #[arg(short, long, default_value = "./cursors")]
     out: String,
-}
-
-impl Args {
-    /// The max upscaling factor for images.
-    pub const MAX_UPSCALE_FACTOR: u32 = 20;
-    /// The max downscaling factor for images.
-    pub const MAX_DOWNSCALE_FACTOR: u32 = 5;
 }
 
 /// User-facing enum for usable scaling algorithms.
@@ -145,52 +184,7 @@ impl ParsedArgs {
     /// If the input path is to a directory that doesn't contain CUR or
     /// ANI files, or to a file that lacks the `.cur`/`.ani` extension.
     pub fn from_args(args: Args) -> Result<Self> {
-        // If the number of cursors being parsed is greater
-        // than or equal to this, use `rayon` for parsing.
-        const USE_RAYON_BOUND: usize = 100;
-
-        let cursor_paths = Self::validate_cursor_path(&args.path)?;
-
-        let use_rayon =
-            (!args.sequential) && (args.parallel || cursor_paths.len() >= USE_RAYON_BOUND);
-
-        let process_state = if use_rayon {
-            "parallelly, with rayon"
-        } else {
-            "sequentially"
-        };
-
-        println!("processing cursors {process_state} ...");
-
-        let out = PathBuf::from(&args.out);
-        fs::create_dir_all(&out).with_context(|| format!("failed to create out={}", args.out))?;
-
-        let upscale_with = ResizeAlg::from(args.upscale_with.as_ref().unwrap_or(&args.scale_with));
-        let downscale_with =
-            ResizeAlg::from(args.downscale_with.as_ref().unwrap_or(&args.scale_with));
-
-        // deduplicate and validate scaling factors
-        let mut scale_to = args.scale_to;
-
-        if scale_to
-            .iter()
-            .any(|&sf| sf <= 0.1 || (sf - 1.0).abs() <= 0.1)
-        {
-            bail!("invalid scale factors: can't (w/ 0.1 margin) include 1.0, 0.0, or be negative");
-        }
-
-        // we can be pretty sure NaN isn't in here
-        scale_to.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
-        scale_to.dedup();
-
-        Ok(Self {
-            cursor_paths,
-            use_rayon,
-            scale_to,
-            upscale_with,
-            downscale_with,
-            out,
-        })
+        todo!();
     }
 
     /// Helper function for validating [`Args::path`].
