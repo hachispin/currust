@@ -6,7 +6,6 @@ use std::{
     collections::HashMap,
     fs::{self, File},
     io::Write,
-    os::unix,
     path::Path,
 };
 
@@ -14,6 +13,9 @@ use anyhow::{Result, anyhow, bail};
 use configparser::ini::Ini;
 use fast_image_resize::ResizeAlg;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
+
+#[cfg(not(target_os = "windows"))]
+use std::os::unix;
 
 /// Represents the possible cursors that exist in both Windows and Linux (X11).
 ///
