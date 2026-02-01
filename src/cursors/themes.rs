@@ -340,14 +340,15 @@ impl CursorTheme {
         #[cfg(target_os = "windows")]
         eprintln!("[warning] symlinks won't be created as we're on windows");
 
-        let cursor_dir = dir.join("cursors");
+        let theme_dir = dir.join(&self.name);
+        let cursor_dir = theme_dir.join("cursors");
         fs::create_dir_all(&cursor_dir)?;
         for cursor in &self.cursors {
             cursor.save_as_xcursor(&cursor_dir)?;
         }
 
         /* ... write index.theme ... */
-        let mut f = File::create(dir.join("index.theme"))?;
+        let mut f = File::create(theme_dir.join("index.theme"))?;
         writeln!(&mut f, "[Icon Theme]")?;
         writeln!(&mut f, "Name={}", &self.name)?;
         writeln!(
