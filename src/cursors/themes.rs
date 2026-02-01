@@ -193,18 +193,9 @@ impl CursorTheme {
             .read_dir()?
             .filter_map(Result::ok)
             .map(|e| e.path())
-            .filter(|p| {
-                if let Some(ext) = p.extension()
-                    && ext == "inf"
-                {
-                    true
-                } else {
-                    false
-                }
-            })
+            .filter(|p| p.extension().map_or(false, |ext| ext == "inf"))
             .collect();
 
-        eprintln!("{inf_path:?}");
         if inf_path.is_empty() {
             bail!("no inf file found in theme_dir={theme_dir_display}");
         }
