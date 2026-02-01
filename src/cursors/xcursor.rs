@@ -23,7 +23,9 @@ use super::{cursor_image::CursorImage, generic_cursor::GenericCursor};
 use anyhow::Result;
 use binrw::binwrite;
 
-/* Sizes are needed since binrw "deletes" calculated fields. */
+/* Sizes are needed for certain fields, which is also why they're u32.
+ * An extra benefit is that they help in pointer calculations, since
+ * binrw deletes calculated fields in structs, so size_of doesn't work. */
 
 /// Current Xcursor version. May need updating in the future.
 const XCURSOR_HEADER_VERSION: u32 = 1 << 16;
@@ -93,7 +95,7 @@ struct ImageChunk {
     header_size: u32,
     #[bw(calc = IMAGE_TYPE)]
     chunk_type: u32,
-    #[bw(assert(nominal_size == width.max(height)))]
+    #[bw(calc = *width.max(height))]
     nominal_size: u32,
     #[bw(calc = IMAGE_VERSION)]
     version: u32,
@@ -109,8 +111,9 @@ struct ImageChunk {
     #[bw(assert(hotspot_y <= height))]
     hotspot_y: u32,
 
-    /// The time this frame is displayed for before the next.
-    delay_ms: u32,
+    /// The time (in milliseconds) that this
+    /// frame is displayed for before the next.
+    delay: u32,
 
     /// Pre-multiplied big-endian ARGB image data.
     // despite this being big-endian, we can write
@@ -128,14 +131,14 @@ impl From<&CursorImage> for ImageChunk {
         let argb = to_u32_vec(&rgba);
         let (width, height) = image.dimensions();
         let (hotspot_x, hotspot_y) = image.hotspot();
+        let delay = image.delay();
 
         Self {
-            nominal_size: image.nominal_size(),
             width,
             height,
             hotspot_x,
             hotspot_y,
-            delay_ms: image.delay(),
+            delay,
             argb,
         }
     }
@@ -182,7 +185,6 @@ fn to_u32_vec(u8_vec: &[u8]) -> Vec<u32> {
 
 /// Formula used for pre-multiplying a color channel with an alpha channel.
 #[allow(clippy::cast_possible_truncation)]
-#[inline]
 const fn pre_alpha_formula(c: u8, a: u8) -> u8 {
     // +127 rounds to closest integer instead of floor
     let prod = (c as u16) * (a as u16);
@@ -207,20 +209,19 @@ impl Xcursor {
         let mut position = image_offset;
 
         for image in cursor.joined_images() {
-            // make toc
+            let nominal_size = image.nominal_size();
+            let image_chunk_size = IMAGE_HEADER_SIZE + u32::try_from(image.rgba().len())?;
+
             let toc_entry = TableOfContents {
-                nominal_size: image.nominal_size(),
+                nominal_size,
                 position,
             };
 
+            debug_assert_eq!(toc_entry.nominal_size, image.nominal_size());
             toc.push(toc_entry);
+            images.push(ImageChunk::from(image));
 
-            // move forward an image chunk for next toc
-            position += IMAGE_HEADER_SIZE;
-            position += u32::try_from(image.rgba().len())?;
-
-            // make corresponding image chunk
-            images.push(image.into());
+            position += image_chunk_size;
         }
 
         Ok(Self {
