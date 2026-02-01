@@ -1,49 +1,35 @@
 use currust::{
-    cli::{Args, CursorPath, ParsedArgs},
-    cursors::generic_cursor::GenericCursor,
+    cli::{Args, ParsedArgs},
+    cursors::{generic_cursor::GenericCursor, themes::CursorTheme},
 };
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use clap::Parser;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-
-fn parse_cursor(args: &ParsedArgs, cursor: &CursorPath) -> Result<()> {
-    let filename = cursor.path.file_stem().unwrap();
-    let out = args.out.join(filename);
-
-    let mut cursor = if cursor.is_animated {
-        GenericCursor::from_ani_path(&cursor.path)
-    } else {
-        GenericCursor::from_cur_path(&cursor.path)
-    }?;
-
-    args.scale_to.iter().try_for_each(|&sf| {
-        let alg = if sf > 1.0 {
-            args.upscale_with
-        } else {
-            args.downscale_with
-        };
-
-        cursor.add_scale(sf, alg)
-    })?;
-
-    cursor.save_as_xcursor(out)?;
-
-    Ok(())
-}
 
 fn main() -> Result<()> {
     let raw_args = Args::parse();
     let args = ParsedArgs::from_args(raw_args)?;
 
-    if args.use_rayon {
-        args.cursor_paths
-            .par_iter()
-            .try_for_each(|cp| parse_cursor(&args, cp))?;
-    } else {
-        args.cursor_paths
-            .iter()
-            .try_for_each(|cp| parse_cursor(&args, cp))?;
+    // NOTE: rayon noy here yet...
+    for theme_dir in args.cursor_theme_dirs {
+        let theme = CursorTheme::from_theme_dir(&theme_dir)?;
+        theme.save_as_x11_theme(&args.out)?;
+    }
+
+    for file in args.cursor_files {
+        let Some(ext) = file.extension() else {
+            bail!("no extension for file={}", file.display());
+        };
+
+        let is_animated = ext == "ani";
+        let cursor = if is_animated {
+            GenericCursor::from_ani_path(&file)
+        } else {
+            GenericCursor::from_cur_path(&file)
+        }?;
+
+        let filename = file.file_stem().unwrap();
+        cursor.save_as_xcursor(&args.out.join(filename))?;
     }
 
     Ok(())
