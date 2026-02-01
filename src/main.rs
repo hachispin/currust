@@ -10,9 +10,20 @@ fn main() -> Result<()> {
     let raw_args = Args::parse();
     let args = ParsedArgs::from_args(raw_args)?;
 
-    // NOTE: rayon noy here yet...
+    // NOTE: rayon not here yet...
     for theme_dir in args.cursor_theme_dirs {
-        let theme = CursorTheme::from_theme_dir(&theme_dir)?;
+        let mut theme = CursorTheme::from_theme_dir(&theme_dir)?;
+
+        args.scale_to.iter().try_for_each(|&sf| {
+            let algorithm = if sf > 1.0 {
+                args.upscale_with
+            } else {
+                args.downscale_with
+            };
+
+            theme.add_scale(sf, algorithm, args.use_rayon)
+        })?;
+
         theme.save_as_x11_theme(&args.out)?;
     }
 
@@ -22,11 +33,21 @@ fn main() -> Result<()> {
         };
 
         let is_animated = ext == "ani";
-        let cursor = if is_animated {
+        let mut cursor = if is_animated {
             GenericCursor::from_ani_path(&file)
         } else {
             GenericCursor::from_cur_path(&file)
         }?;
+
+        args.scale_to.iter().try_for_each(|&sf| {
+            let algorithm = if sf > 1.0 {
+                args.upscale_with
+            } else {
+                args.downscale_with
+            };
+
+            cursor.add_scale(sf, algorithm)
+        })?;
 
         let filename = file.file_stem().unwrap();
         cursor.save_as_xcursor(&args.out.join(filename))?;
