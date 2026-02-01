@@ -31,8 +31,8 @@ which is something that the [`ico`](https://docs.rs/ico/0.5.0/ico/) crate alread
 -   [x] Add upscaling and downscaling for cursors
 -   [x] Map cursor names to Xcursor equivalents, similar to [win2xcur-batch](https://github.com/khayalhus/win2xcur-batch)
 -   [x] Read [`.inf`](https://en.wikipedia.org/wiki/INF_file) files for smart mappings, like [these](/testing/fixtures/Installer.inf)
--   [ ] Generate [`.theme`](https://specifications.freedesktop.org/icon-theme/latest/#file_formats) files
+-   [x] Generate [`.theme`](https://specifications.freedesktop.org/icon-theme/latest/#file_formats) files
 
 ### End goal
 
--   [ ] Produced cursor theme works seamlessly in `/usr/share/icons`
+-   [x] Produced cursor theme works seamlessly in `/usr/share/icons`
