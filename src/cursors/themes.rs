@@ -133,7 +133,7 @@ impl TypedCursor {
 /// For example: `key = "value"` means `config["key"] == "\"value\""`.
 fn normalize_key(entry: (&String, &Option<String>)) -> Option<(String, String)> {
     match entry {
-        (k, Some(v)) => Some((k.to_string(), v.trim_matches('"').to_string())),
+        (k, Some(v)) => Some((k.clone(), v.trim_matches('"').to_string())),
         (k, None) => {
             // side effect but shhh
             eprintln!("key={k} has value None");
@@ -207,8 +207,7 @@ impl CursorTheme {
         // multiple unnamed themes, should fix
         let name = mappings
             .get("scheme_name")
-            .map(String::as_str)
-            .unwrap_or_else(|| "unnamed theme");
+            .map_or_else(|| "unnamed theme", String::as_str);
 
         let mut typed_cursors = Vec::with_capacity(mappings.len());
         for (key, cursor_path) in &mappings {
@@ -218,12 +217,12 @@ impl CursorTheme {
                 continue;
             }
 
-            let Some(r#type) = CursorType::from_inf_key(&key) else {
+            let Some(r#type) = CursorType::from_inf_key(key) else {
                 eprintln!("unknown key={key}, skipping");
                 continue;
             };
 
-            let cursor_path = theme_dir.join(&cursor_path);
+            let cursor_path = theme_dir.join(cursor_path);
 
             // technically we could make a guess here instead
             // or peek at magic, but that needs a read
