@@ -113,7 +113,7 @@ impl GenericCursor {
             .inner()
             .iter()
             .map(|c| c.scaled_to(scale_factor, algorithm))
-            .collect::<Result<_>>()?;
+            .collect::<Result<_, _>>()?;
 
         self.scaled.push(scaled_images.try_into()?);
 
@@ -212,7 +212,7 @@ impl GenericCursor {
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let delays_ms: Vec<u32> = delays_jiffies
             .into_iter()
-            .map(|j| j + 30 * 1000 / 60) // round by adding 30
+            .map(|j| (j * 1000 + 30) / 60) // round by adding 30
             .collect();
 
         let base_dims = Self::get_base_dimensions(&sequenced_icos);
