@@ -113,7 +113,7 @@ impl GenericCursor {
             .inner()
             .iter()
             .map(|c| c.scaled_to(scale_factor, algorithm))
-            .collect::<Result<_, _>>()?;
+            .collect::<Result<_>>()?;
 
         self.scaled.push(scaled_images.try_into()?);
 
