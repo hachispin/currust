@@ -181,10 +181,39 @@ impl CursorTheme {
     /// ## Errors
     ///
     /// Mostly from parsing the INF file and filesystem operations.
-    pub fn from_theme_dir(theme_dir: &Path, inf_path: &Path) -> Result<Self> {
+    pub fn from_theme_dir(theme_dir: &Path) -> Result<Self> {
+        let theme_dir_display = theme_dir.display();
+
         if !theme_dir.is_dir() {
-            bail!("theme_dir={} must be a dir", theme_dir.display());
+            bail!("theme_dir={theme_dir_display} must be a dir");
         }
+
+        // this is only vec to catch multiple infs (should only be one)
+        let inf_path: Vec<_> = theme_dir
+            .read_dir()?
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .filter(|p| {
+                if let Some(ext) = p.extension()
+                    && ext == "inf"
+                {
+                    true
+                } else {
+                    false
+                }
+            })
+            .collect();
+
+        eprintln!("{inf_path:?}");
+        if inf_path.is_empty() {
+            bail!("no inf file found in theme_dir={theme_dir_display}");
+        }
+
+        if inf_path.len() > 1 {
+            bail!("multiple inf files found in theme_dir={theme_dir_display}, only one expected");
+        }
+
+        let inf_path = &inf_path[0];
 
         // ini is pretty similar to inf so this should work
         let inf_path_display = inf_path.display();
