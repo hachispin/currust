@@ -3,12 +3,9 @@
 //! This contains the [`Args`] struct, which has the [`Parser`]
 //! trait, and the [`ParsedArgs`] struct, which is just plain old data.
 
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::{fs, path::PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use clap::{Parser, ValueEnum};
 use fast_image_resize::{FilterType, ResizeAlg};
 
@@ -16,41 +13,29 @@ use fast_image_resize::{FilterType, ResizeAlg};
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 pub struct Args {
-    /// The path to either:
-    /// - one or more cursor files
-    /// - one or directories (cursor themes)
+    /// The paths to either cursor theme directories, cursor files, or both.
     ///
-    /// Note that you can't have paths to both directories AND files.
+    /// Cursor file paths are converted to Xcursor (named the same as the cursor file),
+    /// while theme direcory paths are converted fully into an X11 theme directory.
     ///
-    /// A path to a directory is implicitly taken as a cursor theme.
-    /// To override this behaviour, use the "--no-theme" flag.
+    /// Themes are expected to contain some cursor files and a
+    /// corresponding installer file that uses the INF format.
     ///
-    /// A cursor theme is a directory that contains some related
-    /// cursors and an installer file using the INF format. If
-    /// this INF file isn't located within this directory, specify
-    /// the file's path using the "--convert-with" argument.
-    #[arg(verbatim_doc_comment)]
-    path: Vec<String>,
+    /// To override this behaviour, use the "--no-theme" flag, which only
+    /// converts the contained cursor files and ignores any INF files.
+    paths: Vec<String>,
 
     /// Indicates that the directory provided is NOT a theme.
     ///
-    /// This means that any installer files are ignored unless explicitly
-    /// provided by the "--convert-with" argument. This isn't recommended
-    /// for most use-cases as it makes conversion more manual.
+    /// This means that any installer files are ignored. This isn't
+    /// recommended for most use-cases as it makes conversion more manual.
     #[arg(long)]
     no_theme: bool,
-
-    /// Path to an INF file to process a cursor theme with.
-    ///
-    /// This isn't needed if the INF file is already
-    /// within the theme directory provided.
-    #[arg(long, value_name = "PATH_TO_INF")]
-    convert_with: Option<String>,
 
     /// Forces sequential processing (i.e, no rayon usage).
     ///
     /// Sequential processing is used by default for light workloads.
-    #[arg(long)]
+    #[arg(long, conflicts_with = "parallel")]
     sequential: bool,
 
     /// Forces parallel processing (i.e, rayon usage).
@@ -58,7 +43,7 @@ pub struct Args {
     /// This is enabled by default when parsing a large amount of cursors.
     /// Note that this is only effective with heavier workloads and
     /// can be slower on lighter ones (e.g, parsing 25 cursors or less).
-    #[arg(long)]
+    #[arg(long, conflicts_with = "sequential")]
     parallel: bool,
 
     /// Uses the provided scaling algorithm.
@@ -68,7 +53,7 @@ pub struct Args {
     ///  algorithm  use case
     /// nearest   pixel art if scaling to integers (e.g, 2x, 3x).
     /// box       pixel art if scaling includes decimals (e.g, 1.5x, 2x, 3x).
-    /// bilinear  smooth shapes, not recommended if sharpness is desired.   
+    /// bilinear  smooth shapes, not recommended if sharpness is desired.
     /// mitchell  general-purpose upscaling, balances smoothness and sharpness.
     /// lanczos3  general-purpose downscaling, perserves details but may cause artifacts.
     #[arg(
@@ -103,11 +88,11 @@ pub struct Args {
     #[arg(long, value_parser, num_args(1..), value_name = "F64_SCALE_FACTORS")]
     scale_to: Vec<f64>,
 
-    /// The directory to place the parsed Xcursor file(s).
+    /// The directory to place the parsed themes/files.
     ///
     /// If the provided path doesn't exist yet, this
     /// attempts to create it, including parents.
-    #[arg(short, long, default_value = "./cursors")]
+    #[arg(short, long, default_value = "./")]
     out: String,
 }
 
@@ -143,20 +128,13 @@ impl From<&ScalingAlgorithm> for ResizeAlg {
     }
 }
 
-/// A path and whether if it's ANI or CUR.
-#[derive(Debug)]
-pub struct CursorPath {
-    /// Path to ANI/CUR.
-    pub path: PathBuf,
-    /// If true, ANI, else CUR.
-    pub is_animated: bool,
-}
-
 /// Parsed CLI arguments.
 #[derive(Debug)]
 pub struct ParsedArgs {
-    /// All files in the specified directory that are CUR/ANI files.
-    pub cursor_paths: Vec<CursorPath>,
+    /// All theme directories.
+    pub cursor_theme_dirs: Vec<PathBuf>,
+    /// All cursor files.
+    pub cursor_files: Vec<PathBuf>,
     /// Whether to use `rayon` or not.
     pub use_rayon: bool,
     /// Scale factors.
@@ -169,91 +147,61 @@ pub struct ParsedArgs {
     pub out: PathBuf,
 }
 
+#[allow(unused)]
 impl ParsedArgs {
-    /// Parses `args` for types that don't implement deserializers.
-    ///
-    /// This may also do extra work, like extracting
-    /// all paths to CUR for the provided path.
-    ///
-    /// ## Panics
-    ///
-    /// If `NaN` is somehow entered as a scale factor.
-    ///
-    /// ## Errors
-    ///
-    /// If the input path is to a directory that doesn't contain CUR or
-    /// ANI files, or to a file that lacks the `.cur`/`.ani` extension.
+    /// Parses `args`.
     pub fn from_args(args: Args) -> Result<Self> {
-        todo!();
-    }
+        /// Average number of cursors in a theme for rayon calculations.
+        const AVERAGE_CURSORS_IN_THEME: usize = 15;
+        /// Number of cursors to start using rayon.
+        const RAYON_NUM_CURSORS: usize = 25;
 
-    /// Helper function for validating [`Args::path`].
-    fn validate_cursor_path(path: &str) -> Result<Vec<CursorPath>> {
-        // for triage purposes
-        let path_str = path.to_string();
+        let paths: Vec<PathBuf> = args.paths.into_iter().map(PathBuf::from).collect();
+        let mut cursor_theme_dirs = Vec::new();
+        let mut cursor_files = Vec::new();
 
-        let path = PathBuf::from(&path)
-            .canonicalize()
-            .with_context(|| format!("failed to canonicalize path {path_str}"))?;
+        for path in paths {
+            let path_display = path.display();
 
-        if path.is_dir() {
-            let cursor_paths = Self::extract_cursors(&path)?;
-
-            if !cursor_paths.is_empty() {
-                return Ok(cursor_paths);
+            if !path.exists() {
+                bail!("provided path={path_display} doesn't exist");
             }
 
-            bail!("no CUR files found in {path_str}, note that sub-directories aren't checked");
-        } else if path.is_file() {
-            if let Some(ext) = path.extension()
-                && (ext == "cur" || ext == "ani")
-            {
-                return Ok(vec![CursorPath {
-                    path: path.clone(),
-                    is_animated: ext == "ani",
-                }]);
+            if path.is_dir() {
+                cursor_theme_dirs.push(path);
+            } else if path.is_file() {
+                cursor_files.push(path);
+            } else {
+                bail!("provided path={path_display} is neither a dir or a file");
             }
-
-            bail!("provided file {path_str} is not a CUR file");
         }
 
-        // metadata errors are coerced to false in the `.is_*()`
-        // methods. try passing `/dev/null` for instance
-        bail!("couldn't coerce {path_str} as a dir or file")
-    }
+        let num_cursors_estimate =
+            cursor_theme_dirs.len() * AVERAGE_CURSORS_IN_THEME + cursor_files.len();
+        let use_rayon =
+            !args.sequential && (args.parallel || num_cursors_estimate >= RAYON_NUM_CURSORS);
 
-    /// Returns all the files in `dir` that point to
-    /// "cursor" files. (files with `.cur` or `.ani` extension)
-    fn extract_cursors(cursor_dir: &Path) -> Result<Vec<CursorPath>> {
-        assert!(
-            cursor_dir.is_dir(),
-            "passed `cur_dir` to `extract_curs()` must be a dir"
+        // we can be pretty sure NaN isn't here
+        let mut scale_to = args.scale_to;
+        scale_to.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+        scale_to.dedup();
+
+        let (upscale_with, downscale_with) = (
+            ResizeAlg::from(args.upscale_with.as_ref().unwrap_or(&args.scale_with)),
+            ResizeAlg::from(args.downscale_with.as_ref().unwrap_or(&args.scale_with)),
         );
 
-        let mut cursor_paths = Vec::new();
-        let path_display = cursor_dir.display();
-        let entries = cursor_dir
-            .read_dir()
-            .with_context(|| format!("failed to read entries of cur_dir={path_display}"))?;
+        let out = PathBuf::from(args.out);
+        fs::create_dir_all(&out)?;
 
-        for entry in entries {
-            let entry = entry.with_context(|| {
-                format!("`entries` iterator over cur_dir={path_display} yielded bad item")
-            })?;
-
-            let entry_path = entry.path();
-
-            if let Some(ext) = entry_path.extension()
-                && (ext == "cur" || ext == "ani")
-            {
-                // a bit fragile
-                cursor_paths.push(CursorPath {
-                    path: entry_path.clone(),
-                    is_animated: ext == "ani",
-                });
-            }
-        }
-
-        Ok(cursor_paths)
+        Ok(Self {
+            cursor_theme_dirs,
+            cursor_files,
+            use_rayon,
+            scale_to,
+            upscale_with,
+            downscale_with,
+            out,
+        })
     }
 }
