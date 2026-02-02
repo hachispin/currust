@@ -40,6 +40,7 @@ fn main() -> Result<()> {
             };
 
             cursor.add_scale(*sf, algorithm)?;
+            cursor.save_as_xcursor(&args.out)?;
         }
     }
 
