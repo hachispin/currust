@@ -120,6 +120,37 @@ impl GenericCursor {
         Ok(())
     }
 
+    /// Reads the file and parses based on extension.
+    ///
+    /// ## Errors
+    ///
+    /// If `path` has no extension or an extension that isn't "ani" or "cur".
+    ///
+    /// Also see [`Self::from_cur_path`], [`Self::from_ani_path`].
+    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let path = path.as_ref();
+        let path_display = path.display();
+
+        let Some(ext) = path.extension() else {
+            bail!("no extension on path={path_display}");
+        };
+
+        let ext = ext.to_ascii_lowercase();
+
+        let cursor = if ext == "cur" {
+            Self::from_cur_path(path)
+        } else if ext == "ani" {
+            Self::from_ani_path(path)
+        } else {
+            bail!(
+                "expected extension 'cur' or 'ani' for path={path_display}, got ext={}",
+                ext.display()
+            );
+        }?;
+
+        Ok(cursor)
+    }
+
     /// Reads and parses a cursor from `cur_path`, which
     /// must be a path to a Windows cursor file (i.e, CUR).
     ///
@@ -127,7 +158,7 @@ impl GenericCursor {
     ///
     /// If a file handle to `cur_path` can't be opened,
     /// or the file stored is not a CUR file.
-    pub fn from_cur_path<P: AsRef<Path>>(cur_path: P) -> Result<Self> {
+    fn from_cur_path<P: AsRef<Path>>(cur_path: P) -> Result<Self> {
         let cur_path = cur_path.as_ref();
         let cur_path_display = cur_path.display();
 
@@ -175,7 +206,7 @@ impl GenericCursor {
     /// - Stored RGBA in ICO frames fail to be decoded.
     /// - Frames are inconsistent, see [`CursorImages`].
     /// - [`TryInto`] conversions fail (between primitive types).
-    pub fn from_ani_path<P: AsRef<Path>>(ani_path: P) -> Result<Self> {
+    fn from_ani_path<P: AsRef<Path>>(ani_path: P) -> Result<Self> {
         let ani_blob = fs::read(&ani_path)?;
         let ani_file = AniFile::from_blob(&ani_blob)?;
         let header = &ani_file.header;

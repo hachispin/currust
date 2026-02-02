@@ -246,17 +246,6 @@ impl CursorTheme {
 
             let cursor_path = theme_dir.join(cursor_path);
 
-            // technically we could make a guess here instead
-            // or peek at magic, but that needs a read
-            let Some(ext) = &cursor_path.extension() else {
-                bail!(
-                    "no extension in path for key={key} -- this \
-                    is needed for discerning between CUR and ANI"
-                )
-            };
-
-            let is_animated = *ext == "ani";
-
             // usually occurs because windows has case-insensitive paths
             // e.g, precision == Precision and what-not
             let cursor_path = if cursor_path.exists() {
@@ -281,12 +270,7 @@ impl CursorTheme {
                     })?
             };
 
-            let cursor = if is_animated {
-                GenericCursor::from_ani_path(cursor_path)
-            } else {
-                GenericCursor::from_cur_path(cursor_path)
-            }?;
-
+            let cursor = GenericCursor::from_path(cursor_path)?;
             let typed_cursor = TypedCursor::new(cursor, r#type);
             typed_cursors.push(typed_cursor);
         }

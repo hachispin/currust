@@ -30,14 +30,7 @@ fn main() -> Result<()> {
     })?;
 
     for f in args.cursor_files {
-        let mut cursor = match f.extension() {
-            Some(v) if v == "cur" => GenericCursor::from_cur_path(f),
-            Some(v) if v == "ani" => GenericCursor::from_ani_path(f),
-            Some(_) | None => {
-                eprintln!("skipping {}", f.display());
-                continue;
-            }
-        }?;
+        let mut cursor = GenericCursor::from_path(f)?;
 
         for sf in &args.scale_to {
             let algorithm = if *sf > 1.0 {
