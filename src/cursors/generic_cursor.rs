@@ -10,7 +10,7 @@ use super::{
 
 use std::{
     fs::{self, File},
-    io::Cursor,
+    io::{BufWriter, Cursor},
     mem,
     path::Path,
 };
@@ -271,11 +271,15 @@ impl GenericCursor {
     /// If filesystem operations fail, or if propagated from [`Xcursor`].
     pub fn save_as_xcursor<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let path = path.as_ref();
-        let mut file = File::create(path)?;
+        let file = File::create(path)?;
+
+        // this line is pretty important. reduces syscalls by like 500x
+        let mut writer = BufWriter::new(file);
+
         let xcursor = Xcursor::new(self)?;
 
         // this can create partial writes. consider fixing
-        xcursor.write(&mut file)?;
+        xcursor.write(&mut writer)?;
 
         Ok(())
     }
