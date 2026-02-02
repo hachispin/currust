@@ -134,6 +134,14 @@ pub struct ParsedArgs {
 #[allow(unused)]
 impl ParsedArgs {
     /// Parses `args`.
+    ///
+    /// ## Panics
+    ///
+    /// If `NaN` is in `Args::scale_to` (should be impossible).
+    ///
+    /// ## Errors
+    ///
+    /// If any provided paths don't exist or `out` directory can't be made.
     pub fn from_args(args: Args) -> Result<Self> {
         let paths: Vec<PathBuf> = args.paths.into_iter().map(PathBuf::from).collect();
         let mut cursor_theme_dirs = Vec::new();

@@ -12,7 +12,7 @@ fn main() -> Result<()> {
     let args = ParsedArgs::from_args(raw_args)?;
 
     args.cursor_theme_dirs.par_iter().try_for_each(|dir| {
-        let mut theme = CursorTheme::from_theme_dir(&dir)?;
+        let mut theme = CursorTheme::from_theme_dir(dir)?;
 
         for sf in &args.scale_to {
             let algorithm = if *sf > 1.0 {

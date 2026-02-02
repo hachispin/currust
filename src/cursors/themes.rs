@@ -195,7 +195,7 @@ impl CursorTheme {
             .read_dir()?
             .filter_map(Result::ok)
             .map(|e| e.path())
-            .filter(|p| p.extension().map_or(false, |ext| ext == "inf"))
+            .filter(|p| p.extension().is_some_and(|ext| ext == "inf"))
             .collect();
 
         if inf_path.is_empty() {
