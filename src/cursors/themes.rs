@@ -299,21 +299,10 @@ impl CursorTheme {
     /// ## Errors
     ///
     /// From [`GenericCursor::add_scale`].
-    pub fn add_scale(
-        &mut self,
-        scale_factor: f64,
-        algorithm: ResizeAlg,
-        use_rayon: bool,
-    ) -> Result<()> {
-        if use_rayon {
-            self.cursors
-                .par_iter_mut()
-                .try_for_each(|c| c.inner.add_scale(scale_factor, algorithm))
-        } else {
-            self.cursors
-                .iter_mut()
-                .try_for_each(|c| c.inner.add_scale(scale_factor, algorithm))
-        }?;
+    pub fn add_scale(&mut self, scale_factor: f64, algorithm: ResizeAlg) -> Result<()> {
+        self.cursors
+            .par_iter_mut()
+            .try_for_each(|c| c.inner.add_scale(scale_factor, algorithm))?;
 
         Ok(())
     }

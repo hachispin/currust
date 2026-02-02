@@ -32,20 +32,6 @@ pub struct Args {
     #[arg(long)]
     no_theme: bool,
 
-    /// Forces sequential processing (i.e, no rayon usage).
-    ///
-    /// Sequential processing is used by default for light workloads.
-    #[arg(long, conflicts_with = "parallel")]
-    sequential: bool,
-
-    /// Forces parallel processing (i.e, rayon usage).
-    ///
-    /// This is enabled by default when parsing a large amount of cursors.
-    /// Note that this is only effective with heavier workloads and
-    /// can be slower on lighter ones (e.g, parsing 25 cursors or less).
-    #[arg(long, conflicts_with = "sequential")]
-    parallel: bool,
-
     /// Uses the provided scaling algorithm.
     ///
     /// This is overridden by "--upscale-with" and "--downscale-with", if set.
@@ -135,8 +121,6 @@ pub struct ParsedArgs {
     pub cursor_theme_dirs: Vec<PathBuf>,
     /// All cursor files.
     pub cursor_files: Vec<PathBuf>,
-    /// Whether to use `rayon` or not.
-    pub use_rayon: bool,
     /// Scale factors.
     pub scale_to: Vec<f64>,
     /// Algorithm for upscaling.
@@ -151,11 +135,6 @@ pub struct ParsedArgs {
 impl ParsedArgs {
     /// Parses `args`.
     pub fn from_args(args: Args) -> Result<Self> {
-        /// Average number of cursors in a theme for rayon calculations.
-        const AVERAGE_CURSORS_IN_THEME: usize = 15;
-        /// Number of cursors to start using rayon.
-        const RAYON_NUM_CURSORS: usize = 25;
-
         let paths: Vec<PathBuf> = args.paths.into_iter().map(PathBuf::from).collect();
         let mut cursor_theme_dirs = Vec::new();
         let mut cursor_files = Vec::new();
@@ -176,11 +155,6 @@ impl ParsedArgs {
             }
         }
 
-        let num_cursors_estimate =
-            cursor_theme_dirs.len() * AVERAGE_CURSORS_IN_THEME + cursor_files.len();
-        let use_rayon =
-            !args.sequential && (args.parallel || num_cursors_estimate >= RAYON_NUM_CURSORS);
-
         // we can be pretty sure NaN isn't here
         let mut scale_to = args.scale_to;
         scale_to.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
@@ -197,7 +171,6 @@ impl ParsedArgs {
         Ok(Self {
             cursor_theme_dirs,
             cursor_files,
-            use_rayon,
             scale_to,
             upscale_with,
             downscale_with,
