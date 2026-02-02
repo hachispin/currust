@@ -176,6 +176,12 @@ impl ParsedArgs {
         let out = PathBuf::from(args.out);
         fs::create_dir_all(&out)?;
 
+        if args.no_theme {
+            for theme in cursor_theme_dirs.drain(..) {
+                cursor_files.extend(Self::extract_cursors(&theme)?);
+            }
+        }
+
         Ok(Self {
             cursor_theme_dirs,
             cursor_files,
@@ -184,5 +190,18 @@ impl ParsedArgs {
             downscale_with,
             out,
         })
+    }
+
+    fn extract_cursors(dir: &PathBuf) -> Result<Vec<PathBuf>> {
+        Ok(dir
+            .read_dir()?
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .filter(|p| {
+                p.extension().is_some_and(|ext| {
+                    ["cur", "ani"].contains(&ext.to_ascii_lowercase().to_str().unwrap_or_default())
+                })
+            })
+            .collect())
     }
 }
