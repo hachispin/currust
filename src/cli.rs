@@ -3,7 +3,10 @@
 //! This contains the [`Args`] struct, which has the [`Parser`]
 //! trait, and the [`ParsedArgs`] struct, which is just plain old data.
 
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Result, bail};
 use clap::{Parser, ValueEnum};
@@ -23,7 +26,7 @@ pub struct Args {
     ///
     /// To override this behaviour, use the "--no-theme" flag, which only
     /// converts the contained cursor files and ignores any INF files.
-    paths: Vec<String>,
+    paths: Vec<PathBuf>,
 
     /// Indicates that the directory provided is NOT a theme.
     ///
@@ -79,7 +82,7 @@ pub struct Args {
     /// If the provided path doesn't exist yet, this
     /// attempts to create it, including parents.
     #[arg(short, long, default_value = "./")]
-    out: String,
+    out: PathBuf,
 }
 
 /// User-facing enum for usable scaling algorithms.
@@ -143,15 +146,25 @@ impl ParsedArgs {
     ///
     /// If any provided paths don't exist or `out` directory can't be made.
     pub fn from_args(args: Args) -> Result<Self> {
-        let paths: Vec<PathBuf> = args.paths.into_iter().map(PathBuf::from).collect();
+        let paths = args.paths;
         let mut cursor_theme_dirs = Vec::new();
         let mut cursor_files = Vec::new();
 
         for path in paths {
             let path_display = path.display();
 
+            // yeah yeah toctou and all that. this is just for better ux
             if !path.exists() {
-                bail!("provided path={path_display} doesn't exist");
+                // this is not my problem. https://github.com/rust-lang/rust/issues/72653
+                #[cfg(windows)]
+                bail!(
+                    "path={path_display} doesn't exist. \n\
+                    note that if you use powershell and your path looks similar to the \
+                    first, convert it to the second by removing the trailing backslash: \n\
+                    .\\currust.exe '.\\a path\\to a\\dir\\' -> .\\currust.exe '.\\a path\\to a\\dir'"
+                );
+
+                bail!("path={path_display} doesn't exist");
             }
 
             if path.is_dir() {
@@ -159,7 +172,10 @@ impl ParsedArgs {
             } else if path.is_file() {
                 cursor_files.push(path);
             } else {
-                bail!("provided path={path_display} is neither a dir or a file");
+                bail!(
+                    "provided path={} is neither a dir or a file",
+                    path.display()
+                );
             }
         }
 
@@ -173,7 +189,7 @@ impl ParsedArgs {
             ResizeAlg::from(args.downscale_with.as_ref().unwrap_or(&args.scale_with)),
         );
 
-        let out = PathBuf::from(args.out);
+        let out = args.out;
         fs::create_dir_all(&out)?;
 
         if args.no_theme {
@@ -192,14 +208,14 @@ impl ParsedArgs {
         })
     }
 
-    fn extract_cursors(dir: &PathBuf) -> Result<Vec<PathBuf>> {
+    fn extract_cursors(dir: &Path) -> Result<Vec<PathBuf>> {
         Ok(dir
             .read_dir()?
             .filter_map(Result::ok)
             .map(|e| e.path())
             .filter(|p| {
                 p.extension().is_some_and(|ext| {
-                    ["cur", "ani"].contains(&ext.to_ascii_lowercase().to_str().unwrap_or_default())
+                    ext.eq_ignore_ascii_case("ani") || ext.eq_ignore_ascii_case("cur")
                 })
             })
             .collect())
