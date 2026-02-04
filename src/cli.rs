@@ -221,4 +221,14 @@ impl ParsedArgs {
             })
             .collect())
     }
+
+    /// Returns the appropriate algorithm for the `scale_factor`.
+    #[must_use]
+    pub fn get_algorithm(&self, scale_factor: f64) -> ResizeAlg {
+        if scale_factor > 1.0 {
+            self.upscale_with
+        } else {
+            self.downscale_with
+        }
+    }
 }
