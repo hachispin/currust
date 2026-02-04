@@ -26,6 +26,7 @@ pub struct Args {
     ///
     /// To override this behaviour, use the "--no-theme" flag, which only
     /// converts the contained cursor files and ignores any INF files.
+    #[arg(required = true)]
     paths: Vec<PathBuf>,
 
     /// Indicates that the directory provided is NOT a theme.
