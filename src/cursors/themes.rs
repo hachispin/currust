@@ -96,18 +96,20 @@ impl CursorType {
 #[derive(Debug)]
 pub struct TypedCursor {
     inner: GenericCursor,
+    /// Semantic usage of cursor, e.g for typing.
     r#type: CursorType,
-    symlinks: &'static [&'static str],
+    /// First entry is the filename, rest are used as symlinks.
+    aliases: &'static [&'static str],
 }
 
 impl TypedCursor {
     fn new(xcursor: GenericCursor, r#type: CursorType) -> Self {
-        let symlinks = symlinks::get_symlinks(&r#type);
+        let aliases = symlinks::get_symlinks(&r#type);
 
         Self {
             inner: xcursor,
             r#type,
-            symlinks,
+            aliases,
         }
     }
 
@@ -116,12 +118,12 @@ impl TypedCursor {
             bail!("path={} must be dir", dir.display());
         }
 
-        self.inner.save_as_xcursor(dir.join(self.symlinks[0]))?;
+        self.inner.save_as_xcursor(dir.join(self.aliases[0]))?;
 
         // relative symlink
         #[cfg(unix)]
-        for symlink in &self.symlinks[1..] {
-            unix::fs::symlink(self.symlinks[0], dir.join(symlink))?;
+        for symlink in &self.aliases[1..] {
+            unix::fs::symlink(self.aliases[0], dir.join(symlink))?;
         }
 
         Ok(())
@@ -310,15 +312,23 @@ impl CursorTheme {
     ///
     /// If writing Xcursor/symlinks fail.
     pub fn save_as_x11_theme(&self, dir: &Path) -> Result<()> {
+        let theme_dir = dir.join(&self.name);
+        let cursor_dir = theme_dir.join("cursors");
+        fs::create_dir_all(&cursor_dir)?;
+
         // copies are *not* a good alternative here.
         // xcursor can get very large, very quickly
         // and there are wayy too many symlinks.
         #[cfg(windows)]
-        eprintln!("[warning] symlinks won't be created as we're on windows");
+        {
+            eprintln!(
+                "[warning] symlinks won't be created as we're on windows, a \
+                bash script for usage on linux will be created instead"
+            );
 
-        let theme_dir = dir.join(&self.name);
-        let cursor_dir = theme_dir.join("cursors");
-        fs::create_dir_all(&cursor_dir)?;
+            self.write_symlink_script(&cursor_dir)?;
+        }
+
         for cursor in &self.cursors {
             cursor.save_as_xcursor(&cursor_dir)?;
         }
@@ -352,6 +362,37 @@ impl CursorTheme {
         }
 
         writeln!(&mut f, "{}", scaled_sizes[scaled_sizes.len() - 1])?;
+
+        Ok(())
+    }
+
+    /// Writes a bash script to `cursor_dir` that
+    /// creates symlinks for windows "compatibility".
+    ///
+    /// This expects the Xcursor files (src) to already be written.
+    #[cfg(windows)]
+    fn write_symlink_script(&self, cursor_dir: &Path) -> Result<()> {
+        let dir_display = cursor_dir.display();
+
+        if !cursor_dir.exists() {
+            bail!("dir={dir_display} doesn't exist");
+        }
+
+        if !cursor_dir.is_dir() {
+            bail!("dir={dir_display} is not a dir")
+        }
+
+        let mut f = File::create(cursor_dir.join("write_symlinks.sh"))?;
+        writeln!(&mut f, "#!/usr/bin/env bash\n")?;
+
+        for filenames in self.cursors.iter().map(|c| c.aliases) {
+            let src = filenames[0];
+            let symlinks = &filenames[1..];
+
+            for dst in symlinks {
+                writeln!(&mut f, "ln -s {src} {dst}")?;
+            }
+        }
 
         Ok(())
     }
