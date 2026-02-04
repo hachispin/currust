@@ -335,6 +335,10 @@ impl CursorTheme {
 
         /* ... write index.theme ... */
         let mut f = File::create(theme_dir.join("index.theme"))?;
+        writeln!(
+            &mut f,
+            "# https://specifications.freedesktop.org/icon-theme/latest/#id-1.5.3.2"
+        )?;
         writeln!(&mut f, "[Icon Theme]")?;
         writeln!(&mut f, "Name={}", &self.name)?;
         writeln!(
@@ -350,18 +354,12 @@ impl CursorTheme {
             .map(|img| img.first().nominal_size())
             .collect();
 
-        write!(&mut f, "{base_size}")?;
-        if scaled_sizes.is_empty() {
-            writeln!(&mut f)?;
-            return Ok(());
-        }
-
-        write!(&mut f, ",")?;
-        for size in &scaled_sizes[0..(scaled_sizes.len() - 1)] {
+        for size in scaled_sizes {
             write!(&mut f, "{size},")?;
         }
 
-        writeln!(&mut f, "{}", scaled_sizes[scaled_sizes.len() - 1])?;
+        writeln!(&mut f, "{base_size}")?;
+        writeln!(&mut f, "# Inherits=fallback_theme")?;
 
         Ok(())
     }
@@ -382,6 +380,7 @@ impl CursorTheme {
             bail!("dir={dir_display} is not a dir")
         }
 
+        // unfortunately can't set chmod +x permission here
         let mut f = File::create(cursor_dir.join("write_symlinks.sh"))?;
         writeln!(&mut f, "#!/usr/bin/env bash\n")?;
 
