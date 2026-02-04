@@ -12,7 +12,10 @@ use std::{
 use anyhow::{Result, anyhow, bail};
 use configparser::ini::Ini;
 use fast_image_resize::ResizeAlg;
-use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
+use rayon::{
+    ThreadPoolBuilder,
+    iter::{IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator},
+};
 
 #[cfg(unix)]
 use std::os::unix;
@@ -192,7 +195,8 @@ impl CursorTheme {
     /// ## Errors
     ///
     /// Mostly from parsing the INF file and filesystem operations.
-    pub fn from_theme_dir(theme_dir: &Path) -> Result<Self> {
+    pub fn from_theme_dir<P: AsRef<Path>>(theme_dir: P) -> Result<Self> {
+        let theme_dir = theme_dir.as_ref();
         let theme_dir_display = theme_dir.display();
 
         if !theme_dir.is_dir() {
@@ -329,9 +333,12 @@ impl CursorTheme {
             self.write_symlink_script(&cursor_dir)?;
         }
 
-        for cursor in &self.cursors {
-            cursor.save_as_xcursor(&cursor_dir)?;
-        }
+        let pool = ThreadPoolBuilder::new().num_threads(4).build()?;
+        pool.install(|| {
+            self.cursors
+                .par_iter()
+                .try_for_each(|c| c.save_as_xcursor(&cursor_dir))
+        })?;
 
         /* ... write index.theme ... */
         let mut f = File::create(theme_dir.join("index.theme"))?;
