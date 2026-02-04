@@ -14,7 +14,7 @@ use configparser::ini::Ini;
 use fast_image_resize::ResizeAlg;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(unix)]
 use std::os::unix;
 
 /// Represents the possible cursors that exist in both Windows and Linux (X11).
@@ -119,8 +119,8 @@ impl TypedCursor {
         self.inner.save_as_xcursor(dir.join(self.symlinks[0]))?;
 
         // relative symlink
+        #[cfg(unix)]
         for symlink in &self.symlinks[1..] {
-            #[cfg(not(target_os = "windows"))]
             unix::fs::symlink(self.symlinks[0], dir.join(symlink))?;
         }
 
@@ -133,9 +133,16 @@ impl TypedCursor {
 /// This trims quotes, since [`configparser`] takes _everything_ as a string.
 ///
 /// For example: `key = "value"` means `config["key"] == "\"value\""`.
-fn normalize_key(entry: (&String, &Option<String>)) -> Option<(String, String)> {
+fn dequote_value(entry: (&String, &Option<String>)) -> Option<(String, String)> {
     match entry {
-        (k, Some(v)) => Some((k.clone(), v.trim_matches('"').to_string())),
+        (k, Some(v)) => Some((
+            k.clone(),
+            v.strip_suffix('"')
+                .unwrap_or_default()
+                .strip_prefix('"')
+                .unwrap_or_default()
+                .to_string(),
+        )),
         (k, None) => {
             // side effect but shhh
             eprintln!("key={k} has value None");
@@ -195,7 +202,10 @@ impl CursorTheme {
             .read_dir()?
             .filter_map(Result::ok)
             .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|ext| ext == "inf"))
+            .filter(|p| {
+                p.extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("inf"))
+            })
             .collect();
 
         if inf_path.is_empty() {
@@ -222,7 +232,7 @@ impl CursorTheme {
             .get("strings")
             .ok_or_else(|| anyhow!("no 'strings' section found in inf_path={inf_path_display}"))?
             .iter()
-            .filter_map(normalize_key)
+            .filter_map(dequote_value)
             .collect();
 
         // could cause conflicts if there are
@@ -303,7 +313,7 @@ impl CursorTheme {
         // copies are *not* a good alternative here.
         // xcursor can get very large, very quickly
         // and there are wayy too many symlinks.
-        #[cfg(target_os = "windows")]
+        #[cfg(windows)]
         eprintln!("[warning] symlinks won't be created as we're on windows");
 
         let theme_dir = dir.join(&self.name);
