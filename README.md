@@ -8,7 +8,7 @@ converting from the CUR/ANI format to the Xcursor format (plus some other featur
 ## Installation
 
 You can either download the binaries which are uploaded as releases (recommended),
-or build this project yourself by cloning and... building. Not much else to say really.
+or build this project yourself by cloning and… building. Not much else to say really.
 
 ## Usage
 
