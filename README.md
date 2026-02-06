@@ -67,6 +67,6 @@ Here are some _other_ cursor converter tools you might want to check out:
 
 [1]: https://planet.kde.org/vlad-zahorodnii-2024-10-06-svg-cursors-everything-that-you-need-to-know-about-them/
 [win2xcur]: https://github.com/quantum5/win2xcur
-[win2xcur-batch]: (https://github.com/khayalhus/win2xcur-batch)
-[ani2xcursor]: (https://github.com/yuzujr/ani2xcursor)
-[ani-to-xcursor]: (https://github.com/nicdgonzalez/ani-to-xcursor)
+[win2xcur-batch]: https://github.com/khayalhus/win2xcur-batch
+[ani2xcursor]: https://github.com/yuzujr/ani2xcursor
+[ani-to-xcursor]: https://github.com/nicdgonzalez/ani-to-xcursor
