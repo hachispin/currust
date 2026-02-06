@@ -256,7 +256,12 @@ impl CursorTheme {
             }
 
             let Some(r#type) = CursorType::from_inf_key(key) else {
-                eprintln!("unknown key={key}, skipping");
+                // these keys are expected but are intentionally
+                // skipped as they have no xcursor equivalent
+                if key != "pin" && key != "person" {
+                    eprintln!("[warning] unknown key={key}, skipping");
+                }
+
                 continue;
             };
 
