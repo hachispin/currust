@@ -42,7 +42,7 @@ impl GenericCursor {
     ///
     /// - If `base_images` or `scaled_images` is empty.
     /// - If propagated from [`CursorImages`] construction.
-    fn new(base_images: CursorImages, scaled_images: Vec<CursorImages>) -> Result<Self> {
+    pub(super) fn new(base_images: CursorImages, scaled_images: Vec<CursorImages>) -> Result<Self> {
         if scaled_images.is_empty() {
             bail!("scaled_images can't be empty, call Self::new_unscaled() if this is expected");
         }
@@ -83,7 +83,7 @@ impl GenericCursor {
     }
 
     /// Constructor without `scaled`.
-    fn new_unscaled(base_images: CursorImages) -> Self {
+    pub(super) fn new_unscaled(base_images: CursorImages) -> Self {
         Self {
             base: base_images,
             scaled: Vec::new(),

@@ -230,3 +230,74 @@ impl Xcursor {
         })
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    use crate::cursors::cursor_image::{
+        CursorImages,
+        test::{BLACK, WHITE},
+    };
+
+    use binrw::BinWrite;
+    use std::{io::BufWriter, ptr::NonNull};
+
+    macro_rules! denullify {
+        ($ptr:expr, $($msg:tt)*) => {
+            NonNull::new($ptr).unwrap_or_else(|| panic!($($msg)*))
+        };
+    }
+
+    /// Generates an Xcursor with 10 alternating black and white
+    /// frames, with a delay of 100ms between each frame.
+    fn black_and_white() -> Xcursor {
+        // 32x32 = 1024, 1024 * 4 = 4096, so each frame is 4096 bytes (u8s).
+        let mut frames: Vec<CursorImage> = Vec::new();
+
+        for i in 0..9 {
+            if i % 2 == 0 {
+                frames.push(BLACK.clone());
+            } else {
+                frames.push(WHITE.clone());
+            }
+        }
+
+        let frames = CursorImages::try_from(frames).unwrap();
+        let cursor = GenericCursor::new_unscaled(frames);
+        Xcursor::new(&cursor).unwrap()
+    }
+
+    #[cfg(target_os = "linux")] // libXcursor is dynamically-linked
+    #[test]
+    /// Attempts to load the cursor produced from `black_and_white()` with libXcursor.
+    fn libxcursor() {
+        use libc::{SEEK_SET, fdopen, lseek};
+        use std::os::fd::AsRawFd;
+        use tempfile::tempfile;
+        use x11::xcursor::XcursorFileLoadImages;
+
+        let file = tempfile().unwrap();
+        let xcursor = self::black_and_white();
+        let raw_fd = file.as_raw_fd();
+
+        xcursor.write(&mut BufWriter::new(&file)).unwrap();
+
+        if unsafe { lseek(raw_fd, 0, SEEK_SET) } == -1 {
+            panic!("lseek() returned -1 with raw_fd={raw_fd}, offset=0, whence=SEEK_SET")
+        }
+
+        let c_file = denullify!(
+            unsafe { fdopen(raw_fd, c"r".as_ptr()) },
+            "fdopen() returned NULL with raw_fd={raw_fd}"
+        );
+
+        let _image_ptr = denullify!(
+            unsafe { XcursorFileLoadImages(c_file.as_ptr(), 32) },
+            "XcursorFileLoadImages() returned NULL with raw_fd={raw_fd}, c_file={:p}",
+            c_file.as_ptr()
+        );
+
+        // no fclose() needed, fs::File manages it
+    }
+}

@@ -251,3 +251,28 @@ impl From<CursorImages> for Vec<CursorImage> {
         images.inner
     }
 }
+
+#[cfg(test)]
+pub(super) mod test {
+    use super::CursorImage;
+    use lazy_static::lazy_static;
+
+    lazy_static! {
+        pub static ref BLACK: CursorImage = CursorImage {
+            width: 32,
+            height: 32,
+            hotspot_x: 0,
+            hotspot_y: 0,
+            delay: 100,
+            rgba: vec![0u8; 4096],
+        };
+        pub static ref WHITE: CursorImage = CursorImage {
+            width: 32,
+            height: 32,
+            hotspot_x: 0,
+            hotspot_y: 0,
+            delay: 100,
+            rgba: vec![255u8; 4096],
+        };
+    }
+}
