@@ -17,14 +17,14 @@ is a directory that contains some cursors, along with an installer file that use
 
 You can convert a cursor theme as such:
 
-```
+```text
 ./currust ./my-cursor-theme
 ```
 
 This converts the theme and writes the produced X11 theme (which is a directory) in the current
 directory. Add the `--out` (or `-o` for short) argument to place it in the specified path.
 
-```
+```text
 ./currust ./my-cursor-theme -o ./please/go/here/instead
 ```
 
@@ -36,13 +36,13 @@ with `--scale-with` to provide a scaling algorithm to use (default: Lanczos3).
 
 Note that this increases the size of the resulting cursor theme.
 
-```
+```text
 ./currust ./my-cursor-theme --scale-to 1.5 2 3 --scale-with mitchell
 ```
 
 For more information on other commands and possible usages, view the help text:
 
-```
+```text
 ./currust -h      # Summarised help text
 ./currust --help  # Detailed help text
 ```
