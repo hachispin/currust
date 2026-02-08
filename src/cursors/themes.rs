@@ -357,20 +357,7 @@ impl CursorTheme {
             &mut f,
             "Comment=made with currust; edit index.theme to change this"
         )?;
-        write!(&mut f, "Sizes=")?;
 
-        let first_cursor = &self.cursors[0].inner;
-        let base_size = first_cursor.base_images().first().nominal_size();
-        let scaled_sizes: Vec<u32> = first_cursor
-            .scaled_images()
-            .map(|img| img.first().nominal_size())
-            .collect();
-
-        for size in scaled_sizes {
-            write!(&mut f, "{size},")?;
-        }
-
-        writeln!(&mut f, "{base_size}")?;
         writeln!(&mut f, "# Inherits=fallback_theme")?;
 
         Ok(())
