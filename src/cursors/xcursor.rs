@@ -240,8 +240,13 @@ mod test {
         test::{BLACK, WHITE},
     };
 
+    use std::{
+        io::{BufWriter, Seek, SeekFrom},
+        ptr::NonNull,
+    };
+
     use binrw::BinWrite;
-    use std::{io::BufWriter, ptr::NonNull};
+    use tempfile::tempfile;
 
     macro_rules! denullify {
         ($ptr:expr, $($msg:tt)*) => {
@@ -272,26 +277,23 @@ mod test {
     #[test]
     /// Attempts to load the cursor produced from `black_and_white()` with libXcursor.
     fn libxcursor() {
-        use libc::{SEEK_SET, fdopen, lseek};
+        use libc::fdopen;
         use std::os::fd::AsRawFd;
-        use tempfile::tempfile;
         use x11::xcursor::XcursorFileLoadImages;
 
-        let file = tempfile().unwrap();
+        let mut file = tempfile().unwrap();
         let xcursor = self::black_and_white();
         let raw_fd = file.as_raw_fd();
 
         xcursor.write(&mut BufWriter::new(&file)).unwrap();
-
-        if unsafe { lseek(raw_fd, 0, SEEK_SET) } == -1 {
-            panic!("lseek() returned -1 with raw_fd={raw_fd}, offset=0, whence=SEEK_SET")
-        }
+        file.seek(SeekFrom::Start(0)).unwrap();
 
         let c_file = denullify!(
             unsafe { fdopen(raw_fd, c"r".as_ptr()) },
             "fdopen() returned NULL with raw_fd={raw_fd}"
         );
 
+        // if this is not null, that's a pass
         let _image_ptr = denullify!(
             unsafe { XcursorFileLoadImages(c_file.as_ptr(), 32) },
             "XcursorFileLoadImages() returned NULL with raw_fd={raw_fd}, c_file={:p}",
