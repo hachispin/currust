@@ -22,8 +22,8 @@ use std::os::unix;
 
 /// Represents the possible cursors that exist in both Windows and Linux (X11).
 ///
-/// Some cursors, such as [`XcursorType::Crosshair`], have symlinks to
-/// Xcursors that aren't _exactly_ the same, such as `color-picker`.
+/// Some cursors, such as `Crosshair`, have symlinks to Xcursors
+/// that aren't _exactly_ the same, such as `color-picker`.
 #[derive(Debug, PartialEq, Clone)]
 pub enum CursorType {
     // using https://github.com/khayalhus/win2xcur-batch/blob/main/map.json

@@ -3,9 +3,9 @@
 //! The Xcursor format is stored as such:
 //!
 //! 1) Magic bytes "Xcur", indicating it's, well, Xcursor.
-//! 2) The [`XcursorHeader`], which contains the required [`TableOfContents`].
+//! 2) The `XcursorHeader`, which contains the required `TableOfContents`.
 //!    Each of these entries point to either an image or comment chunk.
-//! 3) The [`ImageChunk`] s, which store **big-endian ARGB** pixel data,
+//! 3) The `ImageChunk` s, which store **big-endian ARGB** pixel data,
 //!    along with other required metadata such as the hotspot.
 //!
 //! NOTE: Comment chunks aren't handled to make code
@@ -30,19 +30,19 @@ use binrw::binwrite;
 /// Current Xcursor version. May need updating in the future.
 const XCURSOR_HEADER_VERSION: u32 = 1 << 16;
 
-/// Size of [`XcursorHeader`], including elided fields and its magic, excluding `toc`.
+/// Size of `XcursorHeader`, including elided fields and its magic, excluding `toc`.
 const XCURSOR_HEADER_SIZE: u32 = 16;
 
-/// Size of [`TableOfContents`], including elided fields.
+/// Size of `TableOfContents`, including elided fields.
 const TOC_SIZE: u32 = 12;
 
-/// Size of [`ImageChunk`], excluding `argb`.
+/// Size of `ImageChunk`, excluding `argb`.
 const IMAGE_HEADER_SIZE: u32 = 36;
 
-/// Magic value used to indicate a chunk is an [`ImageChunk`].
+/// Magic value used to indicate a chunk is an `ImageChunk`.
 const IMAGE_TYPE: u32 = 0xfffd_0002;
 
-/// Current version stored in [`ImageChunk`].
+/// Current version stored in `ImageChunk`.
 const IMAGE_VERSION: u32 = 1;
 
 /// Represents the file header for Xcursor files.
