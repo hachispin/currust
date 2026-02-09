@@ -4,6 +4,10 @@ version = "1.0.0"
 edition = "2024"
 description = "A tool to convert Windows cursors to Linux"
 authors = ["hachispin"]
+license = "MIT"
+repository = "https://github.com/hachispin/currust/"
+keywords = ["cursor-converter", "xcursor", "ani", "cursor-theme", "scaling"]
+categories = ["command-line-utilities, parser-implementations"]
 
 [dependencies]
 anyhow = "1.0.100"
