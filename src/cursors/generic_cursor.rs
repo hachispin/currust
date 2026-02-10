@@ -238,7 +238,6 @@ impl GenericCursor {
         //
         // NOTE: this might cause slight diffs compared
         //       to other converters because of rounding
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let delays_ms: Vec<u32> = delays_jiffies
             .into_iter()
             .map(|j| (j * 1000 + 30) / 60) // round by adding 30
