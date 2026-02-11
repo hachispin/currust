@@ -185,6 +185,10 @@ impl ParsedArgs {
         scale_to.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
         scale_to.dedup();
 
+        if scale_to.iter().any(|&sf| sf <= 0.0) {
+            bail!("scale factors can't be 0 or less");
+        }
+
         let (upscale_with, downscale_with) = (
             ResizeAlg::from(args.upscale_with.as_ref().unwrap_or(&args.scale_with)),
             ResizeAlg::from(args.downscale_with.as_ref().unwrap_or(&args.scale_with)),
