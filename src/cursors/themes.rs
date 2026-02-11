@@ -9,13 +9,10 @@ use std::{
     path::Path,
 };
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use configparser::ini::Ini;
 use fast_image_resize::ResizeAlg;
-use rayon::{
-    ThreadPoolBuilder,
-    iter::{IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator},
-};
+use rayon::iter::{IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator};
 
 #[cfg(unix)]
 use std::os::unix;
@@ -126,11 +123,9 @@ impl TypedCursor {
         // relative symlink
         #[cfg(unix)]
         for symlink in &self.aliases[1..] {
-            use anyhow::Context;
-
             match unix::fs::symlink(self.aliases[0], dir.join(symlink)) {
                 Ok(_) => Ok(()),
-                Err(e) if matches!(e.kind(), io::ErrorKind::AlreadyExists) => Ok(()),
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Ok(()),
                 Err(e) => Err(e).with_context(|| {
                     format!(
                         "failed to create symlink {} pointing to {}",
@@ -162,7 +157,7 @@ fn dequote_value(entry: (&String, &Option<String>)) -> Option<(String, String)> 
         )),
         (k, None) => {
             // side effect but shhh
-            eprintln!("key={k} has value None");
+            eprintln!("[warning] key={k} has value None");
             None
         }
     }
@@ -353,12 +348,9 @@ impl CursorTheme {
             self.write_symlink_script(&cursor_dir)?;
         }
 
-        let pool = ThreadPoolBuilder::new().num_threads(4).build()?;
-        pool.install(|| {
-            self.cursors
-                .par_iter()
-                .try_for_each(|c| c.save_as_xcursor(&cursor_dir))
-        })?;
+        self.cursors
+            .par_iter()
+            .try_for_each(|c| c.save_as_xcursor(&cursor_dir))?;
 
         /* ... write index.theme ... */
         let mut f = File::create(theme_dir.join("index.theme"))?;
