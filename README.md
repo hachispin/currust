@@ -1,9 +1,12 @@
-# currust
+# currust - a cursor converter
 
 ~~A portmanteau of "cursor" and "Rust".~~
 
 A tool written in Rust to convert cursors between Windows and Linux. Specifically,
 converting from the CUR/ANI format to the Xcursor format (plus some other features).
+
+There are quite a few CLI tools that already exist for this purpose. You can see a comparison
+in [COMPARISONS.md](COMPARISONS.md) that I've tried to keep neutral if you need help deciding.
 
 ## Installation
 
@@ -19,14 +22,14 @@ is a directory that contains some cursors, along with an installer file that use
 
 You can convert a cursor theme as such:
 
-```text
+```bash
 ./currust ./my-cursor-theme
 ```
 
 This converts the theme and writes the produced X11 theme (which is a directory) in the current
 directory. Add the `--out` (or `-o` for short) argument to place it in the specified path.
 
-```text
+```bash
 ./currust ./my-cursor-theme -o ./please/go/here/instead
 ```
 
@@ -58,17 +61,3 @@ a "planned/future features" section. Note that not everything here may be added.
 - [ ] Conversion from X11 cursors to Windows cursors (i.e, the other way around)
 - [ ] [SVG cursor themes][1] for KDE Plasma
 - [ ] hyprcursor (cursor format for hyprland) support
-
-## Notes
-
-Here are some _other_ cursor converter tools you might want to check out:
-
-- [win2xcur], [win2xcur-batch]
-- [ani2xcursor]
-- [ani-to-xcursor]
-
-[1]: https://planet.kde.org/vlad-zahorodnii-2024-10-06-svg-cursors-everything-that-you-need-to-know-about-them/
-[win2xcur]: https://github.com/quantum5/win2xcur
-[win2xcur-batch]: https://github.com/khayalhus/win2xcur-batch
-[ani2xcursor]: https://github.com/yuzujr/ani2xcursor
-[ani-to-xcursor]: https://github.com/nicdgonzalez/ani-to-xcursor
