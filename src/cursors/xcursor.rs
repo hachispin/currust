@@ -22,6 +22,7 @@ use super::{cursor_image::CursorImage, generic_cursor::GenericCursor};
 
 use anyhow::Result;
 use binrw::binwrite;
+use bytemuck;
 
 /* Sizes are needed for certain fields, which is also why they're u32.
  * An extra benefit is that they help in pointer calculations, since
@@ -125,13 +126,13 @@ struct ImageChunk {
 
 impl From<&CursorImage> for ImageChunk {
     fn from(image: &CursorImage) -> Self {
-        let mut rgba = image.rgba().to_owned();
-        to_pre_argb(&mut rgba);
-
-        let argb = to_u32_vec(&rgba);
         let (width, height) = image.dimensions();
         let (hotspot_x, hotspot_y) = image.hotspot();
         let delay = image.delay();
+
+        let mut rgba = image.rgba().to_owned();
+        to_pre_argb(&mut rgba);
+        let argb = bytemuck::pod_collect_to_vec(&rgba);
 
         Self {
             width,
@@ -171,20 +172,9 @@ fn to_pre_argb(rgba: &mut [u8]) {
     }
 }
 
-/// Converts u8s to u32s using little-endian.
-///
-/// If `u8_vec.len()` is not a multiple of four, the remainder is discarded.
-fn to_u32_vec(u8_vec: &[u8]) -> Vec<u32> {
-    u8_vec
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|q| u32::from_le_bytes(*q))
-        .collect()
-}
-
 /// Formula used for pre-multiplying a color channel with an alpha channel.
 #[allow(clippy::cast_possible_truncation)]
+#[inline(always)]
 const fn pre_alpha_formula(c: u8, a: u8) -> u8 {
     // +127 rounds to closest integer instead of floor
     let prod = (c as u16) * (a as u16);
