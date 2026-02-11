@@ -5,7 +5,7 @@ use super::generic_cursor::GenericCursor;
 use std::{
     collections::HashMap,
     fs::{self, File},
-    io::Write,
+    io::{self, Write},
     path::Path,
 };
 
@@ -126,7 +126,19 @@ impl TypedCursor {
         // relative symlink
         #[cfg(unix)]
         for symlink in &self.aliases[1..] {
-            unix::fs::symlink(self.aliases[0], dir.join(symlink))?;
+            use anyhow::Context;
+
+            match unix::fs::symlink(self.aliases[0], dir.join(symlink)) {
+                Ok(_) => Ok(()),
+                Err(e) if matches!(e.kind(), io::ErrorKind::AlreadyExists) => Ok(()),
+                Err(e) => Err(e).with_context(|| {
+                    format!(
+                        "failed to create symlink {} pointing to {}",
+                        dir.join(symlink).display(),
+                        self.aliases[0]
+                    )
+                }),
+            }?;
         }
 
         Ok(())
@@ -219,7 +231,10 @@ impl CursorTheme {
         }
 
         if inf_path.len() > 1 {
-            bail!("multiple inf files found in theme_dir={theme_dir_display}, only one expected");
+            bail!(
+                "multiple inf files ({}) found in theme_dir={theme_dir_display}, only one expected",
+                inf_path.len()
+            );
         }
 
         let inf_path = &inf_path[0];
