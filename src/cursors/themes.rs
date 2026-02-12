@@ -1,11 +1,11 @@
 //! Generic cursor theme.
 
-use super::generic_cursor::GenericCursor;
+use super::{generic_cursor::GenericCursor, symlinks::get_symlinks};
 
 use std::{
     collections::HashMap,
     fs::{self, File},
-    io::{self, Write},
+    io::Write,
     path::Path,
 };
 
@@ -13,9 +13,6 @@ use anyhow::{Context, Result, anyhow, bail};
 use configparser::ini::Ini;
 use fast_image_resize::ResizeAlg;
 use rayon::iter::{IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator};
-
-#[cfg(unix)]
-use std::os::unix;
 
 /// Represents the possible cursors that exist in both Windows and Linux (X11).
 ///
@@ -104,7 +101,7 @@ pub struct TypedCursor {
 
 impl TypedCursor {
     fn new(xcursor: GenericCursor, r#type: CursorType) -> Self {
-        let aliases = symlinks::get_symlinks(&r#type);
+        let aliases = get_symlinks(&r#type);
 
         Self {
             inner: xcursor,
@@ -123,6 +120,8 @@ impl TypedCursor {
         // relative symlink
         #[cfg(unix)]
         for symlink in &self.aliases[1..] {
+            use std::{io, os::unix};
+
             match unix::fs::symlink(self.aliases[0], dir.join(symlink)) {
                 Ok(_) => Ok(()),
                 Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Ok(()),
@@ -400,179 +399,5 @@ impl CursorTheme {
         }
 
         Ok(())
-    }
-}
-
-/// Symlinks for X11 cursor names in [`CursorTheme`].
-///
-/// The first string in each list is treated as
-/// the "concrete" file that symlinks point to.
-///
-/// Derived from [win2xcur-batch](https://github.com/khayalhus/win2xcur-batch/blob/main/map.json),
-/// with some modifications.
-mod symlinks {
-    use super::CursorType;
-
-    pub const ARROW: &[&str] = &["arrow", "default", "left_ptr", "top_left_arrow"];
-    pub const HAND: &[&str] = &[
-        "alias",
-        "dnd-link",
-        "hand",
-        "hand1",
-        "hand2",
-        "link",
-        "openhand",
-        "pointer",
-        "pointing_hand",
-        "3085a0e285430894940527032f8b26df",
-        "640fb0e74195791501fd1ed57b41487f",
-        "9d800788f1b08800ae810202380a0822",
-        "a2a266d0498c3104214a47bd64ab0fc8",
-        "b66166c04f8c3109214a4fbd64a50fc8",
-        "e29285e634086352946a0e7090d73106",
-    ];
-
-    pub const WATCH: &[&str] = &["wait", "watch"];
-    pub const LEFT_PTR_WATCH: &[&str] = &[
-        "half-busy",
-        "left_ptr_watch",
-        "progress",
-        "00000000000000020006000e7e9ffc3f",
-        "08e8e1c95fe2fc01f976f1e063a24ccd",
-        "3ecb610c1bf2410f44200f48c40d3599",
-    ];
-
-    pub const HELP: &[&str] = &[
-        "dnd-ask",
-        "help",
-        "left_ptr_help",
-        "question_arrow",
-        "whats_this",
-        "5c6cd98b3f3ebcb1f9c7f1c204630408",
-        "d9ce0ab605698f320427677b458ad60b",
-    ];
-
-    pub const TEXT: &[&str] = &["ibeam", "text", "xterm", "vertical-text"];
-    pub const PENCIL: &[&str] = &["draft", "pencil"];
-    pub const CROSSHAIR: &[&str] = &[
-        "cell",
-        "color-picker",
-        "cross_reverse",
-        "cross",
-        "crosshair",
-        "diamond_cross",
-        "plus",
-        "tcross",
-    ];
-
-    pub const FORBIDDEN: &[&str] = &[
-        "circle",
-        "crossed_circle",
-        "dnd-no-drop",
-        "forbidden",
-        "not-allowed",
-        "no-drop",
-        "pirate",
-        "03b6e0fcb3499374a867c041f52298f0",
-    ];
-
-    pub const NS_RESIZE: &[&str] = &[
-        "top_side",
-        "bottom_side",
-        "n-resize",
-        "ns-resize",
-        "row-resize",
-        "s-resize",
-        "sb_v_double_arrow",
-        "size_ver",
-        "split_v",
-        "v_double_arrow",
-        "00008160000006810000408080010102",
-        "2870a09082c103050810ffdffffe0204",
-    ];
-
-    pub const EW_RESIZE: &[&str] = &[
-        "col-resize",
-        "down-arrow",
-        "e-resize",
-        "ew-resize",
-        "h_double_arrow",
-        "left_side",
-        "left-arrow",
-        "right_side",
-        "right-arrow",
-        "sb_h_double_arrow",
-        "size_hor",
-        "split_h",
-        "w-resize",
-        "14fef782d02440884392942c11205230",
-        "028006030e0e7ebffc7f7070c0600140",
-    ];
-
-    pub const NWSE_RESIZE: &[&str] = &[
-        "bottom_right_corner",
-        "nw-resize",
-        "nwse-resize",
-        "se-resize",
-        "size_fdiag",
-        "top_left_corner",
-        "ul_angle",
-        "c7088f0f3e6c8088236ef8e1e3e70000",
-    ];
-
-    pub const NESW_RESIZE: &[&str] = &[
-        "bd_double_arrow",
-        "bottom_left_corner",
-        "fd_double_arrow",
-        "ne-resize",
-        "nesw-resize",
-        "size_bdiag",
-        "sw-resize",
-        "top_right_corner",
-        "ur_angle",
-        "fcf1c3c7cd4491d801f1e1c78f100000",
-    ];
-
-    pub const MOVE: &[&str] = &[
-        "size_all",
-        "all-scroll",
-        "closedhand",
-        "dnd-move",
-        "dnd-none",
-        "fleur",
-        "grab",
-        "grabbing",
-        "move",
-        "4498f0e0c1937ffe01fd06f973665830",
-        "9081237383d90e509aa00f00170e968f",
-    ];
-
-    pub const CENTER_PTR: &[&str] = &[
-        "up_arrow",
-        "right_ptr",
-        "draft_large",
-        "draft_small",
-        "up-arrow",
-        "center_ptr",
-    ];
-
-    pub fn get_symlinks(r#type: &CursorType) -> &'static [&'static str] {
-        match r#type {
-            CursorType::Arrow => ARROW,
-            CursorType::Hand => HAND,
-            CursorType::Watch => WATCH,
-            CursorType::LeftPtrWatch => LEFT_PTR_WATCH,
-            CursorType::Help => HELP,
-            CursorType::Text => TEXT,
-            CursorType::Pencil => PENCIL,
-            CursorType::Crosshair => CROSSHAIR,
-            CursorType::Forbidden => FORBIDDEN,
-            CursorType::NsResize => NS_RESIZE,
-            CursorType::EwResize => EW_RESIZE,
-            CursorType::NwseResize => NWSE_RESIZE,
-            CursorType::NeswResize => NESW_RESIZE,
-            CursorType::Move => MOVE,
-            CursorType::CenterPtr => CENTER_PTR,
-        }
     }
 }
