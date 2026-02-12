@@ -1,11 +1,11 @@
 [package]
 name = "currust"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2024"
-description = "A tool to convert Windows cursors to Linux"
+description = "A tool to convert Windows (CUR/ANI) cursor themes to Linux (Xcursor) cursor themes."
 authors = ["hachispin"]
 license = "MIT"
-repository = "https://github.com/hachispin/currust/"
+repository = "https://github.com/hachispin/currust"
 keywords = ["cursor-converter", "xcursor", "ani", "cursor-theme", "scaling"]
 categories = ["command-line-utilities", "parser-implementations"]
 
