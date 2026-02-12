@@ -173,7 +173,7 @@ fn to_pre_argb(rgba: &mut [u8]) {
 }
 
 /// Formula used for pre-multiplying a color channel with an alpha channel.
-#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::cast_possible_truncation, clippy::inline_always)]
 #[inline(always)]
 const fn pre_alpha_formula(c: u8, a: u8) -> u8 {
     // +127 rounds to closest integer instead of floor

@@ -123,7 +123,7 @@ impl TypedCursor {
             use std::{io, os::unix};
 
             match unix::fs::symlink(self.aliases[0], dir.join(symlink)) {
-                Ok(_) => Ok(()),
+                Ok(()) => Ok(()),
                 Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Ok(()),
                 Err(e) => Err(e).with_context(|| {
                     format!(
