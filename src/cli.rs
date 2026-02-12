@@ -19,7 +19,7 @@ pub struct Args {
     /// The paths to either cursor theme directories, cursor files, or both.
     ///
     /// Cursor file paths are converted to Xcursor (named the same as the cursor file),
-    /// while theme direcory paths are converted fully into an X11 theme directory.
+    /// while theme directory paths are converted fully into an X11 theme directory.
     ///
     /// Themes are expected to contain some cursor files and a
     /// corresponding installer file that uses the INF format.
@@ -45,7 +45,7 @@ pub struct Args {
     /// box       pixel art if scaling includes decimals (e.g, 1.5x, 2x, 3x).
     /// bilinear  smooth shapes, not recommended if sharpness is desired.
     /// mitchell  general-purpose upscaling, balances smoothness and sharpness.
-    /// lanczos3  general-purpose downscaling, perserves details but may cause artifacts.
+    /// lanczos3  general-purpose downscaling, preserves details but may cause artifacts.
     #[arg(
         long,
         default_value = "lanczos3",

@@ -23,7 +23,7 @@ pub struct CursorImage {
 }
 
 impl CursorImage {
-    /// Contructor for a [`CursorImage`].
+    /// Constructor for a [`CursorImage`].
     ///
     /// ## Errors
     ///
