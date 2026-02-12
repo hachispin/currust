@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
 
     if (num_frames == 0) {
         fprintf(stderr, "no frames (nimage == 0)\n");
-        return -1;
+        return 1;
     }
 
     Cursor* frames = malloc(sizeof(Cursor) * num_frames);
