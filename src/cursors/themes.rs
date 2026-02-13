@@ -209,43 +209,16 @@ impl CursorTheme {
             bail!("theme_dir={theme_dir_display} must be a dir");
         }
 
-        // this is only vec to catch multiple infs (should only be one)
-        let inf_path: Vec<_> = theme_dir
-            .read_dir()?
-            .filter_map(Result::ok)
-            .map(|e| e.path())
-            .filter(|p| {
-                p.extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("inf"))
-            })
-            .collect();
-
-        if inf_path.is_empty() {
-            bail!("no inf file found in theme_dir={theme_dir_display}");
-        }
-
-        if inf_path.len() > 1 {
-            bail!(
-                "multiple inf files ({}) found in theme_dir={theme_dir_display}, only one expected",
-                inf_path.len()
-            );
-        }
-
-        let inf_path = &inf_path[0];
-
-        // ini is pretty similar to inf so this should work
-        let inf_path_display = inf_path.display();
-        let raw_inf = fs::read_to_string(inf_path)?;
-        let inf = Ini::new()
-            .read(raw_inf)
-            .map_err(|e| anyhow!("couldn't parse inf_path={inf_path_display}: {e}"))?;
+        let inf = Self::extract_installer(&theme_dir)?;
 
         // strings section has key-value pairs like:
         // cursor_type = path_to_cursor
         // e.g, pointer = "01-Normal.ani"
         let mappings: HashMap<_, _> = inf
             .get("strings")
-            .ok_or_else(|| anyhow!("no 'strings' section found in inf_path={inf_path_display}"))?
+            .ok_or_else(|| {
+                anyhow!("no 'strings' section found in inf file in theme_dir={theme_dir_display}")
+            })?
             .iter()
             .filter_map(dequote_value)
             .collect();
@@ -306,6 +279,67 @@ impl CursorTheme {
         }
 
         Self::new(typed_cursors, name)
+    }
+
+    /// Returns the theme installer file (INF) in `dir`.
+    ///
+    /// This does not search recursively.
+    ///
+    /// ## Errors
+    ///
+    /// If `dir` is... not a dir, or if there are:
+    ///
+    /// - multiple valid candidates
+    /// - no candidates
+    /// - reading failures
+    fn extract_installer(dir: &Path) -> Result<HashMap<String, HashMap<String, Option<String>>>> {
+        let dir_display = dir.display();
+
+        if !dir.is_dir() {
+            bail!("expected path={dir_display} to be dir");
+        }
+
+        let inf_paths: Vec<_> = dir
+            .read_dir()?
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .filter(|p| {
+                p.extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("inf"))
+            })
+            .collect();
+
+        let infs: Vec<_> = inf_paths
+            .into_iter()
+            .map(|p| {
+                let inf_string = fs::read_to_string(&p)?;
+                let inf = Ini::new()
+                    .read(inf_string)
+                    .map_err(|e| anyhow!("failed to read ini from {}: {e}", p.display()))?;
+
+                Ok(inf)
+            })
+            .collect::<Result<_>>()?;
+
+        let installers: Vec<_> = infs
+            .into_iter()
+            .filter(|inf| {
+                inf.get("version").is_some_and(|kv| {
+                    kv.get("signature")
+                        .is_some_and(|v| *v == Some("\"$CHICAGO$\"".to_string()))
+                })
+            })
+            .collect();
+
+        if installers.len() > 1 {
+            bail!("found more than one viable installer INF file in dir={dir_display}");
+        }
+
+        if let Some(ins) = installers.first().cloned() {
+            Ok(ins)
+        } else {
+            bail!("no viable installer INF file found in dir={dir_display}");
+        }
     }
 
     /// Adds scale to all cursors for the current theme.
