@@ -151,22 +151,24 @@ pub(super) const CENTER_PTR: &[&str] = &[
     "center_ptr",
 ];
 
-pub(super) fn get_symlinks(r#type: &CursorType) -> &'static [&'static str] {
+pub(super) const fn get_symlinks(r#type: &CursorType) -> &'static [&'static str] {
+    use CursorType::*;
+
     match r#type {
-        CursorType::Arrow => ARROW,
-        CursorType::Hand => HAND,
-        CursorType::Watch => WATCH,
-        CursorType::LeftPtrWatch => LEFT_PTR_WATCH,
-        CursorType::Help => HELP,
-        CursorType::Text => TEXT,
-        CursorType::Pencil => PENCIL,
-        CursorType::Crosshair => CROSSHAIR,
-        CursorType::Forbidden => FORBIDDEN,
-        CursorType::NsResize => NS_RESIZE,
-        CursorType::EwResize => EW_RESIZE,
-        CursorType::NwseResize => NWSE_RESIZE,
-        CursorType::NeswResize => NESW_RESIZE,
-        CursorType::Move => MOVE,
-        CursorType::CenterPtr => CENTER_PTR,
+        Arrow => ARROW,
+        Hand => HAND,
+        Watch => WATCH,
+        LeftPtrWatch => LEFT_PTR_WATCH,
+        Help => HELP,
+        Text => TEXT,
+        Pencil => PENCIL,
+        Crosshair => CROSSHAIR,
+        Forbidden => FORBIDDEN,
+        NsResize => NS_RESIZE,
+        EwResize => EW_RESIZE,
+        NwseResize => NWSE_RESIZE,
+        NeswResize => NESW_RESIZE,
+        Move => MOVE,
+        CenterPtr => CENTER_PTR,
     }
 }

@@ -66,22 +66,24 @@ impl CursorType {
     const NUM_VARIANTS: usize = 15;
 
     fn from_inf_key(key: &str) -> Option<Self> {
+        use CursorType::*;
+
         Some(match key {
-            "pointer" => Self::Arrow,
-            "help" => Self::Help,
-            "work" | "working" => Self::LeftPtrWatch,
-            "busy" => Self::Watch,
-            "cross" | "precision" => Self::Crosshair,
-            "text" => Self::Text,
-            "hand" => Self::Pencil,
-            "unavailable" | "unavailiable" => Self::Forbidden,
-            "vert" => Self::NsResize,
-            "horz" => Self::EwResize,
-            "dgn1" => Self::NwseResize,
-            "dgn2" => Self::NeswResize,
-            "move" => Self::Move,
-            "alternate" => Self::CenterPtr,
-            "link" => Self::Hand,
+            "pointer" => Arrow,
+            "help" => Help,
+            "work" | "working" => LeftPtrWatch,
+            "busy" => Watch,
+            "cross" | "precision" => Crosshair,
+            "text" => Text,
+            "hand" => Pencil,
+            "unavailable" | "unavailiable" => Forbidden,
+            "vert" => NsResize,
+            "horz" => EwResize,
+            "dgn1" => NwseResize,
+            "dgn2" => NeswResize,
+            "move" => Move,
+            "alternate" => CenterPtr,
+            "link" => Hand,
             _ => {
                 return None;
             }
