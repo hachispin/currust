@@ -18,7 +18,7 @@
 //! - [xcursorgen](https://gitlab.freedesktop.com/xorg/app/xcursorgen)
 // god i don't wanna write a parser again
 
-use super::{cursor_image::CursorImage, generic_cursor::GenericCursor};
+use crate::cursors::{cursor_image::CursorImage, generic_cursor::GenericCursor};
 
 use anyhow::Result;
 use binrw::binwrite;

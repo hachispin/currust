@@ -6,7 +6,7 @@
 //! Derived from [win2xcur-batch](https://github.com/khayalhus/win2xcur-batch/blob/main/map.json),
 //! with some modifications.
 
-use super::themes::CursorType;
+use super::theme::CursorType;
 
 pub(super) const ARROW: &[&str] = &["arrow", "default", "left_ptr", "top_left_arrow"];
 pub(super) const HAND: &[&str] = &[

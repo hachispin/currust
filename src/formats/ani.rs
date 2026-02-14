@@ -5,7 +5,7 @@
 //!
 //! You may find it helpful to also read about [RIFF](https://en.wikipedia.org/wiki/Resource_Interchange_File_Format).
 
-use core::fmt;
+use std::fmt;
 use std::io::{Cursor, Read, Seek};
 
 use anyhow::{Context, Result, bail};
@@ -15,7 +15,7 @@ use binrw::{BinRead, binread};
 #[binread]
 #[derive(Debug)]
 #[br(little)]
-pub(super) struct RiffChunkU32 {
+pub struct RiffChunkU32 {
     // temp because `data` stores its own length
     #[br(temp)]
     data_size: u32,
@@ -32,7 +32,7 @@ pub(super) struct RiffChunkU32 {
 #[binread]
 #[derive(Debug)]
 #[br(little)]
-pub(super) struct RiffChunkU8 {
+pub struct RiffChunkU8 {
     // size == length here since `data` is Vec<u8>
     #[br(temp)]
     data_size: u32,
@@ -77,7 +77,7 @@ enum AniFlags {
 /// Models an ANI file's header (or the "anih" chunk).
 #[binread]
 #[derive(Debug, Default, PartialEq)]
-pub(super) struct AniHeader {
+pub struct AniHeader {
     #[br(temp)]
     anih_size: u32,
     #[br(assert(anih_size == header_size && header_size == 36), temp)]
@@ -139,7 +139,7 @@ pub(super) struct AniHeader {
 /// - Brackets around a chunk (like "seq ") indicate that it's optional.
 /// - Chunks like "RIFF" and "LIST" have a second identifier, after the size.
 #[derive(Default)]
-pub(super) struct AniFile {
+pub struct AniFile {
     pub header: AniHeader,
     /// Per-frame timings. Usually [`None`].
     ///

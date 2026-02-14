@@ -2,10 +2,9 @@
 //!
 //! This represents a full static/animated cursor.
 
-use super::{
-    ani::AniFile,
-    cursor_image::{CursorImage, CursorImages},
-    xcursor::Xcursor,
+use crate::{
+    cursors::cursor_image::{CursorImage, CursorImages},
+    formats::{ani::AniFile, xcursor::Xcursor},
 };
 
 use std::{

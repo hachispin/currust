@@ -253,7 +253,7 @@ impl From<CursorImages> for Vec<CursorImage> {
 }
 
 #[cfg(test)]
-pub(super) mod test {
+pub mod test {
     use super::CursorImage;
     use lazy_static::lazy_static;
 

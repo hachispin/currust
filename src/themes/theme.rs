@@ -1,6 +1,7 @@
 //! Generic cursor theme.
 
-use super::{generic_cursor::GenericCursor, symlinks::get_symlinks};
+use super::symlinks::get_symlinks;
+use crate::cursors::generic_cursor::GenericCursor;
 
 use std::{
     collections::HashMap,

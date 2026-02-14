@@ -13,9 +13,13 @@
     // annoying one:
     missing_docs
 )]
+// when used, scope is restricted (use statement inside functions)
+#![allow(clippy::enum_glob_use)]
 
 pub mod cli;
 pub mod cursors;
+pub mod formats;
+pub mod themes;
 
 /// The project root for tests.
 ///
@@ -29,7 +33,8 @@ macro_rules! root {
 
 use crate::{
     cli::{Args, ParsedArgs},
-    cursors::{generic_cursor::GenericCursor, themes::CursorTheme},
+    cursors::generic_cursor::GenericCursor,
+    themes::theme::CursorTheme,
 };
 
 use anyhow::{Result, anyhow};
