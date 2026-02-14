@@ -1,5 +1,5 @@
 //! Utilities related to paths.
-
+#![deny(clippy::unwrap_used)]
 use anyhow::{Result, anyhow, bail};
 use std::path::{Path, PathBuf};
 
@@ -11,40 +11,36 @@ use std::path::{Path, PathBuf};
 /// ## Errors
 ///
 /// - `file_path` doesn't have a parent
+/// - `file_path` is not a file
 /// - multiple files match `file_path`
 pub fn find_icase(file_path: &Path) -> Result<Option<PathBuf>> {
     let file_path_display = file_path.display();
 
-    if !file_path.is_file() {
-        bail!("expected file={file_path_display} to be a file");
-    }
+    if file_path.try_exists()? {
+        if file_path.metadata()?.is_file() {
+            return Ok(Some(file_path.to_path_buf()));
+        }
 
-    if file_path.exists() {
-        return Ok(Some(file_path.to_path_buf()));
+        bail!("file_path={file_path_display} exists but is not a file");
     }
 
     let parent = file_path.parent().ok_or_else(|| {
-        anyhow!("no parent found for file={file_path_display} during case-insensitive lookup")
+        anyhow!("no parent found for file_path={file_path_display} during case-insensitive lookup")
     })?;
-
     let parent_display = parent.display();
+
     let filename = file_path
         .file_name()
         .ok_or_else(|| anyhow!("no filename for file_path={file_path_display}"))?;
 
-    let filename_cmp = filename.to_ascii_lowercase();
-
-    let found: Vec<_> = parent
-        .read_dir()?
-        .filter_map(Result::ok)
-        .map(|e| e.path())
-        .filter(|p| p.as_os_str().to_ascii_lowercase() == filename_cmp)
+    let found: Vec<_> = read_dir_files(parent)?
+        .filter(|p| p.as_os_str().eq_ignore_ascii_case(filename))
         .collect();
 
     if found.len() > 1 {
         bail!(
-            "multiple candidates found for case-insensitive lookup in \
-            parent={parent_display} for filename={file_path_display}"
+            "multiple candidates found for case-insensitive lookup \
+            in parent={parent_display} for filename={file_path_display}",
         );
     }
 
@@ -64,17 +60,41 @@ pub fn find_extensions_icase(
     extensions: &[&str],
 ) -> Result<impl Iterator<Item = PathBuf>> {
     let dir_display = dir.display();
-
-    if !dir.is_dir() {
+    if !dir.metadata()?.is_dir() {
         bail!("expected dir={dir_display} to be a directory");
     }
 
+    Ok(read_dir_files(dir)?.filter(|p| {
+        p.extension()
+            .is_some_and(|ext| extensions.iter().any(|ele| ext.eq_ignore_ascii_case(ele)))
+    }))
+}
+
+/// Helper function for reading `dir` robustly.
+///
+/// The returned iterator only yields files.
+fn read_dir_files(dir: &Path) -> Result<impl Iterator<Item = PathBuf>> {
     Ok(dir
         .read_dir()?
-        .filter_map(Result::ok)
+        .filter_map(|e| {
+            e.inspect_err(|err| {
+                eprintln!(
+                    "[warning] couldn't read entry in dir={}: {err}",
+                    dir.display()
+                )
+            })
+            .ok()
+        })
         .map(|e| e.path())
         .filter(|p| {
-            p.extension()
-                .is_some_and(|ext| extensions.iter().any(|ele| ext.eq_ignore_ascii_case(ele)))
+            p.metadata()
+                .inspect_err(|err| {
+                    eprintln!(
+                        "[warning] failed to read metadata of path, p={}: {err}",
+                        p.display()
+                    )
+                })
+                .ok()
+                .is_some_and(|m| m.is_file())
         }))
 }
