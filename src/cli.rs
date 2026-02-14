@@ -180,14 +180,20 @@ impl ParsedArgs {
             }
         }
 
-        // we can be pretty sure NaN isn't here
         let mut scale_to = args.scale_to;
+
+        for &sf in &scale_to {
+            if sf.is_nan() || sf.is_infinite() {
+                bail!("scale factors can't be NaN or infinite")
+            }
+
+            if sf <= 0.0 {
+                bail!("scale factors can't be 0 or less");
+            }
+        }
+
         scale_to.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
         scale_to.dedup();
-
-        if scale_to.iter().any(|&sf| sf <= 0.0) {
-            bail!("scale factors can't be 0 or less");
-        }
 
         let (upscale_with, downscale_with) = (
             ResizeAlg::from(args.upscale_with.as_ref().unwrap_or(&args.scale_with)),
