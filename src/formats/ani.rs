@@ -140,6 +140,7 @@ pub struct AniHeader {
 /// - Chunks like "RIFF" and "LIST" have a second identifier, after the size.
 #[derive(Default)]
 pub struct AniFile {
+    /// The heaader, i.e, the "anih" chunk.
     pub header: AniHeader,
     /// Per-frame timings. Usually [`None`].
     ///
@@ -192,6 +193,16 @@ impl AniFile {
     ///
     /// > [gdgsoft](https://www.gdgsoft.com/anituner/help/aniformat.htm):
     /// > "Any of the blocks ("ACON", "anih", "rate", or "seq ") can appear in any order."
+    ///
+    /// ## Errors
+    ///
+    /// Parsing is quite tricky. There's a load of errors that can happen:
+    ///
+    /// - overflow on calculations
+    /// - duplicate chunks
+    /// - missing required chunks (e.g, no [`AniHeader`])
+    /// - blob lengths being unreasonably large (safety)
+    /// - more complex invariants not being met, see [`Self::check_invariants`]
     // this is the worst format i've ever seen
     pub fn from_blob(ani_blob: &[u8]) -> Result<Self> {
         const MAX_RIFF_SIZE: usize = 2_097_152;

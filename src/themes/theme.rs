@@ -212,7 +212,7 @@ impl CursorTheme {
             bail!("theme_dir={theme_dir_display} must be a dir");
         }
 
-        let inf = Self::extract_installer(&theme_dir)?;
+        let inf = Self::extract_installer(theme_dir)?;
 
         // strings section has key-value pairs like:
         // cursor_type = path_to_cursor
