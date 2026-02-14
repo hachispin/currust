@@ -1,7 +1,10 @@
 //! Generic cursor theme.
 
 use super::symlinks::get_symlinks;
-use crate::cursors::generic_cursor::GenericCursor;
+use crate::{
+    cursors::generic_cursor::GenericCursor,
+    fs_utils::{find_extensions_icase, find_icase},
+};
 
 use std::{
     collections::HashMap,
@@ -257,23 +260,12 @@ impl CursorTheme {
             let cursor_path = if cursor_path.exists() {
                 cursor_path
             } else {
-                let cursor_path_cmp = cursor_path.as_os_str().to_ascii_lowercase();
-                let parent = &cursor_path
-                    .parent()
-                    .ok_or_else(|| anyhow!("no parent in cursor path for key={key}"))?;
-
-                parent
-                    .read_dir()?
-                    .filter_map(Result::ok)
-                    .map(|e| e.path())
-                    .find(|p| p.as_os_str().to_ascii_lowercase() == cursor_path_cmp)
-                    .ok_or_else(|| {
-                        anyhow!(
-                            "can't find cursor_path={} in its parent={}",
-                            cursor_path.display(),
-                            parent.display()
-                        )
-                    })?
+                find_icase(&cursor_path)?.ok_or_else(|| {
+                    anyhow!(
+                        "cursor_path={} not found in {theme_dir_display} (after case-insensitive search)",
+                        cursor_path.display()
+                    )
+                })?
             };
 
             let cursor = GenericCursor::from_path(cursor_path)?;
@@ -302,17 +294,7 @@ impl CursorTheme {
             bail!("expected path={dir_display} to be dir");
         }
 
-        let inf_paths: Vec<_> = dir
-            .read_dir()?
-            .filter_map(Result::ok)
-            .map(|e| e.path())
-            .filter(|p| {
-                p.extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("inf"))
-            })
-            .collect();
-
-        let infs: Vec<_> = inf_paths
+        let infs: Vec<_> = find_extensions_icase(dir, &["inf"])?
             .into_iter()
             .map(|p| {
                 let inf_string = fs::read_to_string(&p)?;

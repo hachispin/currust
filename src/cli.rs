@@ -3,10 +3,9 @@
 //! This contains the [`Args`] struct, which has the [`Parser`]
 //! trait, and the [`ParsedArgs`] struct, which is just plain old data.
 
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use crate::fs_utils::find_extensions_icase;
+
+use std::{fs, path::PathBuf};
 
 use anyhow::{Result, bail};
 use clap::{Parser, ValueEnum};
@@ -209,7 +208,8 @@ impl ParsedArgs {
 
         if args.no_theme {
             for theme in cursor_theme_dirs.drain(..) {
-                cursor_files.extend(Self::extract_cursors(&theme)?);
+                let cursors = find_extensions_icase(&theme, &["cur", "ani"])?;
+                cursor_files.extend(cursors);
             }
         }
 
@@ -221,19 +221,6 @@ impl ParsedArgs {
             downscale_with,
             out,
         })
-    }
-
-    fn extract_cursors(dir: &Path) -> Result<Vec<PathBuf>> {
-        Ok(dir
-            .read_dir()?
-            .filter_map(Result::ok)
-            .map(|e| e.path())
-            .filter(|p| {
-                p.extension().is_some_and(|ext| {
-                    ext.eq_ignore_ascii_case("ani") || ext.eq_ignore_ascii_case("cur")
-                })
-            })
-            .collect())
     }
 
     /// Returns the appropriate algorithm for the `scale_factor`.

@@ -19,6 +19,7 @@
 pub mod cli;
 pub mod cursors;
 pub mod formats;
+pub mod fs_utils;
 pub mod themes;
 
 /// The project root for tests.
