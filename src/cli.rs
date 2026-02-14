@@ -184,11 +184,15 @@ impl ParsedArgs {
 
         for &sf in &scale_to {
             if sf.is_nan() || sf.is_infinite() {
-                bail!("scale factors can't be NaN or infinite")
+                bail!("invalid sf={sf}: can't be NaN or pos/neg infinity")
             }
 
-            if sf <= 0.0 {
-                bail!("scale factors can't be 0 or less");
+            if sf <= 0.1 {
+                bail!("invalid sf={sf}: can't be 0.1 or less");
+            }
+
+            if sf > 100.0 {
+                bail!("invalid sf={sf}: can't be greater than 100.0")
             }
         }
 
