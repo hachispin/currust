@@ -295,7 +295,6 @@ impl CursorTheme {
         }
 
         let infs: Vec<_> = find_extensions_icase(dir, &["inf"])?
-            .into_iter()
             .map(|p| {
                 let inf_string = fs::read_to_string(&p)?;
                 let inf = Ini::new()

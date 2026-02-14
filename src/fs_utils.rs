@@ -59,22 +59,22 @@ pub fn find_icase(file_path: &Path) -> Result<Option<PathBuf>> {
 ///
 /// - if `dir` is not a directory
 /// - if [`Path::read_dir`] fails
-pub fn find_extensions_icase(dir: &Path, extensions: &[&str]) -> Result<Vec<PathBuf>> {
+pub fn find_extensions_icase(
+    dir: &Path,
+    extensions: &[&str],
+) -> Result<impl Iterator<Item = PathBuf>> {
     let dir_display = dir.display();
 
     if !dir.is_dir() {
         bail!("expected dir={dir_display} to be a directory");
     }
 
-    let found: Vec<_> = dir
+    Ok(dir
         .read_dir()?
         .filter_map(Result::ok)
         .map(|e| e.path())
         .filter(|p| {
             p.extension()
                 .is_some_and(|ext| extensions.iter().any(|ele| ext.eq_ignore_ascii_case(ele)))
-        })
-        .collect();
-
-    Ok(found)
+        }))
 }
