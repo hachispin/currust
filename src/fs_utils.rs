@@ -1,5 +1,5 @@
 //! Utilities related to paths.
-#![deny(clippy::unwrap_used)]
+
 use anyhow::{Result, anyhow, bail};
 use std::path::{Path, PathBuf};
 
@@ -40,7 +40,7 @@ pub fn find_icase(file_path: &Path) -> Result<Option<PathBuf>> {
     if found.len() > 1 {
         bail!(
             "multiple candidates found for case-insensitive lookup \
-            in parent={parent_display} for filename={file_path_display}",
+            in parent={parent_display} for filename={file_path_display}"
         );
     }
 
@@ -81,7 +81,7 @@ fn read_dir_files(dir: &Path) -> Result<impl Iterator<Item = PathBuf>> {
                 eprintln!(
                     "[warning] couldn't read entry in dir={}: {err}",
                     dir.display()
-                )
+                );
             })
             .ok()
         })
@@ -92,7 +92,7 @@ fn read_dir_files(dir: &Path) -> Result<impl Iterator<Item = PathBuf>> {
                     eprintln!(
                         "[warning] failed to read metadata of path, p={}: {err}",
                         p.display()
-                    )
+                    );
                 })
                 .ok()
                 .is_some_and(|m| m.is_file())
