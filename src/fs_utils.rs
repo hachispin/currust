@@ -34,7 +34,10 @@ pub fn find_icase(file_path: &Path) -> Result<Option<PathBuf>> {
         .ok_or_else(|| anyhow!("no filename for file_path={file_path_display}"))?;
 
     let found: Vec<_> = read_dir_files(parent)?
-        .filter(|p| p.as_os_str().eq_ignore_ascii_case(filename))
+        .filter(|p| {
+            p.file_name()
+                .is_some_and(|name| name.eq_ignore_ascii_case(filename))
+        })
         .collect();
 
     if found.len() > 1 {
