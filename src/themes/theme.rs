@@ -3,18 +3,17 @@
 use super::symlinks::get_symlinks;
 use crate::{
     cursors::generic_cursor::GenericCursor,
+    formats::inf::{CursorMapping, parse_inf_installer},
     fs_utils::{find_extensions_icase, find_icase},
 };
 
 use std::{
-    collections::HashMap,
     fs::{self, File},
     io::Write,
     path::Path,
 };
 
 use anyhow::{Context, Result, anyhow, bail};
-use configparser::ini::Ini;
 use fast_image_resize::ResizeAlg;
 use rayon::iter::{IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator};
 
@@ -68,31 +67,6 @@ pub enum CursorType {
 
 impl CursorType {
     const NUM_VARIANTS: usize = 15;
-
-    fn from_inf_key(key: &str) -> Option<Self> {
-        use CursorType::*;
-
-        Some(match key {
-            "pointer" => Arrow,
-            "help" => Help,
-            "work" | "working" => LeftPtrWatch,
-            "busy" => Watch,
-            "cross" | "precision" => Crosshair,
-            "text" => Text,
-            "hand" => Pencil,
-            "unavailable" | "unavailiable" => Forbidden,
-            "vert" => NsResize,
-            "horz" => EwResize,
-            "dgn1" => NwseResize,
-            "dgn2" => NeswResize,
-            "move" => Move,
-            "alternate" => CenterPtr,
-            "link" => Hand,
-            _ => {
-                return None;
-            }
-        })
-    }
 }
 
 /// A [`GenericCursor`] with a [`CursorType`].
@@ -103,6 +77,26 @@ pub struct TypedCursor {
     r#type: CursorType,
     /// First entry is the filename, rest are used as symlinks.
     aliases: &'static [&'static str],
+}
+
+impl TryFrom<CursorMapping> for TypedCursor {
+    type Error = anyhow::Error;
+
+    fn try_from(mapping: CursorMapping) -> Result<Self> {
+        let path = mapping.path;
+        let path = if path.exists() {
+            path
+        } else {
+            find_icase(&path)?.ok_or_else(|| {
+                anyhow!(
+                    "cursor path, path={} not found (in theme dir?) (after case-insensitive search)",
+                    path.display()
+                )
+            })?
+        };
+
+        Ok(Self::new(GenericCursor::from_path(path)?, mapping.r#type))
+    }
 }
 
 impl TypedCursor {
@@ -145,29 +139,6 @@ impl TypedCursor {
     }
 }
 
-/// Helper function for filtering.
-///
-/// This trims quotes, since [`configparser`] takes _everything_ as a string.
-///
-/// For example: `key = "value"` means `config["key"] == "\"value\""`.
-fn dequote_value(entry: (&String, &Option<String>)) -> Option<(String, String)> {
-    match entry {
-        (k, Some(v)) => Some((
-            k.clone(),
-            v.strip_suffix('"')
-                .unwrap_or_default()
-                .strip_prefix('"')
-                .unwrap_or_default()
-                .to_string(),
-        )),
-        (k, None) => {
-            // side effect but shhh
-            eprintln!("[warning] key={k} has value None");
-            None
-        }
-    }
-}
-
 /// Represents a generic cursor theme.
 #[derive(Debug)]
 pub struct CursorTheme {
@@ -176,8 +147,7 @@ pub struct CursorTheme {
 }
 
 impl CursorTheme {
-    fn new(cursors: Vec<TypedCursor>, name: &str) -> Result<Self> {
-        let name = name.to_string();
+    fn new(cursors: Vec<TypedCursor>, name: String) -> Result<Self> {
         if cursors.is_empty() {
             bail!("can't create theme with no cursors (empty)");
         }
@@ -215,115 +185,23 @@ impl CursorTheme {
             bail!("theme_dir={theme_dir_display} must be a dir");
         }
 
-        let inf = Self::extract_installer(theme_dir)?;
+        let infs: Vec<_> = find_extensions_icase(theme_dir, &["inf"])?.collect();
 
-        // strings section has key-value pairs like:
-        // cursor_type = path_to_cursor
-        // e.g, pointer = "01-Normal.ani"
-        let mappings: HashMap<_, _> = inf
-            .get("strings")
-            .ok_or_else(|| {
-                anyhow!("no 'strings' section found in inf file in theme_dir={theme_dir_display}")
-            })?
-            .iter()
-            .filter_map(dequote_value)
-            .collect();
-
-        // could cause conflicts if there are
-        // multiple unnamed themes, should fix
-        let name = mappings
-            .get("scheme_name")
-            .map_or_else(|| "unnamed theme", String::as_str);
-
-        let mut typed_cursors = Vec::with_capacity(mappings.len());
-        for (key, cursor_path) in &mappings {
-            // info that's not related to cursor mappings
-            const SKIP_KEYS: [&str; 2] = ["cur_dir", "scheme_name"];
-            if SKIP_KEYS.contains(&key.as_str()) {
-                continue;
-            }
-
-            let Some(r#type) = CursorType::from_inf_key(key) else {
-                // these keys are expected but are intentionally
-                // skipped as they have no xcursor equivalent
-                if key != "pin" && key != "person" {
-                    eprintln!("[warning] unknown key={key}, skipping");
-                }
-
-                continue;
-            };
-
-            let cursor_path = theme_dir.join(cursor_path);
-
-            // usually occurs because windows has case-insensitive paths
-            // e.g, precision == Precision and what-not
-            let cursor_path = if cursor_path.exists() {
-                cursor_path
-            } else {
-                find_icase(&cursor_path)?.ok_or_else(|| {
-                    anyhow!(
-                        "cursor_path={} not found in {theme_dir_display} (after case-insensitive search)",
-                        cursor_path.display()
-                    )
-                })?
-            };
-
-            let cursor = GenericCursor::from_path(cursor_path)?;
-            let typed_cursor = TypedCursor::new(cursor, r#type);
-            typed_cursors.push(typed_cursor);
+        if infs.len() > 1 {
+            bail!("too many inf");
         }
 
-        Self::new(typed_cursors, name)
-    }
+        let Some(inf) = infs.first().cloned() else {
+            bail!("oh god");
+        };
 
-    /// Returns the theme installer file (INF) in `dir`.
-    ///
-    /// This does not search recursively.
-    ///
-    /// ## Errors
-    ///
-    /// If `dir` is... not a dir, or if there are:
-    ///
-    /// - multiple valid candidates
-    /// - no candidates
-    /// - reading failures
-    fn extract_installer(dir: &Path) -> Result<HashMap<String, HashMap<String, Option<String>>>> {
-        let dir_display = dir.display();
-
-        if !dir.is_dir() {
-            bail!("expected path={dir_display} to be dir");
-        }
-
-        let infs: Vec<_> = find_extensions_icase(dir, &["inf"])?
-            .map(|p| {
-                let inf_string = fs::read_to_string(&p)?;
-                let inf = Ini::new()
-                    .read(inf_string)
-                    .map_err(|e| anyhow!("failed to read ini from {}: {e}", p.display()))?;
-
-                Ok(inf)
-            })
+        let (name, mappings) = parse_inf_installer(&inf, theme_dir)?;
+        let typed_cursors: Vec<_> = mappings
+            .into_iter()
+            .map(TypedCursor::try_from)
             .collect::<Result<_>>()?;
 
-        let installers: Vec<_> = infs
-            .into_iter()
-            .filter(|inf| {
-                inf.get("version").is_some_and(|kv| {
-                    kv.get("signature")
-                        .is_some_and(|v| *v == Some("\"$CHICAGO$\"".to_string()))
-                })
-            })
-            .collect();
-
-        if installers.len() > 1 {
-            bail!("found more than one viable installer INF file in dir={dir_display}");
-        }
-
-        if let Some(ins) = installers.first().cloned() {
-            Ok(ins)
-        } else {
-            bail!("no viable installer INF file found in dir={dir_display}");
-        }
+        Self::new(typed_cursors, name)
     }
 
     /// Adds scale to all cursors for the current theme.
