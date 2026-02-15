@@ -224,8 +224,11 @@ impl TryFrom<Vec<CursorImage>> for CursorImages {
         }
 
         if vec.len() == 1 {
+            let mut vec = vec;
+
             if vec[0].delay != 0 {
-                bail!("delay must be zero for CursorImages if there is only one image");
+                eprintln!("setting delay to zero for CursorImages as there's only one image");
+                vec[0].delay = 0;
             }
 
             return Ok(Self { inner: vec });
