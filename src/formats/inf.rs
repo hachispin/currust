@@ -48,44 +48,79 @@ pub fn parse_inf_installer(
     inf_path: &Path,
     theme_dir: &Path,
 ) -> Result<(String, Vec<CursorMapping>)> {
-    let inf_path_display = inf_path.display();
     let inf_string = fs::read_to_string(inf_path)?;
 
     let inf = Ini::new()
         .read(inf_string)
-        .map_err(|e| anyhow!("failed to read {inf_path_display}: {e}"))?;
+        .map_err(|e| anyhow!("failed to read inf, error e={e}"))?;
 
     let reg = inf
         .get("scheme.reg")
-        .ok_or_else(|| anyhow!("no scheme.reg found in {inf_path_display}"))?;
+        .ok_or_else(|| anyhow!("no scheme.reg found in inf"))?;
 
-    debug_assert_eq!(reg.keys().len(), 1);
-    debug_assert_eq!(reg.values().next(), Some(&None));
+    if !reg.keys().len() == 1 {
+        bail!(
+            "expeected reg to have one key, instead has {} (reg={:?})",
+            reg.keys().len(),
+            reg
+        );
+    }
+
+    if reg.values().next() != Some(&None) {
+        bail!(
+            "expected no value (None) for reg, instead got {:?}",
+            reg.values().next()
+        )
+    }
 
     let reg = reg
         .keys()
         .next()
-        .ok_or_else(|| anyhow!("no key for scheme.reg found in {inf_path_display}"))?;
+        .ok_or_else(|| anyhow!("no key for scheme.reg found in inf"))?;
 
     let subs = inf.get("strings");
     let expanded_reg = expand_reg(reg, subs)?;
+    let mut reg_info = expanded_reg.split(',');
+    let hkcu = reg_info.next();
+    let _ = reg_info.next(); // sometimes blank, sometimes 0x00010000...?
 
-    // skip hkcu, control panel
-    let mut reg_info = expanded_reg.split(',').skip(2);
+    if !hkcu.is_some_and(|s| s.eq_ignore_ascii_case("hkcu")) {
+        bail!("expected 'hkcu' for first reg_info value, instead got {hkcu:?}");
+    }
 
-    // TODO: remove unwraps around here
-    let name = reg_info.next().unwrap().to_string();
+    let name = reg_info
+        .next()
+        .map(str::to_string)
+        .ok_or_else(|| anyhow!("couldn't parse theme name; reg_info doesn't have enough info"))?;
+
     reg_info.next(); // unused field
 
-    let mut paths: Vec<_> = reg_info.map(|s| s.rsplit_once('\\').unwrap().1).collect();
+    let mut paths: Vec<_> = reg_info
+        .map(|s| {
+            s.rsplit_once('\\')
+                .ok_or_else(|| anyhow!("failed to extract filename from path, s={s}"))
+                .map(|s| s.1)
+        })
+        .collect::<Result<_>>()?;
+
+    if paths.len() != 15 {
+        // maybe upgrade to error?
+        eprintln!(
+            "[warning] expected 15 paths, instead got {} paths",
+            paths.len()
+        );
+    }
+
     let end = paths.len() - 1;
-    paths[end] = paths[paths.len() - 1].strip_suffix('"').unwrap();
+    paths[end] = paths[paths.len() - 1]
+        .strip_suffix('"')
+        .ok_or_else(|| anyhow!("expected closing quotation for paths, didn't find it"))?;
 
     let mappings: Vec<_> = paths
         .into_iter()
         .zip(0..15)
         .map(|(p, i)| CursorMapping {
-            r#type: index_to_cursor_type(i).unwrap(),
+            r#type: index_to_cursor_type(i),
             path: theme_dir.join(p),
         })
         .collect();
@@ -96,28 +131,20 @@ pub fn parse_inf_installer(
 /// Helper function for [`parse_inf_installer`].
 ///
 /// The index should be offsets relative to the first cursor in `Scheme.Reg`.
-fn index_to_cursor_type(index: usize) -> Option<CursorType> {
+#[rustfmt::skip]
+const fn index_to_cursor_type(index: usize) -> CursorType {
     use CursorType::*;
 
-    Some(match index {
-        0 => Arrow,
-        1 => Help,
-        2 => LeftPtrWatch,
-        3 => Watch,
-        4 => Crosshair,
-        5 => Text,
-        6 => Pencil,
-        7 => Forbidden,
-        8 => NsResize,
-        9 => EwResize,
-        10 => NwseResize,
-        11 => NeswResize,
-        12 => Move,
-        13 => CenterPtr,
-        14 => Hand,
-        15 | 16 => return None, // person/location select have no equivalent
-        _ => panic!("unexpected cursor type at index={index}"),
-    })
+    match index {
+         0 => Arrow,          1 => Help,
+         2 => LeftPtrWatch,   3 => Watch,
+         4 => Crosshair,      5 => Text,
+         6 => Pencil,         7 => Forbidden,
+         8 => NsResize,       9 => EwResize,
+        10 => NwseResize,    11 => NeswResize,
+        12 => Move,          13 => CenterPtr,
+        14 => Hand,           _ => unreachable!(),
+    }
 }
 
 /// Helper function for [`parse_inf_installer`]. This expands `Scheme.Reg` if needed.
