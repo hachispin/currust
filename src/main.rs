@@ -38,13 +38,14 @@ use crate::{
     themes::theme::CursorTheme,
 };
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use clap::Parser;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::path::Path;
 
 fn theme_pipeline(dir: &Path, args: &ParsedArgs) -> Result<()> {
-    let mut theme = CursorTheme::from_theme_dir(dir)?;
+    let mut theme = CursorTheme::from_theme_dir(dir)
+        .with_context(|| format!("while reading dir={} as theme", dir.display()))?;
 
     for &sf in &args.scale_to {
         theme.add_scale(sf, args.get_algorithm(sf))?;
@@ -68,7 +69,9 @@ fn main() -> Result<()> {
     }
 
     args.cursor_files.par_iter().try_for_each(|f| {
-        let mut cursor = GenericCursor::from_path(f)?;
+        let mut cursor = GenericCursor::from_path(f)
+            .with_context(|| format!("while reading f={} as cursor", f.display()))?;
+
         let filename = args.out.join(
             f.file_stem()
                 .ok_or_else(|| anyhow!("no file stem for cursor_file={}", f.display()))?,

@@ -111,10 +111,6 @@ impl TypedCursor {
     }
 
     fn save_as_xcursor(&self, dir: &Path) -> Result<()> {
-        if !dir.is_dir() {
-            bail!("dir={} must be a path to a directory", dir.display());
-        }
-
         self.inner.save_as_xcursor(dir.join(self.aliases[0]))?;
 
         // relative symlink
@@ -179,20 +175,15 @@ impl CursorTheme {
     /// Mostly from parsing the INF file and filesystem operations.
     pub fn from_theme_dir<P: AsRef<Path>>(theme_dir: P) -> Result<Self> {
         let theme_dir = theme_dir.as_ref();
-        let theme_dir_display = theme_dir.display();
-
-        if !theme_dir.is_dir() {
-            bail!("theme_dir={theme_dir_display} must be a dir");
-        }
 
         let infs: Vec<_> = find_extensions_icase(theme_dir, &["inf"])?.collect();
 
         if infs.len() > 1 {
-            bail!("found more than one INF file in dir={theme_dir_display}");
+            bail!("found more than one INF file");
         }
 
         let Some(inf) = infs.first().cloned() else {
-            bail!("no INF file found in dir={theme_dir_display}");
+            bail!("no INF file found");
         };
 
         let (name, mappings) = parse_inf_installer(&inf, theme_dir)?;
@@ -275,10 +266,6 @@ impl CursorTheme {
 
         if !cursor_dir.exists() {
             bail!("dir={dir_display} doesn't exist");
-        }
-
-        if !cursor_dir.is_dir() {
-            bail!("dir={dir_display} is not a dir")
         }
 
         // unfortunately can't set chmod +x permission here

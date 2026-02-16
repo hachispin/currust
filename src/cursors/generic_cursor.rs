@@ -82,7 +82,8 @@ impl GenericCursor {
     }
 
     /// Constructor without `scaled`.
-    pub(super) fn new_unscaled(base_images: CursorImages) -> Self {
+    #[must_use]
+    pub fn new_unscaled(base_images: CursorImages) -> Self {
         Self {
             base: base_images,
             scaled: Vec::new(),
@@ -126,10 +127,9 @@ impl GenericCursor {
     /// If `path` has no extension or an extension that isn't "ani" or "cur".
     pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
-        let path_display = path.display();
 
         let Some(ext) = path.extension() else {
-            bail!("no extension on path={path_display}");
+            bail!("path has no extension; expected 'cur' or 'ani'");
         };
 
         let ext = ext.to_ascii_lowercase();
@@ -140,7 +140,7 @@ impl GenericCursor {
             Self::from_ani_path(path)
         } else {
             bail!(
-                "expected extension 'cur' or 'ani' for path={path_display}, got ext={}",
+                "expected extension 'cur' or 'ani' for path, got ext={}",
                 ext.display()
             );
         }?;
@@ -157,19 +157,12 @@ impl GenericCursor {
     /// or the file stored is not a CUR file.
     pub fn from_cur_path<P: AsRef<Path>>(cur_path: P) -> Result<Self> {
         let cur_path = cur_path.as_ref();
-        let cur_path_display = cur_path.display();
-
-        let handle = fs::read(cur_path)
-            .with_context(|| format!("failed to read from cur_path={cur_path_display}"))?;
-
-        let icon_dir = IconDir::read(Cursor::new(handle)).with_context(|| {
-            format!("failed to read `IconDir` from cur_path={cur_path_display}")
-        })?;
-
+        let handle = fs::read(cur_path).context("(filesystem) failed to read")?;
+        let icon_dir = IconDir::read(Cursor::new(handle)).context("failed to read `IconDir`")?;
         let entries = icon_dir.entries();
 
         if entries.is_empty() {
-            bail!("no stored images found in {cur_path_display}");
+            bail!("no stored images found");
         }
 
         let mut base = Vec::new();
