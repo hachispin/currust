@@ -186,7 +186,9 @@ impl CursorTheme {
             bail!("no INF file found");
         };
 
-        let (name, mappings) = parse_inf_installer(&inf, theme_dir)?;
+        let (name, mappings) = parse_inf_installer(&inf, theme_dir)
+            .with_context(|| format!("while attempting to parse {}", inf.display()))?;
+
         let typed_cursors: Vec<_> = mappings
             .into_iter()
             .map(TypedCursor::try_from)

@@ -58,7 +58,7 @@ pub fn parse_inf_installer(
         .get("scheme.reg")
         .ok_or_else(|| anyhow!("no scheme.reg found in inf"))?;
 
-    if !reg.keys().len() == 1 {
+    if reg.keys().len() != 1 {
         bail!(
             "expeected reg to have one key, instead has {} (reg={:?})",
             reg.keys().len(),
@@ -90,8 +90,12 @@ pub fn parse_inf_installer(
 
     let name = reg_info
         .next()
+        .ok_or_else(|| anyhow!("couldn't parse theme name; reg_info doesn't have enough info"))?
+        .strip_prefix('"')
+        .unwrap_or_default()
+        .strip_suffix('"')
         .map(str::to_string)
-        .ok_or_else(|| anyhow!("couldn't parse theme name; reg_info doesn't have enough info"))?;
+        .ok_or_else(|| anyhow!("expected theme name to be quoted"))?;
 
     reg_info.next(); // unused field
 
@@ -103,10 +107,10 @@ pub fn parse_inf_installer(
         })
         .collect::<Result<_>>()?;
 
-    if paths.len() != 15 {
+    if paths.len() != 17 {
         // maybe upgrade to error?
         eprintln!(
-            "[warning] expected 15 paths, instead got {} paths",
+            "[warning] expected 17 paths, instead got {} paths",
             paths.len()
         );
     }
@@ -144,6 +148,9 @@ const fn index_to_cursor_type(index: usize) -> CursorType {
         10 => NwseResize,    11 => NeswResize,
         12 => Move,          13 => CenterPtr,
         14 => Hand,           _ => unreachable!(),
+
+        // 15/16 are person and pin, which do not 
+        // have (commonly-used) xcursor equivalents
     }
 }
 
