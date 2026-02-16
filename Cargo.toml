@@ -25,7 +25,8 @@ libc = "0.2.180"
 tempfile = "3.24.0"
 x11 = "2.21.0"
 
-# The profile that 'dist' will build with
+[profile.release]
+lto = "fat"
+
 [profile.dist]
 inherits = "release"
-lto = "thin"
