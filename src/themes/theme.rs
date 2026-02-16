@@ -89,7 +89,7 @@ impl TryFrom<CursorMapping> for TypedCursor {
         } else {
             find_icase(&path)?.ok_or_else(|| {
                 anyhow!(
-                    "cursor path, path={} not found (in theme dir?) (after case-insensitive search)",
+                    "cursor path, path={} not found in parent (case-insensitive)",
                     path.display()
                 )
             })?
@@ -112,7 +112,7 @@ impl TypedCursor {
 
     fn save_as_xcursor(&self, dir: &Path) -> Result<()> {
         if !dir.is_dir() {
-            bail!("path={} must be dir", dir.display());
+            bail!("dir={} must be a path to a directory", dir.display());
         }
 
         self.inner.save_as_xcursor(dir.join(self.aliases[0]))?;
@@ -188,11 +188,11 @@ impl CursorTheme {
         let infs: Vec<_> = find_extensions_icase(theme_dir, &["inf"])?.collect();
 
         if infs.len() > 1 {
-            bail!("too many inf");
+            bail!("found more than one INF file in dir={theme_dir_display}");
         }
 
         let Some(inf) = infs.first().cloned() else {
-            bail!("oh god");
+            bail!("no INF file found in dir={theme_dir_display}");
         };
 
         let (name, mappings) = parse_inf_installer(&inf, theme_dir)?;
