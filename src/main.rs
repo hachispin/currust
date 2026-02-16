@@ -10,8 +10,6 @@
     // restriction lints:
     clippy::redundant_type_annotations,
     clippy::semicolon_inside_block,
-    // annoying one:
-    missing_docs
 )]
 // when used, scope is restricted (use statement inside functions)
 #![allow(clippy::enum_glob_use)]
