@@ -5,11 +5,13 @@
 //!
 //! You may find it helpful to also read about [RIFF](https://en.wikipedia.org/wiki/Resource_Interchange_File_Format).
 
-use std::fmt;
-use std::io::{Cursor, Read, Seek};
+use std::{
+    fmt,
+    io::{Cursor, Read, Seek},
+};
 
 use anyhow::{Context, Result, bail};
-use binrw::{BinRead, binread};
+use binrw::{BinRead, NullString, binread};
 
 /// RIFF chunk with [`Self::data`] as `Vec<u32>`.
 #[binread]
@@ -109,6 +111,8 @@ pub struct AniHeader {
 
 /// Models an ANI file.
 ///
+/// A diagram taken from the Wikipedia page on the ANI format:
+///
 /// ```text
 /// RIFF('ACON'
 ///     [LIST('INFO'                   
@@ -131,8 +135,8 @@ pub struct AniHeader {
 /// )
 /// ```
 ///
-/// NOTE: The order shown here may not reflect how actual ANI files
-///       can choose to order their fields.
+/// NOTE: The order shown here may not reflect how actual
+///       ANI files can choose to order their fields.
 ///
 /// - Chunks always follow this: identifier => data size => even-padded data.
 ///   * Data size doesn't include padding.
@@ -140,8 +144,14 @@ pub struct AniHeader {
 /// - Chunks like "RIFF" and "LIST" have a second identifier, after the size.
 #[derive(Default)]
 pub struct AniFile {
-    /// The heaader, i.e, the "anih" chunk.
+    /// The header, i.e, the "anih" chunk.
     pub header: AniHeader,
+    /// The title stored in the "INFO" ("LIST" subtype) chunk, with
+    /// the identifier: "INAM". Note that this is rarely present.
+    pub title: Option<NullString>,
+    /// The author stored in the "INFO" ("LIST" subtype) chunk, with
+    /// the identifier: "IART". Note that this is rarely present.
+    pub author: Option<NullString>,
     /// Per-frame timings. Usually [`None`].
     ///
     /// ## Explanation
@@ -178,6 +188,8 @@ impl fmt::Debug for AniFile {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AniFile")
             .field("header", &self.header)
+            .field("title", &self.title)
+            .field("author", &self.author)
             .field("rate", &self.rate)
             .field("sequence", &self.sequence)
             .finish_non_exhaustive()
@@ -185,6 +197,9 @@ impl fmt::Debug for AniFile {
 }
 
 impl AniFile {
+    /// Max blob size for any (dynamic length) chunk.
+    const MAX_CHUNK_SIZE: usize = 2_097_152;
+
     /// Parses `ani_blob`.
     ///
     /// This is pretty complicated to parse (matches on fourcc)
@@ -203,11 +218,8 @@ impl AniFile {
     /// - missing required chunks (e.g, no [`AniHeader`])
     /// - blob lengths being unreasonably large (safety)
     /// - more complex invariants not being met, see [`Self::check_invariants`]
-    // this is the worst format i've ever seen
     pub fn from_blob(ani_blob: &[u8]) -> Result<Self> {
-        const MAX_RIFF_SIZE: usize = 2_097_152;
-
-        if ani_blob.len() > MAX_RIFF_SIZE {
+        if ani_blob.len() > Self::MAX_CHUNK_SIZE {
             bail!(
                 "ani_blob.len()={} unreasonably large (2MB+)",
                 ani_blob.len()
@@ -293,56 +305,76 @@ impl AniFile {
     /// Helper for [`Self::from_blob`] for the "LIST" chunk.
     ///
     /// This can diverge depending on the subtype, which can
-    /// either be "INFO" (skipped) or "fram" (frame data).
+    /// either be "INFO" (title/author) or "fram" (frame data).
+    ///
+    /// The "INFO" chunk isn't required. THe "fram" chunk Is.
     fn parse_list(cursor: &mut Cursor<&[u8]>, ani: &mut Self) -> Result<()> {
-        const MAX_FRAM_SIZE: u32 = 1_048_576; // a megabyte
-
         let ani_blob_size = cursor.get_ref().len();
         let mut buf = [0u8; 4];
-        cursor.read_exact(&mut buf)?;
-        let list_size = u32::from_le_bytes(buf);
         let mut list_id = [0u8; 4];
+        cursor.read_exact(&mut buf)?; // list size
         cursor.read_exact(&mut list_id)?;
+        let list_size = u32::from_le_bytes(buf);
 
         // excluding subtype fourcc (and padding)
         let list_data_size = list_size
             .checked_sub(4)
             .with_context(|| format!("underflow on list_size={list_size} - 4"))?;
 
+        if usize::try_from(list_data_size)? > Self::MAX_CHUNK_SIZE {
+            bail!("list_data_size={list_data_size} unreasonably large (1MB+)");
+        }
+
+        let end = cursor
+            .position()
+            .checked_add(u64::from(list_data_size))
+            .with_context(|| {
+                format!(
+                    "overflow on cursor.position={} + fram_size={list_data_size}",
+                    cursor.position()
+                )
+            })?;
+
+        // if we read `fram_size` bytes, are we still in the blob?
+        if end > ani_blob_size.try_into()? {
+            bail!("fram_size={list_data_size} extends beyond blob");
+        }
+
         match &list_id {
             b"INFO" => {
-                eprintln!("found 'INFO' chunk, skipping");
+                while cursor.position() < end {
+                    cursor.read_exact(&mut buf)?;
 
-                if list_data_size == u32::MAX {
-                    bail!("overflow ???");
+                    // NOTE: read_until() is a little unsafe here, but
+                    // `ani_blob` is checked to not be larger than ~2MB.
+                    // so, the worst case scenario? parsing sadly fails.
+                    if buf == *b"INAM" {
+                        if ani.title.is_some() {
+                            bail!("duplicate 'INAM' subchunk in 'INFO'");
+                        }
+
+                        cursor.read_exact(&mut buf)?; // size
+                        ani.title = Some(NullString::read_le(cursor)?);
+                    } else if buf == *b"IART" {
+                        if ani.author.is_some() {
+                            bail!("duplicate 'IART' subchunk in 'INFO'");
+                        }
+
+                        cursor.read_exact(&mut buf)?; // size
+                        ani.author = Some(NullString::read_le(cursor)?);
+                    } else {
+                        bail!("expected 'INAM' or 'IART' subchunk in 'INFO', instead got {buf:?}");
+                    }
                 }
 
-                let padding = list_data_size % 2;
-                cursor.seek_relative(i64::from(list_data_size + padding))?;
+                if list_data_size % 2 != 0 {
+                    cursor.seek_relative(1)?;
+                }
             }
 
             b"fram" => {
                 if !ani.ico_frames.is_empty() {
                     bail!("duplicate 'fram' chunk");
-                }
-
-                if list_data_size > MAX_FRAM_SIZE {
-                    bail!("fram_size={list_data_size} unreasonably large (1MB+)");
-                }
-
-                let end = cursor
-                    .position()
-                    .checked_add(u64::from(list_data_size))
-                    .with_context(|| {
-                        format!(
-                            "overflow on cursor.position={} + fram_size={list_data_size}",
-                            cursor.position()
-                        )
-                    })?;
-
-                // if we read `fram_size` bytes, are we still in the blob?
-                if end > ani_blob_size.try_into()? {
-                    bail!("fram_size={list_data_size} extends beyond blob");
                 }
 
                 let mut chunks: Vec<RiffChunkU8> =
