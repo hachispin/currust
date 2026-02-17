@@ -20,13 +20,11 @@ pub mod formats;
 pub mod fs_utils;
 pub mod themes;
 
-/// The project root for tests.
-///
-/// This does not include a trailing slash.
+/// Helper for compile-time paths for tests.
 #[macro_export]
-macro_rules! root {
-    () => {
-        env!("CARGO_MANIFEST_DIR")
+macro_rules! from_root {
+    ($path:literal) => {
+        concat!(env!("CARGO_MANIFEST_DIR"), $path)
     };
 }
 

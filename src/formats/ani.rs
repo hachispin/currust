@@ -26,11 +26,12 @@ pub struct RiffChunkU32 {
     data_length: usize,
 
     /// The chunk data.
-    #[br(count = data_length, pad_after = data_size % 2)]
-    pub data: Vec<u32>, // unsure if padding is needed but why not
+    #[br(count = data_length)]
+    pub data: Vec<u32>,
+    // no padding needed, data is inherently even (u32)
 }
 
-/// RIFF chunk with [`Self::data`] as `Vec<u8>`.
+/// RIFF chunk with [`Self::data`] as [`Vec<u8>`].
 #[binread]
 #[derive(Debug)]
 #[br(little)]
@@ -77,6 +78,20 @@ enum AniFlags {
 }
 
 /// Models an ANI file's header (or the "anih" chunk).
+///
+/// ```text
+/// typedef struct {
+///     DWORD cbSizeof;  // Should be sizeof(ANIHEADER) = 36 bytes.
+///     DWORD cFrames;   // Number of frames in the frame list.
+///     DWORD cSteps;    // Number of steps in the animation loop.
+///
+///     DWORD cx, cy;              // Not used.
+///     DWORD cBitCount, cPlanes;  // Not used.
+///
+///     DWORD jifRate;  // Default display rate, in jiffies (1/60s).
+///     DWORD fl;       // AF_ICON should be set. AF_SEQUENCE is optional.
+/// } ANIHEADER;             
+/// ```
 #[binread]
 #[derive(Debug, Default, PartialEq)]
 pub struct AniHeader {
@@ -101,8 +116,13 @@ pub struct AniHeader {
     /// sequence = [0, 1, 2, 1] => num_steps  = 4
     /// frames   = [0, 1, 2]    => num_frames = 3
     /// ```
-    #[br(pad_after = 16)] // contains unused fields: cx, cy, cBitCount, cPlanes
+
+    // contains unused fields: cx, cy, cBitCount, cPlanes
+    // spec says these should be zero/reserved, but windows
+    // doesn't check--they render the cursor regardless
+    #[br(pad_after = 16)]
     pub num_steps: u32,
+
     /// Default jiffy rate if "rate" isn't provided.
     pub jiffy_rate: u32,
     // Flags to indicate whether the "seq " chunk exists.
@@ -111,37 +131,37 @@ pub struct AniHeader {
 
 /// Models an ANI file.
 ///
-/// A diagram taken from the Wikipedia page on the ANI format:
-///
 /// ```text
-/// RIFF('ACON'
+/// RIFF('ACON'  // ANI files have the "ACON" identifier.
+///
 ///     [LIST('INFO'                   
-///         [INAM(<ZSTR>)]             // Title. Optional.
-///         [IART(<ZSTR>)]             // Author. Optional.
+///         [INAM(<ZSTR>)]  // Title.
+///         [IART(<ZSTR>)]  // Author.
 ///     )]                             
-///     'anih'(<ANIHEADER>)            // ANI file header.
-///     ['rate'(<DWORD...>)]           // Rate table (array of jiffies).
-///                                    // If the AF_SEQUENCE flag is set
-///                                    // then the count is ANIHEADER.cSteps,
-///                                    // otherwise ANIHEADER.cFrames.
-///     ['seq '(<DWORD...>)]           // Sequence table (array of frame index values).
-///                                    // Should be present when AF_SEQUENCE flag is set.
-///                                    // Count is ANIHEADER.cSteps.
-///     LIST('fram'                    // List of frames data. Count is ANIHEADER.cFrames.
-///        'icon'(<icon_data_1>)       // Frame 1
-///        'icon'(<icon_data_2>)       // Frame 2
-///        ...
+///
+///     'anih'(<ANIHEADER>)  // ANI file header.
+///
+///     // Rate table (array of jiffies). If the AF_SEQUENCE flag is set
+///     // then the count is ANIHEADER.cSteps, otherwise ANIHEADER.cFrames.
+///     ['rate'(<DWORD...>)]  
+///
+///     // Sequence table (array of frame index values). Should be present
+///     // when the AF_SEQUENCE flag is set. Count is ANIHEADER.cSteps.
+///     ['seq '(<DWORD...>)]  
+///
+///     LIST('fram'              // List of frames data. Count is ANIHEADER.cFrames.
+///        'icon'(<icon_data_1>) // Frame 1
+///        'icon'(<icon_data_2>) // Frame 2
+///        ...                   // Frame 3..(ANIHEADER.cFrames)
 ///     )
 /// )
 /// ```
 ///
-/// NOTE: The order shown here may not reflect how actual
+/// NOTE: The order shown here does not reflect how actual
 ///       ANI files can choose to order their fields.
 ///
-/// - Chunks always follow this: identifier => data size => even-padded data.
-///   * Data size doesn't include padding.
-/// - Brackets around a chunk (like "seq ") indicate that it's optional.
-/// - Chunks like "RIFF" and "LIST" have a second identifier, after the size.
+/// - Brackets around a chunk indicate that it's optional.
+/// - \<ZSTR\> indicates a null-terminated string.
 #[derive(Default)]
 pub struct AniFile {
     /// The header, i.e, the "anih" chunk.
@@ -257,7 +277,6 @@ impl AniFile {
         while cursor.position() < ani_blob.len().try_into()? {
             cursor.read_exact(&mut buf)?;
 
-            // deref patterns are unstable
             match &buf {
                 b"LIST" => Self::parse_list(&mut cursor, &mut ani)?,
                 b"anih" => {
@@ -307,7 +326,7 @@ impl AniFile {
     /// This can diverge depending on the subtype, which can
     /// either be "INFO" (title/author) or "fram" (frame data).
     ///
-    /// The "INFO" chunk isn't required. THe "fram" chunk Is.
+    /// The "INFO" chunk isn't required. The "fram" chunk is.
     fn parse_list(cursor: &mut Cursor<&[u8]>, ani: &mut Self) -> Result<()> {
         let ani_blob_size = cursor.get_ref().len();
         let mut buf = [0u8; 4];
@@ -322,7 +341,7 @@ impl AniFile {
             .with_context(|| format!("underflow on list_size={list_size} - 4"))?;
 
         if usize::try_from(list_data_size)? > Self::MAX_CHUNK_SIZE {
-            bail!("list_data_size={list_data_size} unreasonably large (1MB+)");
+            bail!("list_data_size={list_data_size} unreasonably large (2MB+)");
         }
 
         let end = cursor
@@ -330,14 +349,14 @@ impl AniFile {
             .checked_add(u64::from(list_data_size))
             .with_context(|| {
                 format!(
-                    "overflow on cursor.position={} + fram_size={list_data_size}",
+                    "overflow on cursor.position={} + list_data_size={list_data_size}",
                     cursor.position()
                 )
             })?;
 
         // if we read `fram_size` bytes, are we still in the blob?
         if end > ani_blob_size.try_into()? {
-            bail!("fram_size={list_data_size} extends beyond blob");
+            bail!("list_data_size={list_data_size} extends beyond blob");
         }
 
         match &list_id {
@@ -345,9 +364,6 @@ impl AniFile {
                 while cursor.position() < end {
                     cursor.read_exact(&mut buf)?;
 
-                    // NOTE: read_until() is a little unsafe here, but
-                    // `ani_blob` is checked to not be larger than ~2MB.
-                    // so, the worst case scenario? parsing sadly fails.
                     if buf == *b"INAM" {
                         if ani.title.is_some() {
                             bail!("duplicate 'INAM' subchunk in 'INFO'");
@@ -431,7 +447,7 @@ impl AniFile {
         }
 
         if hdr.jiffy_rate == 0 && ani.rate.is_none() {
-            bail!("no frame timings: jiffy_rate=0 and ani.rate is None");
+            bail!("no frame timings: jiffy_rate=0, ani.rate=None");
         }
 
         // rate maps to sequenced frames
@@ -467,25 +483,23 @@ mod test {
     use std::{fmt::Write, fs};
 
     use super::*;
-    use crate::root;
+    use crate::from_root;
 
     /// Parses a file and checks everything matches expected results.
     // (sort of lazy but it's better than nothing)
     #[test]
     fn good_ani() {
-        const ANI_PATH: &str = concat!(root!(), "/testing/fixtures/neuro_alt.ani");
-        const EXPECTED_ANI_FRAMES: &str =
-            include_str!(concat!(root!(), "/testing/fixtures/neuro_alt_frames"));
+        const ANI_BLOB: &[u8] = include_bytes!(from_root!("/testing/fixtures/neuro_alt.ani"));
+        const ANI_FRAMES: &str = include_str!(from_root!("/testing/fixtures/neuro_alt_frames"));
 
         const {
             assert!(
-                size_of::<AniFile>() == 88,
+                size_of::<AniFile>() == 136,
                 "AniFile fields have changed, update tests and this number accordingly"
             );
         }
 
-        let blob = fs::read(ANI_PATH).unwrap();
-        let ani = AniFile::from_blob(&blob).unwrap();
+        let ani = AniFile::from_blob(ANI_BLOB).unwrap();
         let hdr = &ani.header;
 
         assert_eq!(hdr.num_frames, 10);
@@ -518,6 +532,6 @@ mod test {
             writeln!(&mut ani_frames, "{:?}", frame.data).unwrap();
         }
 
-        assert_eq!(ani_frames, EXPECTED_ANI_FRAMES);
+        assert_eq!(ani_frames, ANI_FRAMES);
     }
 }
