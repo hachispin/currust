@@ -21,12 +21,15 @@ pub mod fs_utils;
 pub mod themes;
 
 /// Helper for compile-time paths for tests.
-#[macro_export]
+#[cfg(test)]
 macro_rules! from_root {
     ($path:literal) => {
         concat!(env!("CARGO_MANIFEST_DIR"), $path)
     };
 }
+
+#[cfg(test)]
+use from_root;
 
 use crate::{
     cli::{Args, ParsedArgs},
