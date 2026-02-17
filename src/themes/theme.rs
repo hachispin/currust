@@ -95,7 +95,12 @@ impl TryFrom<CursorMapping> for TypedCursor {
             })?
         };
 
-        Ok(Self::new(GenericCursor::from_path(path)?, mapping.r#type))
+        Ok(Self::new(
+            GenericCursor::from_path(&path).with_context(|| {
+                format!("while reading path={} as generic cursor", path.display())
+            })?,
+            mapping.r#type,
+        ))
     }
 }
 

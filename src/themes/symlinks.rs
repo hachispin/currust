@@ -1,4 +1,4 @@
-//! Symlinks for X11 cursor names in [`super::themes::CursorTheme`].
+//! Symlinks for X11 cursor names in [`super::theme::CursorTheme`].
 //!
 //! The first string in each list is treated as
 //! the "concrete" file that symlinks point to.
