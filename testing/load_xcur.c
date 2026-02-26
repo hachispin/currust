@@ -46,8 +46,8 @@ int main(int argc, char** argv) {
     const uint32_t WIDTH = 600;
     const uint32_t HEIGHT = 400;
     const uint32_t BORDER_WIDTH = 1;
-    const uint64_t BORDER_COLOR = 0;            // black
-    const uint64_t BACKGROUND_COLOR = 0xFFFFFF; // white
+    const uint64_t BORDER_COLOR = 0; // black
+    const uint64_t BACKGROUND_COLOR = 0xFF393a3c; // gray
 
     // create window to display cursor in
     Window window = XCreateSimpleWindow(
