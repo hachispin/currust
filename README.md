@@ -59,5 +59,5 @@ a "planned/future features" section. Note that not everything here may be added.
 
 - [ ] Publish or otherwise for usage with `cargo` and package managers
 - [ ] Conversion from X11 cursors to Windows cursors (i.e, the other way around)
-- [ ] [SVG cursor themes][1] for KDE Plasma
+- [ ] [SVG cursor themes](https://blog.vladzahorodnii.com/2024/10/06/svg-cursors-everything-that-you-need-to-know-about-them) for KDE Plasma
 - [ ] hyprcursor (cursor format for hyprland) support
