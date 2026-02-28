@@ -441,27 +441,6 @@ impl AniFile {
             );
         }
 
-        if hdr.jiffy_rate == 0 && ani.rate.is_none() && ani.ico_frames.len() > 1 {
-            bail!("no frame timings (>1 frames): jiffy_rate=0, ani.rate=None");
-        }
-
-        if let Some(seq) = &ani.sequence
-            && seq.data.iter().max() >= Some(&hdr.num_frames)
-        {
-            bail!("frame indices of 'seq ' chunk go out of bounds");
-        }
-        if let Some(seq) = &ani.sequence
-            && hdr.flags == Unsequenced
-            && seq.data != (0..hdr.num_steps).collect::<Vec<_>>()
-        {
-            eprintln!(
-                "[warning] expected 'seq ' chunk to be None from flags={:?}, found \
-                non-linear sequence={:?}. note that this sequence will still be used",
-                hdr.flags, ani.sequence
-            );
-        }
-
-        // rate maps to sequenced frames
         if let Some(rate) = &ani.rate
             && rate.data.len() != num_steps
         {
@@ -471,10 +450,32 @@ impl AniFile {
             )
         }
 
+        if hdr.jiffy_rate == 0 && ani.rate.is_none() && ani.ico_frames.len() > 1 {
+            bail!("no frame timings (>1 frames): jiffy_rate=0, ani.rate=None");
+        }
+
+        if let Some(seq) = &ani.sequence
+            && seq.data.iter().max() >= Some(&hdr.num_frames)
+        {
+            bail!("frame indices of 'seq ' chunk go out of bounds");
+        }
+
         if hdr.flags == Sequenced && ani.sequence.is_none() {
             eprintln!(
-                "[warning] expected 'seq ' chunk from flags={:?}, found None",
+                "[warning] expected 'seq ' chunk from flags={:?}, found None. \
+                the order in which frames were stored will be used instead",
                 hdr.flags
+            );
+        }
+
+        if let Some(seq) = &ani.sequence
+            && hdr.flags == Unsequenced
+            && seq.data != (0..hdr.num_steps).collect::<Vec<_>>()
+        {
+            eprintln!(
+                "[warning] expected 'seq ' chunk to be None from flags={:?}, found \
+                non-linear sequence={:?}. note that this sequence will still be used",
+                hdr.flags, ani.sequence
             );
         }
 
