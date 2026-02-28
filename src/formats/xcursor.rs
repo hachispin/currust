@@ -277,11 +277,7 @@ impl Xcursor {
 #[cfg(test)]
 mod test {
     use super::*;
-
-    use crate::cursors::cursor_image::{
-        CursorImages,
-        test::{BLACK, WHITE},
-    };
+    use crate::cursors::generic_cursor::test::black_and_white;
 
     use std::{
         io::{BufWriter, Seek, SeekFrom},
@@ -297,25 +293,6 @@ mod test {
         };
     }
 
-    /// Generates an Xcursor with 10 alternating black and white
-    /// frames, with a delay of 100ms between each frame.
-    fn black_and_white() -> Xcursor {
-        // 32x32 = 1024, 1024 * 4 = 4096, so each frame is 4096 bytes (u8s).
-        let mut frames: Vec<CursorImage> = Vec::new();
-
-        for i in 0..9 {
-            if i % 2 == 0 {
-                frames.push(BLACK.clone());
-            } else {
-                frames.push(WHITE.clone());
-            }
-        }
-
-        let frames = CursorImages::try_from(frames).unwrap();
-        let cursor = GenericCursor::new_unscaled(frames, None);
-        Xcursor::new(&cursor).unwrap()
-    }
-
     #[cfg(target_os = "linux")] // libXcursor is dynamically-linked
     #[test]
     /// Attempts to load the cursor produced from `black_and_white()` with libXcursor.
@@ -325,7 +302,7 @@ mod test {
         use x11::xcursor::XcursorFileLoadImages;
 
         let mut file = tempfile().unwrap();
-        let xcursor = self::black_and_white();
+        let xcursor = Xcursor::new(&black_and_white()).unwrap();
         let raw_fd = file.as_raw_fd();
 
         xcursor.write(&mut BufWriter::new(&file)).unwrap();

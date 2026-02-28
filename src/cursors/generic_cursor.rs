@@ -44,7 +44,7 @@ impl GenericCursor {
     ///
     /// - If `base_images` or `scaled_images` is empty.
     /// - If propagated from [`CursorImages`] construction.
-    pub(super) fn new(
+    fn new(
         base_images: CursorImages,
         scaled_images: Vec<CursorImages>,
         info: Option<String>,
@@ -91,7 +91,7 @@ impl GenericCursor {
 
     /// Constructor without `scaled`.
     #[must_use]
-    pub fn new_unscaled(base_images: CursorImages, info: Option<String>) -> Self {
+    fn new_unscaled(base_images: CursorImages, info: Option<String>) -> Self {
         Self {
             base: base_images,
             scaled: Vec::new(),
@@ -371,5 +371,30 @@ impl GenericCursor {
             .inner()
             .iter()
             .chain(self.scaled.iter().flat_map(CursorImages::inner))
+    }
+}
+
+#[cfg(test)]
+pub mod test {
+    use super::*;
+    use crate::cursors::cursor_image::test::{BLACK, WHITE};
+
+    /// Generates an animated cursor with ten alternating black and white frames.
+    pub fn black_and_white() -> GenericCursor {
+        let frames = [
+            BLACK.clone(),
+            WHITE.clone(),
+            BLACK.clone(),
+            WHITE.clone(),
+            BLACK.clone(),
+            WHITE.clone(),
+            BLACK.clone(),
+            WHITE.clone(),
+            BLACK.clone(),
+            WHITE.clone(),
+        ];
+
+        let frames = CursorImages::try_from(frames.to_vec()).unwrap();
+        GenericCursor::new_unscaled(frames, None)
     }
 }
