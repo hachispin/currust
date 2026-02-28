@@ -60,7 +60,7 @@ pub fn parse_inf_installer(
 
     if reg.keys().len() != 1 {
         bail!(
-            "expeected reg to have one key, instead has {} (reg={:?})",
+            "expected reg to have one key, instead has {} (reg={:?})",
             reg.keys().len(),
             reg
         );
@@ -219,7 +219,7 @@ fn expand(value: &str, subs: &HashMap<String, String>) -> Result<String> {
         let sub_value = subs
             .get(&sub_key)
             .map(String::as_str)
-            .or_else(|| expand_dirids(&sub_key))
+            .or_else(|| if sub_key == "%%" { Some("%") } else { None })
             .ok_or_else(|| {
                 anyhow!("no substitution exists for sub_key={sub_key} for value={value}")
             })?;
@@ -235,17 +235,4 @@ fn expand(value: &str, subs: &HashMap<String, String>) -> Result<String> {
     }
 
     Ok(expanded_value)
-}
-
-/// Helper for [`expand`] for system-defined variables.
-// TODO: maybe consider adding more dirids if seen
-fn expand_dirids(key: &str) -> Option<&str> {
-    // because hashmaps are annoying const-wise
-    const LEN: usize = 2;
-
-    const SYS_KEYS: [&str; LEN] = ["%%", "%10%"];
-    const SYS_VALUES: [&str; LEN] = ["%", "C:\\WINDOWS"];
-
-    let idx = SYS_KEYS.iter().position(|k| *k == key)?;
-    SYS_VALUES.get(idx).copied()
 }
