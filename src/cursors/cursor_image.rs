@@ -258,24 +258,23 @@ impl From<CursorImages> for Vec<CursorImage> {
 #[cfg(test)]
 pub mod test {
     use super::CursorImage;
-    use lazy_static::lazy_static;
+    use std::sync::LazyLock;
 
-    lazy_static! {
-        pub static ref BLACK: CursorImage = CursorImage {
-            width: 32,
-            height: 32,
-            hotspot_x: 0,
-            hotspot_y: 0,
-            delay: 100,
-            rgba: vec![0u8; 4096],
-        };
-        pub static ref WHITE: CursorImage = CursorImage {
-            width: 32,
-            height: 32,
-            hotspot_x: 0,
-            hotspot_y: 0,
-            delay: 100,
-            rgba: vec![255u8; 4096],
-        };
-    }
+    pub static BLACK: LazyLock<CursorImage> = LazyLock::new(|| CursorImage {
+        width: 32,
+        height: 32,
+        hotspot_x: 0,
+        hotspot_y: 0,
+        delay: 100,
+        rgba: vec![0u8; 4096],
+    });
+
+    pub static WHITE: LazyLock<CursorImage> = LazyLock::new(|| CursorImage {
+        width: 32,
+        height: 32,
+        hotspot_x: 0,
+        hotspot_y: 0,
+        delay: 100,
+        rgba: vec![255u8; 4096],
+    });
 }
