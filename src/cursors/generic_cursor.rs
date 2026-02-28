@@ -24,14 +24,17 @@ use ico::IconDir;
 pub struct GenericCursor {
     /// The base images, used for scaling.
     base: CursorImages,
-
     /// Scaled cursors derived from `base`.
     ///
     /// Each vector has the same length as `base`.
     scaled: Vec<CursorImages>,
-
     /// Used scale factors. Always includes 1.0.
     scale_factors: Vec<f64>,
+    /// Info stored within the cursor.
+    ///
+    /// Both ANI and Xcursor have the capability of storing metadata similar
+    /// to this. ANI uses it's "INFO" chunk, while Xcursor uses comment chunks.
+    info: Option<String>,
 }
 
 impl GenericCursor {
@@ -41,7 +44,11 @@ impl GenericCursor {
     ///
     /// - If `base_images` or `scaled_images` is empty.
     /// - If propagated from [`CursorImages`] construction.
-    pub(super) fn new(base_images: CursorImages, scaled_images: Vec<CursorImages>) -> Result<Self> {
+    pub(super) fn new(
+        base_images: CursorImages,
+        scaled_images: Vec<CursorImages>,
+        info: Option<String>,
+    ) -> Result<Self> {
         if scaled_images.is_empty() {
             bail!("scaled_images can't be empty, call Self::new_unscaled() if this is expected");
         }
@@ -78,16 +85,18 @@ impl GenericCursor {
             base: base_images,
             scaled: scaled_images,
             scale_factors,
+            info,
         })
     }
 
     /// Constructor without `scaled`.
     #[must_use]
-    pub fn new_unscaled(base_images: CursorImages) -> Self {
+    pub fn new_unscaled(base_images: CursorImages, info: Option<String>) -> Self {
         Self {
             base: base_images,
             scaled: Vec::new(),
             scale_factors: vec![1.0],
+            info,
         }
     }
 
@@ -129,7 +138,7 @@ impl GenericCursor {
         let path = path.as_ref();
 
         let Some(ext) = path.extension() else {
-            bail!("path has no extension; expected 'cur' or 'ani'");
+            bail!("path has no extension; expected 'cur' or 'ani'")
         };
 
         let ext = ext.to_ascii_lowercase();
@@ -142,7 +151,7 @@ impl GenericCursor {
             bail!(
                 "expected extension 'cur' or 'ani' for path, got ext={}",
                 ext.display()
-            );
+            )
         }?;
 
         Ok(cursor)
@@ -182,9 +191,9 @@ impl GenericCursor {
         let base = CursorImages::try_from(base)?;
 
         if scaled.is_empty() {
-            Ok(Self::new_unscaled(base))
+            Ok(Self::new_unscaled(base, None))
         } else {
-            Self::new(base, vec![scaled.try_into()?])
+            Self::new(base, vec![scaled.try_into()?], None)
         }
     }
 
@@ -200,6 +209,14 @@ impl GenericCursor {
         let ani_blob = fs::read(&ani_path)?;
         let ani_file = AniFile::from_blob(&ani_blob)?;
         let header = &ani_file.header;
+
+        // optional info stuff
+        let info = match (ani_file.title, ani_file.author) {
+            (Some(t), Some(a)) => Some(format!("'{t}' by '{a}'")),
+            (Some(t), None) => Some(format!("'{t}' by [unknown]")),
+            (None, Some(a)) => Some(format!("[unknown] by '{a}'")),
+            (None, None) => None,
+        };
 
         // read each ico frame
         let icos: Vec<IconDir> = ani_file
@@ -256,7 +273,7 @@ impl GenericCursor {
         let base = CursorImages::try_from(base)?;
 
         if scaled_ungrouped.is_empty() {
-            return Ok(Self::new_unscaled(base));
+            return Ok(Self::new_unscaled(base, info));
         }
 
         // could use hashmap here but ehh
@@ -281,7 +298,7 @@ impl GenericCursor {
             scaled.push(buffer.try_into()?);
         }
 
-        Self::new(base, scaled)
+        Self::new(base, scaled, info)
     }
 
     /// Saves `self` to `path` as Xcursor.
@@ -330,6 +347,12 @@ impl GenericCursor {
     /// Trivial accessor for `scaled` field.
     pub fn scaled_images(&self) -> impl Iterator<Item = &CursorImages> {
         self.scaled.iter()
+    }
+
+    /// Trivial accessor for `info` field.
+    #[must_use]
+    pub fn info(&self) -> Option<String> {
+        self.info.clone()
     }
 
     /// Returns the number of `base` and `scaled` images.
