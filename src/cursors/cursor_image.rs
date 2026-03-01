@@ -227,7 +227,6 @@ impl TryFrom<Vec<CursorImage>> for CursorImages {
             let mut vec = vec;
 
             if vec[0].delay != 0 {
-                eprintln!("setting delay to zero for CursorImages as there's only one image");
                 vec[0].delay = 0;
             }
 
