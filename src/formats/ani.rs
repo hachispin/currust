@@ -94,6 +94,7 @@ enum AniFlags {
 /// ```
 #[binread]
 #[derive(Debug, Default, PartialEq)]
+#[br(little)]
 pub struct AniHeader {
     #[br(temp)]
     anih_size: u32,
@@ -371,6 +372,10 @@ impl AniFile {
 
                         cursor.read_exact(&mut buf)?; // size
                         ani.title = Some(NullString::read_le(cursor)?);
+
+                        if !u32::from_le_bytes(buf).is_multiple_of(2) {
+                            cursor.seek_relative(1)?;
+                        }
                     } else if buf == *b"IART" {
                         if ani.author.is_some() {
                             bail!("duplicate 'IART' subchunk in 'INFO'");
@@ -378,13 +383,13 @@ impl AniFile {
 
                         cursor.read_exact(&mut buf)?; // size
                         ani.author = Some(NullString::read_le(cursor)?);
+
+                        if !u32::from_le_bytes(buf).is_multiple_of(2) {
+                            cursor.seek_relative(1)?;
+                        }
                     } else {
                         bail!("expected 'INAM' or 'IART' subchunk in 'INFO', instead got {buf:?}");
                     }
-                }
-
-                if list_data_size % 2 != 0 {
-                    cursor.seek_relative(1)?;
                 }
             }
 
@@ -416,6 +421,10 @@ impl AniFile {
             }
 
             _ => bail!("unexpected list_id={list_id:?}"),
+        }
+
+        if list_data_size % 2 != 0 {
+            cursor.seek_relative(1)?;
         }
 
         Ok(())
