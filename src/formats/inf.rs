@@ -220,6 +220,14 @@ fn expand(value: &str, subs: &HashMap<String, String>) -> Result<String> {
             .get(&sub_key)
             .map(String::as_str)
             .or_else(|| if sub_key == "%%" { Some("%") } else { None })
+            .or_else(|| {
+                if sub_key.chars().all(|c| c.is_ascii_digit() || c == '%') {
+                    // let's just assume it's a DIRID and leave it :)
+                    Some(&sub_key)
+                } else {
+                    None
+                }
+            })
             .ok_or_else(|| {
                 anyhow!("no substitution exists for sub_key={sub_key} for value={value}")
             })?;
