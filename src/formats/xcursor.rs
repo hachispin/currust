@@ -299,7 +299,7 @@ mod test {
     fn libxcursor() {
         use libc::fdopen;
         use std::os::fd::AsRawFd;
-        use x11::xcursor::XcursorFileLoadImages;
+        use x11::xcursor::{XcursorFileLoadImages, XcursorImagesDestroy};
 
         let mut file = tempfile().unwrap();
         let xcursor = Xcursor::new(&black_and_white()).unwrap();
@@ -314,11 +314,15 @@ mod test {
         );
 
         // if this is not null, that's a pass
-        let _image_ptr = denullify!(
+        let image_ptr = denullify!(
             unsafe { XcursorFileLoadImages(c_file.as_ptr(), 32) },
             "XcursorFileLoadImages() returned NULL with raw_fd={raw_fd}, c_file={:p}",
             c_file.as_ptr()
         );
+
+        unsafe {
+            XcursorImagesDestroy(image_ptr.as_ptr());
+        }
 
         // no fclose() needed, fs::File manages it
     }
