@@ -1,0 +1,29 @@
+※※※ HOW TO INSTALL? ※※※
+
+TL;DR: Rightclick "Install.inf" > choose "Install" > Select the cursor theme in the cursor preferences > OK/Apply > Enjoy!
+
+1. Extract and open the cursor folder.
+2. Right click the "Install.inf" file, and choose "Install" in the menu. Discard any warning messages if they appear.
+3. Go to the cursor options. (In Windows 10, search for "Themes" (in your language) and open themes. Then click the "Mouse Cursor" button.)
+4. In the Mouse options, go to the "Pointers" tab.
+5. Use the drop down menu to select the cursor theme and click OK. Agree with a message if it appears.
+6. Enjoy!
+
+------------------------------------------------
+
+Agree to these terms: 
+⚠ I am not responsible if anything happens to software or hardware.
+⚠ Do not modify, rename & claim the files as your own.
+⚠ Do not redistribute the files in any way. Reproduction is prohibited!
+
+------------------------------------------------
+
+Thank you for downloading my cursor! 🤍
+
+Designed by NOiiRE
+2024 © All Right Reserved.
+
+- https://ko-fi.com/noiire
+- https://trakteer.id/noiire
+- https://twitter.com/noiireism
+- https://www.youtube.com/@NOiiRE

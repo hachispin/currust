@@ -62,6 +62,7 @@ pub struct RiffChunkU8 {
 /// - `0`: no flags set
 /// - `2`: frames are not ICO
 #[derive(Debug, Default, PartialEq, BinRead)]
+#[br(little)]
 #[br(repr = u32)]
 enum AniFlags {
     // NOTE: this is storing the valid combinations of
@@ -503,8 +504,8 @@ mod test {
     // (sort of lazy but it's better than nothing)
     #[test]
     fn good_ani() {
-        const ANI_BLOB: &[u8] = include_bytes!(from_root!("/testing/fixtures/neuro_alt.ani"));
         const ANI_FRAMES: &str = include_str!(from_root!("/testing/fixtures/neuro_alt_frames"));
+        const ANI_BLOB: &[u8] = include_bytes!(from_root!("/testing/fixtures/neuro/Neuro alt.ani"));
 
         const {
             assert!(

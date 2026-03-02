@@ -1,0 +1,51 @@
+[Version]
+signature="$CHICAGO$"
+
+[DefaultInstall]
+CopyFiles = Scheme.Cur, Scheme.Txt
+AddReg    = Scheme.Reg
+
+[DestinationDirs]
+Scheme.Cur = 10,"%CUR_DIR%"
+Scheme.Txt = 10,"%CUR_DIR%"
+
+[Scheme.Reg]
+HKCU,"Control Panel\Cursors\Schemes","%SCHEME_NAME%",,"%10%\%CUR_DIR%\%pointer%,%10%\%CUR_DIR%\%help%,%10%\%CUR_DIR%\%work%,%10%\%CUR_DIR%\%busy%,%10%\%CUR_DIR%\%cross%,%10%\%CUR_DIR%\%Text%,%10%\%CUR_DIR%\%Hand%,%10%\%CUR_DIR%\%unavailiable%,%10%\%CUR_DIR%\%Vert%,%10%\%CUR_DIR%\%Horz%,%10%\%CUR_DIR%\%Dgn1%,%10%\%CUR_DIR%\%Dgn2%,%10%\%CUR_DIR%\%move%,%10%\%CUR_DIR%\%alternate%,%10%\%CUR_DIR%\%link%"
+
+[Scheme.Cur]
+Neuro normal.ani
+Neuro help.ani
+Neuro work.ani
+Neuro busy.ani
+Neuro text.ani
+Neuro unavailable.ani
+Neuro vert.ani
+Neuro horz.ani
+Neuro dgn1.ani
+Neuro dgn2.ani
+Neuro move.ani
+Neuro link.ani
+Neuro precision.ani
+Neuro hand.ani
+Neuro alt.ani
+
+[Scheme.Txt]
+
+[Strings]
+CUR_DIR       = "Cursors\Neuro-sama Cursor"
+SCHEME_NAME   = "Neuro-sama Cursor"
+pointer       = "Neuro normal.ani"
+help          = "Neuro help.ani"
+work          = "Neuro work.ani"
+busy          = "Neuro busy.ani"
+text          = "Neuro text.ani"
+unavailiable  = "Neuro unavailable.ani"
+vert          = "Neuro vert.ani"
+horz          = "Neuro horz.ani"
+dgn1          = "Neuro dgn1.ani"
+dgn2          = "Neuro dgn2.ani"
+move          = "Neuro move.ani"
+link          = "Neuro link.ani"
+cross         = "Neuro precision.ani"
+hand          = "Neuro hand.ani"
+alternate     = "Neuro alt.ani"
