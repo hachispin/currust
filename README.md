@@ -23,14 +23,14 @@ is a directory that contains some cursors, along with an installer file that use
 You can convert a cursor theme as such:
 
 ```bash
-./currust ./my-cursor-theme
+currust ./my-cursor-theme
 ```
 
 This converts the theme and writes the produced X11 theme (which is a directory) in the current
 directory. Add the `--out` (or `-o` for short) argument to place it in the specified path.
 
 ```bash
-./currust ./my-cursor-theme -o ./please/go/here/instead
+currust ./my-cursor-theme -o ./please/go/here/instead
 ```
 
 Cursor themes on Windows can be scaled by Windows itself. Unfortunately, this feature doesn't
@@ -42,8 +42,12 @@ with `--scale-with` to provide a scaling algorithm to use (default: Lanczos3).
 Note that this increases the size of the resulting cursor theme.
 
 ```text
-./currust ./my-cursor-theme --scale-to 1.5 2 3 --scale-with mitchell
+currust ./my-cursor-theme --scale-to 1.5 2 3 --scale-with mitchell
 ```
+
+Afterwards, move the converted theme to the system-wide `/usr/share/icons` or the local
+`~/.local/share/icons`. Note that other valid locations do exist, according to the [specification](https://specifications.freedesktop.org/icon-theme/latest/#directory_layout).
+Switching to this cursor theme depends on your distribution, so just (kindly) look it up.
 
 For more information on other commands and possible usages, view the help text:
 
