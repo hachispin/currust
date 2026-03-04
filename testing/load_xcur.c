@@ -1,7 +1,9 @@
 #define _DEFAULT_SOURCE
 
+#include <X11/X.h>
 #include <X11/Xcursor/Xcursor.h>
 #include <X11/Xlib.h>
+#include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -34,7 +36,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    Display* display = XOpenDisplay(NULL);
+    Display* display = XOpenDisplay(nullptr);
 
     if (!display) {
         fprintf(stderr, "XOpenDisplay() failed\n");
@@ -46,7 +48,7 @@ int main(int argc, char** argv) {
     const uint32_t WIDTH = 600;
     const uint32_t HEIGHT = 400;
     const uint32_t BORDER_WIDTH = 1;
-    const uint64_t BORDER_COLOR = 0; // black
+    const uint64_t BORDER_COLOR = 0;              // black
     const uint64_t BACKGROUND_COLOR = 0xFF393a3c; // gray
 
     // create window to display cursor in
@@ -62,49 +64,64 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // set title and do some weird stuff
-    XStoreName(display, window, "Xcursor test (currust)");
-    XSelectInput(display, window, ExposureMask | StructureNotifyMask);
+    XStoreName(display, window, cursor_name);
+    XSelectInput(display, window, NoEventMask);
     XMapWindow(display, window);
 
-    XcursorImages* image = XcursorFilenameLoadImages(cursor_name, size);
+    // displays specified size argument (if it exists)
+    // otherwise displays closest size to specified
+    XcursorSetDefaultSize(display, size);
 
-    if (!image) {
-        fprintf(stderr, "XcursorFilenameLoadImages() failed\n");
+    XcursorImages* images = nullptr;
+    XcursorComments* comments = nullptr;
+
+    if (!XcursorFilenameLoad(cursor_name, &comments, &images)) {
+        fprintf(stderr, "XcursorFilenameLoad() failed");
         return 1;
     }
 
-    // i.e, length of frames array
-    const size_t num_frames = (size_t) image->nimage;
-
-    if (num_frames == 0) {
-        fprintf(stderr, "no frames (nimage == 0)\n");
+    if (!images) {
+        fprintf(stderr, "XcursorFilenameLoad() returned NULL for **images\n");
         return 1;
     }
 
-    Cursor* frames = malloc(sizeof(Cursor) * num_frames);
-
-    if (!frames) {
-        fprintf(stderr, "malloc() failed\n");
+    // even if there are no comments, it doesn't
+    // return NULL, so erroring is correct here
+    if (!comments) {
+        fprintf(stderr, "XcursorFilenameLoad() returned NULL for **comments\n");
         return 1;
     }
 
-    for (size_t i = 0; i < num_frames; ++i) {
-        frames[i] = XcursorImageLoadCursor(display, image->images[i]);
+    const size_t num_comments = (size_t) comments->ncomment;
+    const size_t num_images = (size_t) images->nimage;
+
+    for (size_t i = 0; i < num_comments; ++i) {
+        XcursorComment* cmt = comments->comments[i];
+        assert(cmt->version == 1);
+
+        fprintf(
+            stderr, "[comment #%zu]: type=%u, comment=%s\n",
+            i, cmt->comment_type, cmt->comment);
     }
 
-    // current index to frames array
-    size_t frame = 0;
-    while (true) {
-        XDefineCursor(display, window, frames[frame]);
-        XFlush(display);
+    XcursorCommentsDestroy(comments);
 
-        uint32_t delay = image->images[frame++]->delay;
-        frame = frame % num_frames;
+    for (size_t i = 0; i < num_images; ++i) {
+        XcursorImage* img = images->images[i];
+        assert(img->version == 1);
 
-        // sleep before next frame, convert to microseconds
-        usleep(delay * 1000);
+        fprintf(
+            stderr, "[frame #%zu]: height=%u, width=%u, size=%u, xhot=%u, yhot=%u, delay=%u\n",
+            i, img->height, img->width, img->size, img->xhot, img->yhot, img->delay);
     }
 
-    // this might leak but oh well. no frees for you
+    XcursorImagesDestroy(images);
+
+    // if this fails, the cursor just doesn't render. how sad
+    Cursor cursor = XcursorFilenameLoadCursor(display, cursor_name);
+    XDefineCursor(display, window, cursor);
+    XFlush(display);
+
+    printf("Press enter to exit ... ");
+    getchar();
 }
