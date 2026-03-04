@@ -10,6 +10,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+// NOTE: this is C23
+
 int main(int argc, char** argv) {
     char* cursor_name = "left_ptr";
     int32_t size = 32;
@@ -52,41 +54,40 @@ int main(int argc, char** argv) {
     const uint64_t BACKGROUND_COLOR = 0xFF393a3c; // gray
 
     // create window to display cursor in
-    Window window = XCreateSimpleWindow(
+    const Window window = XCreateSimpleWindow(
         display, DefaultRootWindow(display),
         WINDOW_X, WINDOW_Y,
         WIDTH, HEIGHT,
         BORDER_WIDTH, BORDER_COLOR,
         BACKGROUND_COLOR);
 
-    if (!window) {
-        fprintf(stderr, "XCreateSimpleWindow() failed\n");
-        return 1;
-    }
-
+    // set window name
     XStoreName(display, window, cursor_name);
-    XSelectInput(display, window, NoEventMask);
+
+    // make window visible
     XMapWindow(display, window);
 
-    // displays specified size argument (if it exists)
-    // otherwise displays closest size to specified
+    // if the cursor has multiple sizes, it displays the
+    // size closest to `size`. note that this goes off of
+    // the *nominal size* so technically ... blahblahblah
     XcursorSetDefaultSize(display, size);
 
     XcursorImages* images = nullptr;
     XcursorComments* comments = nullptr;
 
     if (!XcursorFilenameLoad(cursor_name, &comments, &images)) {
-        fprintf(stderr, "XcursorFilenameLoad() failed");
+        fprintf(stderr, "XcursorFilenameLoad() failed\n");
         return 1;
     }
+
+    // i don't think the returned pointers can be
+    // null but i don't wanna risk ub so why not
 
     if (!images) {
         fprintf(stderr, "XcursorFilenameLoad() returned NULL for **images\n");
         return 1;
     }
 
-    // even if there are no comments, it doesn't
-    // return NULL, so erroring is correct here
     if (!comments) {
         fprintf(stderr, "XcursorFilenameLoad() returned NULL for **comments\n");
         return 1;
@@ -96,7 +97,7 @@ int main(int argc, char** argv) {
     const size_t num_images = (size_t) images->nimage;
 
     for (size_t i = 0; i < num_comments; ++i) {
-        XcursorComment* cmt = comments->comments[i];
+        const XcursorComment* cmt = comments->comments[i];
         assert(cmt->version == 1);
 
         fprintf(
@@ -107,7 +108,7 @@ int main(int argc, char** argv) {
     XcursorCommentsDestroy(comments);
 
     for (size_t i = 0; i < num_images; ++i) {
-        XcursorImage* img = images->images[i];
+        const XcursorImage* img = images->images[i];
         assert(img->version == 1);
 
         fprintf(
@@ -122,6 +123,8 @@ int main(int argc, char** argv) {
     XDefineCursor(display, window, cursor);
     XFlush(display);
 
-    printf("Press enter to exit ... ");
+    printf("Press enter to exit, or just close the window ... ");
     getchar();
+
+    return 0;
 }
