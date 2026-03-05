@@ -65,5 +65,7 @@ a "planned/future features" section. Note that not everything here may be added.
 - [ ] Conversion from X11 cursors to Windows cursors (i.e, the other way around)
 - [ ] [SVG cursor themes](https://blog.vladzahorodnii.com/2024/10/06/svg-cursors-everything-that-you-need-to-know-about-them) for KDE Plasma
 - [ ] hyprcursor (cursor format for hyprland) support
+      
+---
 
-The name comes from a portmanteau of "cursor" and "Rust".
+The name ("currust") comes from a portmanteau of "cursor" and "Rust".
