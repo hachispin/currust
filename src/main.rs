@@ -40,32 +40,21 @@ use crate::{
 use anyhow::{Context, Result, anyhow};
 use clap::Parser;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use std::path::Path;
-
-fn theme_pipeline(dir: &Path, args: &ParsedArgs) -> Result<()> {
-    let mut theme = CursorTheme::from_theme_dir(dir)
-        .with_context(|| format!("while reading dir={} as theme", dir.display()))?;
-
-    for &sf in &args.scale_to {
-        theme.add_scale(sf, args.get_algorithm(sf))?;
-    }
-
-    theme.save_as_x11_theme(&args.out)
-}
 
 fn main() -> Result<()> {
     let raw_args = Args::parse();
     let args = ParsedArgs::from_args(raw_args)?;
 
-    if args.cursor_theme_dirs.len() > 1 {
-        args.cursor_theme_dirs
-            .par_iter()
-            .try_for_each(|d| theme_pipeline(d, &args))?;
-    } else {
-        args.cursor_theme_dirs
-            .iter()
-            .try_for_each(|d| theme_pipeline(d, &args))?;
-    }
+    args.cursor_theme_dirs.par_iter().try_for_each(|d| {
+        let mut theme = CursorTheme::from_theme_dir(d)
+            .with_context(|| format!("while reading dir={} as theme", d.display()))?;
+
+        for &sf in &args.scale_to {
+            theme.add_scale(sf, args.get_algorithm(sf))?;
+        }
+
+        theme.save_as_x11_theme(&args.out)
+    })?;
 
     args.cursor_files.par_iter().try_for_each(|f| {
         let mut cursor = GenericCursor::from_path(f)
