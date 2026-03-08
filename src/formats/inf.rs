@@ -14,7 +14,7 @@ use anyhow::{Result, anyhow, bail};
 use configparser::ini::Ini;
 
 /// Cursor mappings stored in INF files.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct CursorMapping {
     /// Semantic role of cursor.
     pub r#type: CursorType,
@@ -246,45 +246,44 @@ mod test {
     use super::*;
     use crate::{from_root, themes::theme::CursorType::*};
 
-    // shhh hacky
-    impl PartialEq for CursorMapping {
-        fn eq(&self, other: &Self) -> bool {
-            self.r#type == other.r#type && self.path == other.path
-        }
-    }
-
-    #[test]
     /// Golden file test for INF fixture.
+    #[test]
     fn good_inf() {
+        /// Macro for the mappings of this specific INF file.
+        macro_rules! make_mappings {
+            ($root:expr; $($variant:ident => $filename_suffix:literal),+$(,)?) => {[
+                $(
+                    CursorMapping {
+                        r#type: $variant,
+                        path: $root.join(concat!("Neuro ", $filename_suffix, ".ani")),
+                    },
+                )+
+            ]}
+        }
+
         let theme_dir = Path::new(from_root!("/testing/fixtures/neuro"));
         let inf_path = theme_dir.join("Install.inf");
         let (theme_name, mappings) = parse_inf_installer(&inf_path, theme_dir).unwrap();
-
-        // annoyingly hard to make const
-        #[rustfmt::skip]
-        let expected_mappings = [
-            CursorMapping { r#type: Arrow, path: theme_dir.join("Neuro normal.ani") },
-            CursorMapping { r#type: Help, path: theme_dir.join("Neuro help.ani") },
-            CursorMapping { r#type: LeftPtrWatch, path: theme_dir.join("Neuro work.ani") },
-            CursorMapping { r#type: Watch, path: theme_dir.join("Neuro busy.ani") },
-            CursorMapping { r#type: Crosshair, path: theme_dir.join("Neuro precision.ani") },
-            CursorMapping { r#type: Text, path: theme_dir.join("Neuro text.ani") },
-            CursorMapping { r#type: Pencil, path: theme_dir.join("Neuro hand.ani") },
-            CursorMapping { r#type: Forbidden, path: theme_dir.join("Neuro unavailable.ani") },
-            CursorMapping { r#type: NsResize, path: theme_dir.join("Neuro vert.ani") },
-            CursorMapping { r#type: EwResize, path: theme_dir.join("Neuro horz.ani") },
-            CursorMapping { r#type: NwseResize, path: theme_dir.join("Neuro dgn1.ani") },
-            CursorMapping { r#type: NeswResize, path: theme_dir.join("Neuro dgn2.ani") },
-            CursorMapping { r#type: Move, path: theme_dir.join("Neuro move.ani") },
-            CursorMapping { r#type: CenterPtr, path: theme_dir.join("Neuro alt.ani") },
-            CursorMapping { r#type: Hand, path: theme_dir.join("Neuro link.ani" )},
-        ];
+        let expected_mappings = make_mappings!(
+            theme_dir;
+            Arrow => "normal",
+            Help => "help",
+            LeftPtrWatch => "work",
+            Watch => "busy",
+            Crosshair => "precision",
+            Text => "text",
+            Pencil => "hand",
+            Forbidden => "unavailable",
+            NsResize => "vert",
+            EwResize => "horz",
+            NwseResize => "dgn1",
+            NeswResize => "dgn2",
+            Move => "move",
+            CenterPtr => "alt",
+            Hand => "link",
+        );
 
         assert_eq!(theme_name, "Neuro-sama Cursor");
-
-        // asserting order seems a little pedantic
-        for expected in expected_mappings {
-            assert!(mappings.contains(&expected));
-        }
+        assert_eq!(mappings, expected_mappings);
     }
 }
