@@ -18,6 +18,8 @@
 
 use crate::cursors::{cursor_image::CursorImage, generic_cursor::GenericCursor};
 
+use std::fmt;
+
 use anyhow::Result;
 use binrw::binwrite;
 use bytemuck;
@@ -39,7 +41,7 @@ mod sizes {
 
 #[binwrite]
 #[bw(repr = u32)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(u32)]
 enum ChunkType {
     Comment = 0xfffe_0001,
@@ -77,7 +79,7 @@ struct XcursorHeader {
 /// This should always lead to an [`ImageChunk`].
 #[binwrite]
 #[bw(little)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct TableOfContents {
     r#type: ChunkType,
     /// Can be either the nominal size for
@@ -127,7 +129,6 @@ impl CommentChunk {
 /// some additional metadata needed for cursors.
 #[binwrite]
 #[bw(little)]
-#[derive(Debug)]
 struct ImageChunk {
     #[bw(calc = sizes::IMAGE)]
     header_size: u32,
@@ -190,6 +191,20 @@ impl From<&CursorImage> for ImageChunk {
             delay,
             argb,
         }
+    }
+}
+
+// skip argb
+impl fmt::Debug for ImageChunk {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ImageChunk")
+            .field("nominal_size", &self.nominal_size)
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("hotspot_x", &self.hotspot_x)
+            .field("hotspot_y", &self.hotspot_y)
+            .field("delay", &self.delay)
+            .finish_non_exhaustive()
     }
 }
 
@@ -277,14 +292,18 @@ impl Xcursor {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::cursors::generic_cursor::test::black_and_white;
+    use crate::{cursors::generic_cursor::test::black_and_white, from_root};
 
     use std::{
+        fmt::Write,
+        fs::File,
         io::{BufWriter, Seek, SeekFrom},
+        os::fd::AsRawFd,
         ptr::NonNull,
     };
 
     use binrw::BinWrite;
+    use libc::{FILE, fdopen};
     use tempfile::tempfile;
 
     macro_rules! denullify {
@@ -293,37 +312,105 @@ mod test {
         };
     }
 
-    #[cfg(target_os = "linux")] // libXcursor is dynamically-linked
+    /// Returns `(tempfile, c_handle)`.
+    ///
+    /// SAFETY(1): If `c_handle` is being used, `tempfile` must still exist.
+    ///            In other words, `lifetime(c_handle) <= lifetime(tempfile)`.
+    ///
+    /// SAFETY(2): Don't close `tempfile` manually (either through Rust or C)
+    ///            unless there's a very strong reason to do so.
+    fn xcursor_make_c_handle(xcursor: &Xcursor) -> (File, NonNull<FILE>) {
+        let mut tempfile = tempfile().unwrap();
+        let fd = tempfile.as_raw_fd();
+
+        xcursor.write(&mut BufWriter::new(&tempfile)).unwrap();
+        tempfile.seek(SeekFrom::Start(0)).unwrap();
+
+        let c_handle = denullify!(
+            unsafe { fdopen(fd, c"r".as_ptr()) },
+            "fdopen() returned NULL with fd={fd}"
+        );
+
+        (tempfile, c_handle)
+    }
+
+    // NOTE: mark any test that uses libXcursor as #[cfg(target_os = "linux")].
+
+    #[cfg(target_os = "linux")]
     #[test]
     /// Attempts to load the cursor produced from `black_and_white()` with libXcursor.
     fn libxcursor() {
-        use libc::fdopen;
-        use std::os::fd::AsRawFd;
         use x11::xcursor::{XcursorFileLoadImages, XcursorImagesDestroy};
 
-        let mut file = tempfile().unwrap();
         let xcursor = Xcursor::new(&black_and_white()).unwrap();
-        let raw_fd = file.as_raw_fd();
+        let (_tempfile, c_handle) = xcursor_make_c_handle(&xcursor);
 
-        xcursor.write(&mut BufWriter::new(&file)).unwrap();
-        file.seek(SeekFrom::Start(0)).unwrap();
-
-        let c_file = denullify!(
-            unsafe { fdopen(raw_fd, c"r".as_ptr()) },
-            "fdopen() returned NULL with raw_fd={raw_fd}"
-        );
-
-        // if this is not null, that's a pass
         let image_ptr = denullify!(
-            unsafe { XcursorFileLoadImages(c_file.as_ptr(), 32) },
-            "XcursorFileLoadImages() returned NULL with raw_fd={raw_fd}, c_file={:p}",
-            c_file.as_ptr()
+            unsafe { XcursorFileLoadImages(c_handle.as_ptr(), 32) },
+            "XcursorFileLoadImages() returned NULL with c_file={:p}",
+            c_handle.as_ptr()
         );
 
         unsafe {
             XcursorImagesDestroy(image_ptr.as_ptr());
         }
 
-        // no fclose() needed, fs::File manages it
+        // _tempfile is dropped here, so fclose() isn't needed
+    }
+
+    /// Golden file test.
+    ///
+    /// Technically, this tests ANI parsing too. Oh well.
+    #[test]
+    fn good_xcursor() {
+        macro_rules! assert_fields {
+            ($left:expr, $right:expr; $($field:ident),+ $(,)?) => {
+                $(
+                    assert_eq!($left.$field, $right.$field)
+                );+
+            }
+        }
+
+        const EXPECTED_IMAGE_ARGB: &str =
+            include_str!(from_root!("/testing/fixtures/neuro_help_argb"));
+
+        const EXPECTED_IMAGE_METADATA: ImageChunk = ImageChunk {
+            nominal_size: 32,
+            width: 32,
+            height: 32,
+            hotspot_x: 0,
+            hotspot_y: 0,
+            delay: 100,
+            argb: Vec::new(), // stored somewhere else
+        };
+
+        let cursor =
+            GenericCursor::from_ani_path(from_root!("/testing/fixtures/neuro/Neuro help.ani"))
+                .unwrap();
+
+        let xcursor = Xcursor::new(&cursor).unwrap();
+
+        assert_eq!(xcursor.images.len(), 21);
+        assert!(xcursor.comment.is_none());
+
+        // only image chunks and each chunk has same dimensions
+        // so the position step is consistent and allows this "hack"
+        for (pos, toc) in (268..82908).step_by(4132).zip(xcursor.header.toc) {
+            assert_eq!(toc.r#type, ChunkType::Image);
+            assert_eq!(toc.subtype, 32);
+            assert_eq!(toc.position, pos);
+        }
+
+        let mut argb = String::new();
+        for image in xcursor.images {
+            assert_fields!(
+                image, EXPECTED_IMAGE_METADATA;
+                nominal_size, width, height, hotspot_x, hotspot_y, delay
+            );
+
+            writeln!(&mut argb, "{:?}", image.argb).unwrap();
+        }
+
+        assert_eq!(argb, EXPECTED_IMAGE_ARGB);
     }
 }
