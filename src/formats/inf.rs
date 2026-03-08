@@ -242,7 +242,7 @@ fn expand(value: &str, subs: &HashMap<String, String>) -> Result<String> {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
     use crate::{from_root, themes::theme::CursorType::*};
 

@@ -255,7 +255,7 @@ impl From<CursorImages> for Vec<CursorImage> {
 }
 
 #[cfg(test)]
-pub mod test {
+pub mod tests {
     use super::CursorImage;
     use std::sync::LazyLock;
 

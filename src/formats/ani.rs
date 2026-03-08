@@ -494,7 +494,7 @@ impl AniFile {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use std::fmt::Write;
 
     use super::*;

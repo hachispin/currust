@@ -290,9 +290,9 @@ impl Xcursor {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
-    use crate::{cursors::generic_cursor::test::black_and_white, from_root};
+    use crate::{cursors::generic_cursor::tests::black_and_white, from_root};
 
     use std::{
         fmt::Write,

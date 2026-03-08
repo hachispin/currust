@@ -375,9 +375,9 @@ impl GenericCursor {
 }
 
 #[cfg(test)]
-pub mod test {
+pub mod tests {
     use super::*;
-    use crate::cursors::cursor_image::test::{BLACK, WHITE};
+    use crate::cursors::cursor_image::tests::{BLACK, WHITE};
 
     /// Generates an animated cursor with ten alternating black and white frames.
     #[allow(clippy::missing_panics_doc)]
