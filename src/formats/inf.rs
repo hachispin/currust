@@ -244,7 +244,7 @@ fn expand(value: &str, subs: &HashMap<String, String>) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{from_root, themes::theme::CursorType::*};
+    use crate::from_root;
 
     /// Golden file test for INF fixture.
     #[test]
@@ -254,7 +254,7 @@ mod tests {
             ($root:expr; $($variant:ident => $filename_suffix:literal),+$(,)?) => {[
                 $(
                     CursorMapping {
-                        r#type: $variant,
+                        r#type: crate::themes::theme::CursorType::$variant,
                         path: $root.join(concat!("Neuro ", $filename_suffix, ".ani")),
                     },
                 )+
@@ -264,6 +264,9 @@ mod tests {
         let theme_dir = Path::new(from_root!("/testing/fixtures/neuro"));
         let inf_path = theme_dir.join("Install.inf");
         let (theme_name, mappings) = parse_inf_installer(&inf_path, theme_dir).unwrap();
+
+        assert_eq!(theme_name, "Neuro-sama Cursor");
+
         let expected_mappings = make_mappings!(
             theme_dir;
             Arrow => "normal",
@@ -283,7 +286,6 @@ mod tests {
             Hand => "link",
         );
 
-        assert_eq!(theme_name, "Neuro-sama Cursor");
         assert_eq!(mappings, expected_mappings);
     }
 }
