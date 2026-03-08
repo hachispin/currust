@@ -380,6 +380,7 @@ pub mod test {
     use crate::cursors::cursor_image::test::{BLACK, WHITE};
 
     /// Generates an animated cursor with ten alternating black and white frames.
+    #[allow(clippy::missing_panics_doc)]
     pub fn black_and_white() -> GenericCursor {
         let frames = [
             BLACK.clone(),
