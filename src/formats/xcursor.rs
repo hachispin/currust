@@ -14,7 +14,7 @@
 //!
 //! - [Xcursor](https://manpages.ubuntu.com/manpages/plucky/man3/Xcursor.3.html)
 //! - [libXcursor source](https://gitlab.freedesktop.org/xorg/lib/libxcursor)
-//! - [xcursorgen](https://gitlab.freedesktop.com/xorg/app/xcursorgen)
+//! - [xcursorgen](https://gitlab.freedesktop.org/xorg/app/xcursorgen)
 
 use crate::cursors::{cursor_image::CursorImage, generic_cursor::GenericCursor};
 

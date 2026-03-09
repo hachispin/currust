@@ -79,10 +79,25 @@ pub struct TypedCursor {
     aliases: &'static [&'static str],
 }
 
-impl TryFrom<CursorMapping> for TypedCursor {
-    type Error = anyhow::Error;
+impl TypedCursor {
+    fn new(xcursor: GenericCursor, r#type: CursorType) -> Self {
+        let aliases = get_symlinks(&r#type);
 
-    fn try_from(mapping: CursorMapping) -> Result<Self> {
+        Self {
+            inner: xcursor,
+            r#type,
+            aliases,
+        }
+    }
+
+    /// Creates a cursor from `mapping`.
+    ///
+    /// ## Errors
+    ///
+    /// - if path contained inside of `mapping` doesn't exist,
+    ///   even after a case-insensitive check
+    /// - generic cursor parsing fails
+    fn from_mapping(mapping: CursorMapping) -> Result<Self> {
         let path = mapping.path;
         let path = if path.exists() {
             path
@@ -102,19 +117,8 @@ impl TryFrom<CursorMapping> for TypedCursor {
             mapping.r#type,
         ))
     }
-}
 
-impl TypedCursor {
-    fn new(xcursor: GenericCursor, r#type: CursorType) -> Self {
-        let aliases = get_symlinks(&r#type);
-
-        Self {
-            inner: xcursor,
-            r#type,
-            aliases,
-        }
-    }
-
+    /// Saves as Xcursor to `dir`, along with symlinks.
     fn save_as_xcursor(&self, dir: &Path) -> Result<()> {
         self.inner.save_as_xcursor(dir.join(self.aliases[0]))?;
 
@@ -196,7 +200,7 @@ impl CursorTheme {
 
         let typed_cursors: Vec<_> = mappings
             .into_iter()
-            .map(TypedCursor::try_from)
+            .map(TypedCursor::from_mapping)
             .collect::<Result<_>>()?;
 
         Self::new(typed_cursors, name)
@@ -226,7 +230,8 @@ impl CursorTheme {
     pub fn save_as_x11_theme(&self, dir: &Path) -> Result<()> {
         let theme_dir = dir.join(&self.name);
         let cursor_dir = theme_dir.join("cursors");
-        fs::create_dir_all(&cursor_dir)?;
+        fs::create_dir_all(&cursor_dir)
+            .with_context(|| format!("failed to write cursor_dir={}", cursor_dir.display()))?;
 
         // copies are *not* a good alternative here.
         // xcursor can get very large, very quickly

@@ -251,7 +251,7 @@ mod tests {
     fn good_inf() {
         /// Macro for the mappings of this specific INF file.
         macro_rules! make_mappings {
-            ($root:expr; $($variant:ident => $filename_suffix:literal),+$(,)?) => {[
+            ($root:expr; $($variant:ident => $filename_suffix:literal),+ $(,)?) => {[
                 $(
                     CursorMapping {
                         r#type: crate::themes::theme::CursorType::$variant,
