@@ -52,8 +52,8 @@ Switching to this cursor theme depends on your distribution, so just (kindly) lo
 For more information on other commands and possible usages, view the help text:
 
 ```text
-./currust -h      # Summarised help text
-./currust --help  # Detailed help text
+currust -h      # Summarised help text
+currust --help  # Detailed help text
 ```
 
 ## Goals
