@@ -61,17 +61,21 @@ pub fn parse_inf_installer(
         .read(inf_string)
         .map_err(|e| anyhow!("failed to read inf, error e={e}"))?;
 
-    let reg_section = inf
+    let addreg = inf
         .get("defaultinstall")
         .ok_or_else(|| anyhow!("no defaultinstall section found"))?
         .get("addreg")
         .ok_or_else(|| anyhow!("no addreg key found in defaultinstall"))?
         .as_ref()
-        .and_then(|v| v.split_once(',').map(|v| v.0))
         .ok_or_else(|| anyhow!("no value for addreg key"))?;
 
+    let reg_section = addreg
+        .split_once(',')
+        .map_or(addreg.as_str(), |s| s.0)
+        .to_ascii_lowercase();
+
     let reg = inf
-        .get(&reg_section.to_ascii_lowercase())
+        .get(&reg_section)
         .ok_or_else(|| anyhow!("no {reg_section} section found"))?;
 
     if reg.keys().len() != 1 {
