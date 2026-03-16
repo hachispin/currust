@@ -1,4 +1,3 @@
-#![doc = include_str!("../README.md")]
 #![warn(
     clippy::pedantic,
     // nursery lints:

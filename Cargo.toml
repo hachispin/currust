@@ -8,6 +8,7 @@ license = "MIT"
 repository = "https://github.com/hachispin/currust"
 keywords = ["cursor-converter", "xcursor", "ani", "cursor-theme", "scaling"]
 categories = ["command-line-utilities", "parser-implementations"]
+readme = "README.md"
 
 [dependencies]
 anyhow = "1.0.100"
