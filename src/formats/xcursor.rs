@@ -334,7 +334,8 @@ mod tests {
         (tempfile, c_handle)
     }
 
-    // NOTE: mark any test that uses libXcursor as #[cfg(target_os = "linux")].
+    // NOTE: mark any test that uses libXcursor as #[cfg(target_os = "linux")]
+    // if libXcursor tests (cargo test) fail to link, add RUSTFLAGS='-lXcursor'
 
     #[cfg(target_os = "linux")]
     #[test]

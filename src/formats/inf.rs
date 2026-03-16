@@ -13,6 +13,8 @@ use anyhow::{Result, anyhow, bail};
 // enough to not produce parsing errors
 use configparser::ini::Ini;
 
+const ROOT_KEYS: &[&str] = &["hkcr", "hkcu", "hklm", "hku", "hkcc"];
+
 /// Cursor mappings stored in INF files.
 #[derive(Debug, PartialEq)]
 pub struct CursorMapping {
@@ -45,6 +47,10 @@ pub struct CursorMapping {
 /// "pointer,help,work,busy,cross,text,hand,unavailable,
 /// vert,horz,dgn1,dgn2,move,alternate,link,pin,person"
 /// ```
+///
+/// ## Panics
+///
+/// Only for errors that have already been checked.
 pub fn parse_inf_installer(
     inf_path: &Path,
     theme_dir: &Path,
@@ -55,13 +61,23 @@ pub fn parse_inf_installer(
         .read(inf_string)
         .map_err(|e| anyhow!("failed to read inf, error e={e}"))?;
 
+    let reg_section = inf
+        .get("defaultinstall")
+        .ok_or_else(|| anyhow!("no defaultinstall section found"))?
+        .get("addreg")
+        .ok_or_else(|| anyhow!("no addreg key found in defaultinstall"))?
+        .as_ref()
+        .and_then(|v| v.split_once(',').map(|v| v.0))
+        .ok_or_else(|| anyhow!("no value for addreg key"))?;
+
     let reg = inf
-        .get("scheme.reg")
-        .ok_or_else(|| anyhow!("no scheme.reg found in inf"))?;
+        .get(&reg_section.to_ascii_lowercase())
+        .ok_or_else(|| anyhow!("no {reg_section} section found"))?;
 
     if reg.keys().len() != 1 {
-        bail!(
-            "expected reg to have one key, instead has {} (reg={:?})",
+        eprintln!(
+            "[warning] expected {reg_section} to have one key, instead \
+            has {}, only the first key will be parsed (reg={:?})",
             reg.keys().len(),
             reg
         );
@@ -74,19 +90,19 @@ pub fn parse_inf_installer(
         )
     }
 
-    let reg = reg
-        .keys()
-        .next()
-        .ok_or_else(|| anyhow!("no key for scheme.reg found in inf"))?;
+    let Some(reg) = reg.keys().next() else {
+        bail!("no cursor mappings found in reg (0 keys)");
+    };
 
     let subs = inf.get("strings");
     let expanded_reg = expand_reg(reg, subs)?;
     let mut reg_info = expanded_reg.split(',');
-    let hkcu = reg_info.next();
+
+    let root_key = reg_info.next();
     let _ = reg_info.next(); // sometimes blank, sometimes 0x00010000...?
 
-    if !hkcu.is_some_and(|s| s.eq_ignore_ascii_case("hkcu")) {
-        bail!("expected 'hkcu' for first reg_info value, instead got {hkcu:?}");
+    if !root_key.is_some_and(|k| ROOT_KEYS.contains(&k)) {
+        bail!("root_key={root_key:?} not in accepted ROOT_KEYS={ROOT_KEYS:?}");
     }
 
     let name = reg_info
@@ -264,26 +280,17 @@ mod tests {
         let theme_dir = Path::new(from_root!("/testing/fixtures/neuro"));
         let inf_path = theme_dir.join("Install.inf");
         let (theme_name, mappings) = parse_inf_installer(&inf_path, theme_dir).unwrap();
-
         assert_eq!(theme_name, "Neuro-sama Cursor");
 
         let expected_mappings = make_mappings!(
-            theme_dir;
-            Arrow => "normal",
-            Help => "help",
-            LeftPtrWatch => "work",
-            Watch => "busy",
-            Crosshair => "precision",
-            Text => "text",
-            Pencil => "hand",
-            Forbidden => "unavailable",
-            NsResize => "vert",
-            EwResize => "horz",
-            NwseResize => "dgn1",
-            NeswResize => "dgn2",
-            Move => "move",
-            CenterPtr => "alt",
-            Hand => "link",
+            theme_dir;                   Arrow => "normal",
+            Help => "help",              LeftPtrWatch => "work",
+            Watch => "busy",             Crosshair => "precision",
+            Text => "text",              Pencil => "hand",
+            Forbidden => "unavailable",  NsResize => "vert",
+            EwResize => "horz",          NwseResize => "dgn1",
+            NeswResize => "dgn2",        Move => "move",
+            CenterPtr => "alt",          Hand => "link",
         );
 
         assert_eq!(mappings, expected_mappings);
