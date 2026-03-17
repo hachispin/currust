@@ -3,19 +3,28 @@
 use super::symlinks::get_symlinks;
 use crate::{
     cursors::generic_cursor::GenericCursor,
-    formats::inf::{CursorMapping, parse_inf_installer},
+    formats::{crs::parse_crs_installer, inf::parse_inf_installer},
     fs_utils::{find_extensions_icase, find_icase},
 };
 
 use std::{
     fs::{self, File},
     io::Write,
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use anyhow::{Context, Result, anyhow, bail};
 use fast_image_resize::ResizeAlg;
 use rayon::iter::{IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator};
+
+/// Cursor mappings stored in installer files.
+#[derive(Debug, PartialEq)]
+pub struct CursorMapping {
+    /// Semantic role of cursor.
+    pub r#type: CursorType,
+    /// Full path to (expected) cursor.
+    pub path: PathBuf,
+}
 
 /// Represents the possible cursors that exist in both Windows and Linux (X11).
 ///
@@ -177,26 +186,33 @@ impl CursorTheme {
         Ok(Self { cursors, name })
     }
 
-    /// Reads provided cursors as a path using `inf_path` for mappings.
+    /// Reads provided cursors as a path.
     ///
     /// ## Errors
     ///
     /// Mostly from parsing the INF file and filesystem operations.
     pub fn from_theme_dir<P: AsRef<Path>>(theme_dir: P) -> Result<Self> {
         let theme_dir = theme_dir.as_ref();
+        let installers: Vec<_> = find_extensions_icase(theme_dir, &["inf", "crs"])?.collect();
 
-        let infs: Vec<_> = find_extensions_icase(theme_dir, &["inf"])?.collect();
-
-        if infs.len() > 1 {
-            bail!("found more than one INF file");
+        if installers.len() > 1 {
+            bail!("found more than one installer (INF/CRS) file");
         }
 
-        let Some(inf) = infs.first().cloned() else {
-            bail!("no INF file found");
+        let Some(installer) = installers.first().cloned() else {
+            bail!("no installer (INF/CRS) file found");
         };
 
-        let (name, mappings) = parse_inf_installer(&inf, theme_dir)
-            .with_context(|| format!("while attempting to parse {}", inf.display()))?;
+        // a bit ugly
+        let (name, mappings) = if installer
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("inf"))
+        {
+            parse_inf_installer(&installer, theme_dir)
+                .with_context(|| format!("while attempting to parse {}", installer.display()))?
+        } else {
+            (String::new(), parse_crs_installer(&installer, theme_dir)?)
+        };
 
         let typed_cursors: Vec<_> = mappings
             .into_iter()
@@ -257,7 +273,14 @@ impl CursorTheme {
             "# https://specifications.freedesktop.org/icon-theme/latest/#id-1.5.3.2"
         )?;
         writeln!(&mut f, "[Icon Theme]")?;
-        writeln!(&mut f, "Name={}", &self.name)?;
+
+        // should probably use option but i'm lazy
+        if self.name.is_empty() {
+            writeln!(&mut f, "# Name=theme_name")?;
+        } else {
+            writeln!(&mut f, "Name={}", &self.name)?;
+        }
+
         writeln!(
             &mut f,
             "Comment=made with currust; edit index.theme to change this"

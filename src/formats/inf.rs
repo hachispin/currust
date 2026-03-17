@@ -1,28 +1,13 @@
 //! Parses INF installer files for cursor themes.
 
-use crate::themes::theme::CursorType;
+use crate::themes::theme::{CursorMapping, CursorType};
 
-use std::{
-    collections::HashMap,
-    fs,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashMap, fs, path::Path};
 
 use anyhow::{Result, anyhow, bail};
-// inf isn't exactly ini but it's close
-// enough to not produce parsing errors
-use configparser::ini::Ini;
+use configparser::ini::Ini; // inf is an "ini-like" format
 
 const ROOT_KEYS: &[&str] = &["hkcr", "hkcu", "hklm", "hku", "hkcc"];
-
-/// Cursor mappings stored in INF files.
-#[derive(Debug, PartialEq)]
-pub struct CursorMapping {
-    /// Semantic role of cursor.
-    pub r#type: CursorType,
-    /// Full path to (expected) cursor.
-    pub path: PathBuf,
-}
 
 /// Attempts to parse `inf_path` as an installer file for a cursor theme.
 ///

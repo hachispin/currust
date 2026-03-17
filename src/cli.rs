@@ -21,10 +21,10 @@ pub struct Args {
     /// while theme directory paths are converted fully into an X11 theme directory.
     ///
     /// Themes are expected to contain some cursor files and a
-    /// corresponding installer file that uses the INF format.
+    /// corresponding installer file that uses the INF/CRS format.
     ///
     /// To override this behaviour, use the "--no-theme" flag, which only
-    /// converts the contained cursor files and ignores any INF files.
+    /// converts the contained cursor files and ignores any installer files.
     #[arg(required = true)]
     paths: Vec<PathBuf>,
 
@@ -153,7 +153,6 @@ impl ParsedArgs {
         for path in paths {
             let path_display = path.display();
 
-            // yeah yeah toctou and all that. this is just for better ux
             if !path.exists() {
                 // this is not my problem. https://github.com/rust-lang/rust/issues/72653
                 #[cfg(windows)]

@@ -258,7 +258,7 @@ impl Xcursor {
         let chunks_offset = sizes::XCURSOR + (num_toc_u32 * sizes::TOC);
 
         let mut toc = Vec::with_capacity(num_toc);
-        let mut images = Vec::with_capacity(num_toc);
+        let mut images = Vec::with_capacity(cursor.num_images());
         let mut position = chunks_offset;
 
         let comment = if let Some(info) = cursor.info() {
