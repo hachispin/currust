@@ -39,6 +39,9 @@ with `--scale-with` to provide a scaling algorithm to use (default: Lanczos3).
 
 Note that this increases the size of the resulting cursor theme.
 
+> [!TIP]
+> For pixel art cursors, use nearest-neighbour scaling with `--scale-with nearest`. Integer scale factors work best.
+
 ```bash
 currust ./my-cursor-theme --scale-to 1.5 2 3 --scale-with mitchell
 ```
@@ -54,15 +57,22 @@ currust -h      # Summarised help text
 currust --help  # Detailed help text
 ```
 
+## About Windows
+
+If you're using Windows, you can still use this. For symlink coverage, a bash script will be
+generated for users to run instead. _(though, an option to export to tar.gz would be better...)_
+
 ## Goals
 
 All the baseline goals I had for this project are complete, so this is more akin to
 a "planned/future features" section. Note that not everything here may be added.
 
-- [ ] Publish or otherwise for usage with `cargo` and package managers
+- [x] Publish or otherwise for usage with `cargo` and package managers
+- [ ] Implement exporting to tar.gz and possibly other formats
 - [ ] Conversion from X11 cursors to Windows cursors (i.e, the other way around)
 - [ ] [SVG cursor themes](https://blog.vladzahorodnii.com/2024/10/06/svg-cursors-everything-that-you-need-to-know-about-them) for KDE Plasma
-- [ ] hyprcursor (cursor format for hyprland) support
+- ~~hyprcursor (cursor format for hyprland) support~~
+  Covered by [hyprcursor-util](https://github.com/hyprwm/hyprcursor/tree/main/hyprcursor-util), I think.
 
 ---
 
