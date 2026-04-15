@@ -1,12 +1,10 @@
 # currust - a cursor converter
+
 [![Release](https://github.com/hachispin/currust/actions/workflows/release.yml/badge.svg)](https://github.com/hachispin/currust/actions/workflows/release.yml)
 [![crates.io](https://img.shields.io/crates/v/currust.svg)](https://crates.io/crates/currust)
 
 A tool written in Rust to convert cursors between Windows and Linux. Specifically,
 converting from the CUR/ANI format to the Xcursor format (plus some other features).
-
-There are quite a few CLI tools that already exist for this purpose. You can see a comparison
-in [COMPARISONS.md](COMPARISONS.md) that I've tried to keep neutral if you need help deciding.
 
 ## Installation
 
@@ -41,7 +39,7 @@ with `--scale-with` to provide a scaling algorithm to use (default: Lanczos3).
 
 Note that this increases the size of the resulting cursor theme.
 
-```text
+```bash
 currust ./my-cursor-theme --scale-to 1.5 2 3 --scale-with mitchell
 ```
 
@@ -65,7 +63,7 @@ a "planned/future features" section. Note that not everything here may be added.
 - [ ] Conversion from X11 cursors to Windows cursors (i.e, the other way around)
 - [ ] [SVG cursor themes](https://blog.vladzahorodnii.com/2024/10/06/svg-cursors-everything-that-you-need-to-know-about-them) for KDE Plasma
 - [ ] hyprcursor (cursor format for hyprland) support
-      
+
 ---
 
 The name ("currust") comes from a portmanteau of "cursor" and "Rust".
