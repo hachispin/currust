@@ -69,7 +69,7 @@ pub struct Args {
 
     /// A list of scale factors to scale the original cursor(s) to.
     ///
-    /// Scale factors can be floats (decimals) e.g: 0.0, 1.0, 1.5, etc.
+    /// Scale factors can be floats (decimals) e.g: 0.5, 1.5, 2.3, etc.
     /// Any negative values are considered invalid scale factors.
     ///
     /// All scaled variations and the original cursor
