@@ -71,8 +71,8 @@ a "planned/future features" section. Note that not everything here may be added.
 - [ ] Implement exporting to tar.gz and possibly other formats
 - [ ] Conversion from X11 cursors to Windows cursors (i.e, the other way around)
 - [ ] [SVG cursor themes](https://blog.vladzahorodnii.com/2024/10/06/svg-cursors-everything-that-you-need-to-know-about-them) for KDE Plasma
-- ~~hyprcursor (cursor format for hyprland) support~~
-  Covered by [hyprcursor-util](https://github.com/hyprwm/hyprcursor/tree/main/hyprcursor-util), I think.
+- [x] ~~hyprcursor (cursor format for hyprland) support~~
+      ➜ covered by [hyprcursor-util](https://github.com/hyprwm/hyprcursor/tree/main/hyprcursor-util), I think.
 
 ---
 
