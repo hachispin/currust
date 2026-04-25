@@ -126,7 +126,7 @@ impl CursorImage {
 
     /// Helper function for [`Self::scaled_to`].
     #[must_use]
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub fn scale_point(point: (u32, u32), scale_factor: f64) -> (u32, u32) {
         (
             (f64::from(point.0) * scale_factor).floor() as u32,
@@ -190,7 +190,7 @@ impl fmt::Debug for CursorImage {
 /// - If there is one frame, the delay of it is zero.
 /// - If there are multiple frames, all delays are non-zero.
 #[derive(Debug)]
-#[allow(clippy::len_without_is_empty)] // it's never empty
+#[expect(clippy::len_without_is_empty)] // it's never empty
 pub struct CursorImages {
     inner: Vec<CursorImage>,
 }

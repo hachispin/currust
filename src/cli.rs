@@ -134,7 +134,6 @@ pub struct ParsedArgs {
     pub out: PathBuf,
 }
 
-#[allow(unused)]
 impl ParsedArgs {
     /// Parses `args`.
     ///

@@ -37,7 +37,7 @@ fn section_to_type(section: &str) -> Option<CursorType> {
     })
 }
 
-#[allow(clippy::missing_panics_doc, clippy::missing_errors_doc)]
+#[expect(clippy::missing_errors_doc)]
 pub fn parse_crs_installer(crs_path: &Path, theme_dir: &Path) -> Result<Vec<CursorMapping>> {
     let crs_string = fs::read_to_string(crs_path)?;
     let crs = Ini::new()
