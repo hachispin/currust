@@ -16,7 +16,7 @@ There are currently two supported methods of installation:
 ## Usage
 
 The intended use-case of this tool is to convert a Windows _cursor theme_ to Linux. A _cursor theme_
-is a directory that contains some cursors, along with an installer file that uses the INF format.
+is a directory that contains some cursors, **along with an installer file that uses the INF format**.
 
 You can convert a cursor theme as such:
 
@@ -46,9 +46,9 @@ Note that this increases the size of the resulting cursor theme.
 currust ./my-cursor-theme --scale-to 1.5 2 3 --scale-with mitchell
 ```
 
-Afterwards, move the converted theme to the system-wide `/usr/share/icons` or the local
-`~/.local/share/icons`. Note that other valid locations do exist, according to the [specification](https://specifications.freedesktop.org/icon-theme/latest/#directory_layout).
-Switching to this cursor theme depends on your distribution, so just (kindly) look it up.
+Afterwards, move the converted theme to the system-wide `/usr/share/icons` or the local `~/.icons` (recommended).
+Anything listed [here](https://specifications.freedesktop.org/icon-theme/latest/#directory_layout) should work.
+Switching to this cursor theme depends on your distribution (or more so, your DE), so just (kindly) look it up.
 
 For more information on other commands and possible usages, view the help text:
 
@@ -57,22 +57,64 @@ currust -h      # Summarised help text
 currust --help  # Detailed help text
 ```
 
+<details>
+<summary>Example usage</summary>
+
+```bash
+❯ tree  # Expected cursor theme layout (as input)
+.
+└── [The Herta Cursor ver.2.0.0]
+    ├── 01-Normal.ani
+    ├── 02-Link.ani
+    ├── 03-Loading.ani
+    ├── 04-Help.ani
+    ├── 05-Text Select Alt.ani
+    ├── 05-Text Select.ani
+    ├── 06-Handwriting.ani
+    ├── 07-Precision.ani
+    ├── 08-Unavailable.ani
+    ├── 09-Location Select.ani
+    ├── 10-Person Select.ani
+    ├── 11-Vertical Resize.ani
+    ├── 12-Horizontal Resize.ani
+    ├── 13-Diagonal Resize 1.ani
+    ├── 14-Diagonal Resize 2.ani
+    ├── 15-Move.ani
+    ├── 16-Alternate Select.ani
+    ├── [Changelog].txt
+    └── Installer.inf
+
+2 directories, 19 files
+
+❯ currust \[The\ Herta\ Cursor\ ver.2.0.0\] --scale-to 5 --scale-with nearest -o ~/.icons
+
+❯ plasma-apply-cursortheme ~/.icons/The\ Herta\ Cursor\ ver\ 2.0.0 # If you're on KDE
+Successfully applied the mouse cursor theme The Herta Cursor ver 2.0.0 to your current Plasma session
+```
+
+This creates a cursor theme upscaled to 5x using nearest-neighbour scaling. The original 1x scale
+is still included. This may be useful for larger screens, or for my use case, making the enlarged
+cursor from KDE's shake cursor effect not look blurry (since the cursor theme is pixel-art).
+
+</details>
+
 ## About Windows
 
-If you're using Windows, you can still use this. For symlink coverage, a bash script will be
-generated for users to run instead. _(though, an option to export to tar.gz would be better...)_
+If you're using Windows, you can still use this. For symlink coverage,
+a bash script will be generated for users to run instead.
 
 ## Goals
 
-All the baseline goals I had for this project are complete, so this is more akin to
+All the baseline goals I had for this project are complete, so this is closer to
 a "planned/future features" section. Note that not everything here may be added.
 
 - [x] Publish or otherwise for usage with `cargo` and package managers
-- [ ] Implement exporting to tar.gz and possibly other formats
+- [ ] Replace bash script generation by exporting to tar.gz
 - [ ] Conversion from X11 cursors to Windows cursors (i.e, the other way around)
 - [ ] [SVG cursor themes](https://blog.vladzahorodnii.com/2024/10/06/svg-cursors-everything-that-you-need-to-know-about-them) for KDE Plasma
 - [x] ~~hyprcursor (cursor format for hyprland) support~~
-      ➜ covered by [hyprcursor-util](https://github.com/hyprwm/hyprcursor/tree/main/hyprcursor-util), I think.
+      ➜ covered by [hyprcursor-util](https://github.com/hyprwm/hyprcursor/tree/main/hyprcursor-util)
+- [ ] Have a guided installation process for themes with no installer file
 
 ---
 
