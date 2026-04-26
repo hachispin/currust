@@ -75,7 +75,7 @@ pub enum CursorType {
 }
 
 impl CursorType {
-    const NUM_VARIANTS: usize = 15;
+    pub const NUM_VARIANTS: usize = 15;
 }
 
 /// A [`GenericCursor`] with a [`CursorType`].

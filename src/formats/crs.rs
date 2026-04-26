@@ -1,17 +1,15 @@
 //! Parses CRS files from RW Cursor editor.
 //!
-//! CRS is just TOML with required sections.
+//! Pretty sure CRS is just TOML with required sections.
 
 use crate::themes::theme::{CursorMapping, CursorType};
 
 use std::{fs, path::Path};
 
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, bail};
 use configparser::ini::Ini;
 
 /// Section names in CRS files.
-///
-/// NOTE: may not be all possible sections!
 fn section_to_type(section: &str) -> Option<CursorType> {
     use CursorType::*;
 
@@ -37,39 +35,33 @@ fn section_to_type(section: &str) -> Option<CursorType> {
     })
 }
 
-#[expect(clippy::missing_errors_doc)]
+/// Attempts to extract mappings out of a CRS file.
+///
+/// ## Errors
+///
+/// If file is failed to be read or has unexpected sections.
+/// Note that missing sections are not treated as an error.
 pub fn parse_crs_installer(crs_path: &Path, theme_dir: &Path) -> Result<Vec<CursorMapping>> {
     let crs_string = fs::read_to_string(crs_path)?;
     let crs = Ini::new()
         .read(crs_string)
         .map_err(|e| anyhow!("failed to read crs, error e={e}"))?;
 
-    let mut mappings = Vec::with_capacity(16);
+    let mut mappings = Vec::with_capacity(CursorType::NUM_VARIANTS);
 
-    // TODO: refactor this, it looks a little repulsive
     for section_name in crs.keys() {
-        // some of these should probably be bails
         let Some(r#type) = section_to_type(section_name) else {
-            eprintln!("[warning] skipping unexpected section in crs file, section={section_name}");
-            continue;
+            bail!("unexpected section in crs file (please report), section={section_name}");
         };
 
-        let Some(section) = crs.get(section_name) else {
+        let relative_path = crs.get(section_name).and_then(|s| s.get("path"));
+
+        let Some(Some(relative_path)) = relative_path else {
             eprintln!("[warning] skipping section_name={section_name}");
             continue;
         };
 
-        let Some(path_value) = section.get("path") else {
-            eprintln!("[warning] skipping section_name={section_name}");
-            continue;
-        };
-
-        let Some(path_value) = path_value else {
-            eprintln!("[warning] no value for section_name={section_name}");
-            continue;
-        };
-
-        let path = theme_dir.join(path_value);
+        let path = theme_dir.join(relative_path);
         mappings.push(CursorMapping { r#type, path });
     }
 
