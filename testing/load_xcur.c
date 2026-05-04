@@ -10,8 +10,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-// NOTE: this is C23
-
 int main(int argc, char** argv) {
     char* cursor_name = "left_ptr";
     int32_t size = 32;
@@ -38,7 +36,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    Display* display = XOpenDisplay(nullptr);
+    Display* display = XOpenDisplay(NULL);
 
     if (!display) {
         fprintf(stderr, "XOpenDisplay() failed\n");
@@ -72,8 +70,8 @@ int main(int argc, char** argv) {
     // the *nominal size* so technically ... blahblahblah
     XcursorSetDefaultSize(display, size);
 
-    XcursorImages* images = nullptr;
-    XcursorComments* comments = nullptr;
+    XcursorImages* images = NULL;
+    XcursorComments* comments = NULL;
 
     if (!XcursorFilenameLoad(cursor_name, &comments, &images)) {
         fprintf(stderr, "XcursorFilenameLoad() failed\n");
