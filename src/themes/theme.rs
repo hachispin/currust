@@ -14,6 +14,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow, bail};
+use documented::DocumentedVariants;
 use fast_image_resize::ResizeAlg;
 use rayon::iter::{IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator};
 
@@ -30,52 +31,106 @@ pub struct CursorMapping {
 ///
 /// Some cursors, such as `Crosshair`, have symlinks to Xcursors
 /// that aren't _exactly_ the same, such as `color-picker`.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, DocumentedVariants)]
 pub enum CursorType {
     // using https://github.com/khayalhus/win2xcur-batch/blob/main/map.json
-    /// The default, left pointer.
+    // NOTE: documentation here is displayed to users in manual installs.
+    /// Description: an arrow pointing to the top-left; the default cursor
+    /// Used when: nothing is happening
+    /// Names: normal select, normal, pointer, arrow
+    /// Looks like: ↖️ or 
     Arrow,
-    /// Displayed when hovering over a link, usually a hand ( 👆 ).
+    /// Description: a hand pointing upwards
+    /// Used when: hovering over a link or anything that you can click.
+    /// Names: link select, link
+    /// Looks like: 👆 or 
     Hand,
-    /// Displayed when something's loading, usually a spinning wheel ( 🔃 ).
+    /// Description: a spinning wheel or a spinner
+    /// Used when: something is loading
+    /// Names: busy
+    /// Looks like: 🔃 or 
     Watch,
-    /// Similar to [`CursorType::Watch`], but with the loading
-    /// wheel to the side of [`CursorType::Arrow`], usually.
+    /// Description: a pointer with a spinning wheel or spinner
+    /// Used when: something is loading in the background
+    /// Names: working in background, work
+    /// Looks like: ( ↖️ and 🔃 ) or (  and  )
     LeftPtrWatch,
-    /// Usually a question mark. ( ?/❔/❓ )
+    /// Description: a question mark, may include a pointer
+    /// Used when: hovering over something that has a tooltip
+    /// Names: help select, help
+    /// Looks like: [( ↖️ or  ) + ?] or ?
     Help,
-    /// Displayed when hovering over a text field, usually looks like an "I".
+    /// Description: an I-beam or a serifed I
+    /// Used when: hovering over a text input field
+    /// Names: text select, text
+    /// Looks like: ⌶ or 𝙸 or エ or 
     Text,
-    /// Displayed when drawing, usually a pencil. ( ✏️ )
+    /// Description: a pencil or pen
+    /// Used when: drawing
+    /// Names: handwriting, hand
+    /// Looks like: ✏️ or 
     Pencil,
-    /// Usually a "plus symbol". ( +/➕/✛ )
+    /// Description: a crosshair, usually drawn as a plus
+    /// Used when: taking screenshots
+    /// Names: precision select, precision, crosshair, cross
+    /// Looks like: + or ➕ or ✛
     Crosshair,
-    /// Usually a "no symbol". ( 🚫 )
+    /// Description: a slashed circle (no symbol), or crossbones
+    /// Used when: indicating something can't be clicked/dragged into
+    /// Names: unavailable
+    /// Looks like: 🚫 or ☠️
     Forbidden,
-    /// Displayed when scaling vertically, usually
-    /// a bi-directional, vertical arrow. ( ↕ )
+    /// Description: a double-sided vertical arrow
+    /// Used when: resizing something vertically
+    /// Names: vertical resize, vert
+    /// Looks like: ↕ or 
     NsResize,
-    /// Displayed when scaling horizontally, usually
-    /// a bi-directional, horizontal arrow. ( ↔ )
+    /// Description: a double-sided horizontal arrow
+    /// Used when: resizing something horizontally
+    /// Names: horizontal resize, horz
+    /// Looks like: ↔ or 
     EwResize,
-    /// Displayed when scaling from the bottom-right/top-left
-    /// corner, usually a bi-directional, diagonal arrow. ( ⤡ )
+    /// Description: a double-sided diagonal arrow taking the top-left and bottom-right corners
+    /// Used when: resizing something from the top-left or bottom-right corner
+    /// Names: diagonal resize 1, dgn1
+    /// Looks like: ⤡ or 󰹵
     NwseResize,
-    /// Displayed when scaling from the top-right/bottom-left corner,
-    /// usually a bi-directional, diagonal arrow. ( ⤢ )
+    /// Description: a double-sided diagonal arrow taking the top-right and bottom-left corners
+    /// Used when: resizing something from the top-right or bottom-left corner
+    /// Names: diagonal resize 2, dgn2
+    /// Looks like: ⤢ or 󰹷
     NeswResize,
-    /// Displayed when moving something, usually two bi-directional
-    /// vertical and horizontal arrows, stacked on top of each other.
+    /// Description: four arrows pointing up, down, left and right joined together
+    /// Used when: moving/dragging something
+    /// Names: move
+    /// Looks like: ( ↔ and ↕ ) or ✥ or 󰁁
     Move,
-    /// Usually a centered pointer. ( ↑ )
-    ///
-    /// This has a lot of symlinks to some cursors that aren't really
-    /// closely related, since this is mapping "alternate" from Windows.
+    /// Description: an arrow facing upwards
+    /// Used when: the normal cursor would be disruptive
+    /// Names: alternate select, alt
+    /// Looks like: ↑ or 
     CenterPtr,
 }
 
 impl CursorType {
     pub const NUM_VARIANTS: usize = 15;
+    pub const VARIANTS: [Self; Self::NUM_VARIANTS] = [
+        Self::Arrow,
+        Self::Hand,
+        Self::Watch,
+        Self::LeftPtrWatch,
+        Self::Help,
+        Self::Text,
+        Self::Pencil,
+        Self::Crosshair,
+        Self::Forbidden,
+        Self::NsResize,
+        Self::EwResize,
+        Self::NwseResize,
+        Self::NeswResize,
+        Self::Move,
+        Self::CenterPtr,
+    ];
 }
 
 /// A [`GenericCursor`] with a [`CursorType`].

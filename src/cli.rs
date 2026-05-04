@@ -3,12 +3,17 @@
 //! This contains the [`Args`] struct, which has the [`Parser`]
 //! trait, and the [`ParsedArgs`] struct, which is just plain old data.
 
-use crate::fs_utils::find_extensions_icase;
+use crate::{
+    fs_utils::find_extensions_icase,
+    themes::theme::{CursorMapping, CursorType},
+};
 
 use std::{fs, path::PathBuf};
 
 use anyhow::{Result, bail};
 use clap::{Parser, ValueEnum};
+use dialoguer::{Select, theme::ColorfulTheme};
+use documented::DocumentedVariants;
 use fast_image_resize::{FilterType, ResizeAlg};
 
 /// Raw arguments from CLI. Has the [`Parser`] trait.
@@ -223,11 +228,65 @@ impl ParsedArgs {
 
     /// Returns the appropriate algorithm for the `scale_factor`.
     #[must_use]
-    pub fn get_algorithm(&self, scale_factor: f64) -> ResizeAlg {
+    pub const fn get_algorithm(&self, scale_factor: f64) -> ResizeAlg {
         if scale_factor > 1.0 {
             self.upscale_with
         } else {
             self.downscale_with
         }
     }
+}
+
+// maybe adding dialoguer just for this is overkill?
+// but terminal i/o is annoying. and it looks pretty
+
+// wip btw
+
+/// Prompts the user to select cursor mappings from a list of cursors.
+///
+/// This is used for when no installer file is present.
+#[expect(clippy::missing_errors_doc, clippy::missing_panics_doc)]
+pub fn prompt_for_mappings(cursor_paths: &[PathBuf]) -> Result<Vec<CursorMapping>> {
+    let mut mappings = Vec::with_capacity(cursor_paths.len());
+    let mut cursor_paths_display: Vec<_> = cursor_paths
+        .iter()
+        .map(|p| format!("'{}'", p.file_name().unwrap().display()))
+        .collect();
+
+    println!("Notes:");
+    println!("- You can re-select already used cursors if needed.");
+    println!(
+        "- 'Person/Location Select' cursors on Windows have no equivalent on Linux, so ignore them."
+    );
+    println!(
+        "- You may see missing glyphs, shown as □, �, etc. This is fine, but\n  \
+           if you do want to see them, consider downloading a 'nerd font'."
+    );
+    println!();
+
+    for r#type in CursorType::VARIANTS {
+        let prompt = format!(
+            "Select the file representing '{:?}'.\n{}",
+            r#type,
+            r#type.get_variant_docs()
+        );
+
+        let chosen_index = Select::with_theme(&ColorfulTheme::default())
+            .items(&cursor_paths_display)
+            .with_prompt(prompt)
+            .default(0)
+            .report(false) // can get very messy as prompts are long
+            .interact()?;
+
+        let path = cursor_paths[chosen_index].clone();
+        let chosen = &mut cursor_paths_display[chosen_index];
+
+        if !chosen.ends_with("(used)") {
+            chosen.push_str(" (used)");
+        }
+
+        mappings.push(CursorMapping { r#type, path });
+    }
+
+    Ok(mappings)
 }
