@@ -4,15 +4,16 @@
 //! trait, and the [`ParsedArgs`] struct, which is just plain old data.
 
 use crate::{
+    cursors::generic_cursor::GenericCursor,
     fs_utils::find_extensions_icase,
-    themes::theme::{CursorMapping, CursorType},
+    themes::theme::{CursorTheme, CursorType, TypedCursor},
 };
 
 use std::{fs, path::PathBuf};
 
-use anyhow::{Result, bail};
+use anyhow::{Result, anyhow, bail};
 use clap::{Parser, ValueEnum};
-use dialoguer::{Select, theme::ColorfulTheme};
+use dialoguer::{Select, console::Term, theme::ColorfulTheme};
 use documented::DocumentedVariants;
 use fast_image_resize::{FilterType, ResizeAlg};
 
@@ -33,7 +34,24 @@ pub struct Args {
     #[arg(required = true)]
     paths: Vec<PathBuf>,
 
-    /// Indicates that the directory provided is NOT a theme.
+    /// Uses a manual and interactive installation process.
+    ///
+    /// This is for when no installer file is present to provide each cursor's semantic
+    /// role. Only a cursor "theme" (directory with cursor files) can be passed into this.
+    ///
+    /// Notes for usage:
+    ///
+    /// - You can re-select already used cursors if needed.
+    /// - Person/Location Select on Windows have no equivalent on Linux, so ignore them.
+    /// - You may see missing glyphs, shown as □, �, etc. This is fine, but
+    ///   if you do want to see them, consider downloading a nerd font.
+    #[arg(long, verbatim_doc_comment, conflicts_with = "no_theme")]
+    manual: bool,
+
+    /// Indicates that the directory provided is **not** a theme.
+    ///
+    /// Cursor files will be converted but no other work, such as writing symlinks,
+    /// theme files and mapping the cursor to the correct equivalent is done.
     ///
     /// This means that any installer files are ignored. This isn't
     /// recommended for most use-cases as it makes conversion more manual.
@@ -44,7 +62,7 @@ pub struct Args {
     ///
     /// This is overridden by "--upscale-with" and "--downscale-with", if set.
     ///
-    ///  algorithm  use case
+    /// algorithm use case
     /// nearest   pixel art if scaling to integers (e.g, 2x, 3x).
     /// box       pixel art if scaling includes decimals (e.g, 1.5x, 2x, 3x).
     /// bilinear  smooth shapes, not recommended if sharpness is desired.
@@ -129,6 +147,8 @@ pub struct ParsedArgs {
     pub cursor_theme_dirs: Vec<PathBuf>,
     /// All cursor files.
     pub cursor_files: Vec<PathBuf>,
+    /// Installation is manual. Or not.
+    pub manual: bool,
     /// Scale factors.
     pub scale_to: Vec<f64>,
     /// Algorithm for upscaling.
@@ -151,6 +171,7 @@ impl ParsedArgs {
     /// If any provided paths don't exist or `out` directory can't be made.
     pub fn from_args(args: Args) -> Result<Self> {
         let paths = args.paths;
+        let manual = args.manual;
         let mut cursor_theme_dirs = Vec::new();
         let mut cursor_files = Vec::new();
 
@@ -219,6 +240,7 @@ impl ParsedArgs {
         Ok(Self {
             cursor_theme_dirs,
             cursor_files,
+            manual,
             scale_to,
             upscale_with,
             downscale_with,
@@ -237,38 +259,33 @@ impl ParsedArgs {
     }
 }
 
-// maybe adding dialoguer just for this is overkill?
-// but terminal i/o is annoying. and it looks pretty
+// this can maybe go in crate::themes::theme? it's a blurry line though
+// pros: can encapsulate fns more; cons: mixing interaction with theme
 
-// wip btw
-
-/// Prompts the user to select cursor mappings from a list of cursors.
+/// Asks the user a series of prompts to construct a theme manually.
 ///
 /// This is used for when no installer file is present.
-#[expect(clippy::missing_errors_doc, clippy::missing_panics_doc)]
-pub fn prompt_for_mappings(cursor_paths: &[PathBuf]) -> Result<Vec<CursorMapping>> {
-    let mut mappings = Vec::with_capacity(cursor_paths.len());
+///
+/// ## Errors
+///
+/// - any path in `cursor_paths` has no filename
+/// - [`Select`] prompt fails (e.g., if user is not in a terminal)
+pub fn prompt_for_theme(cursor_paths: &[PathBuf]) -> Result<CursorTheme> {
+    let mut typed_cursors = Vec::with_capacity(cursor_paths.len());
     let mut cursor_paths_display: Vec<_> = cursor_paths
         .iter()
-        .map(|p| format!("'{}'", p.file_name().unwrap().display()))
-        .collect();
+        .map(|p| {
+            p.file_name()
+                .map(|f| format!("'{}'", f.display()))
+                .ok_or_else(|| anyhow!("no file name for cursor path, p={}", p.display()))
+        })
+        .collect::<Result<_>>()?;
 
-    println!("Notes:");
-    println!("- You can re-select already used cursors if needed.");
-    println!(
-        "- 'Person/Location Select' cursors on Windows have no equivalent on Linux, so ignore them."
-    );
-    println!(
-        "- You may see missing glyphs, shown as □, �, etc. This is fine, but\n  \
-           if you do want to see them, consider downloading a 'nerd font'."
-    );
-    println!();
-
-    for r#type in CursorType::VARIANTS {
+    for variant in CursorType::VARIANTS {
         let prompt = format!(
             "Select the file representing '{:?}'.\n{}",
-            r#type,
-            r#type.get_variant_docs()
+            variant,
+            variant.get_variant_docs()
         );
 
         let chosen_index = Select::with_theme(&ColorfulTheme::default())
@@ -278,15 +295,21 @@ pub fn prompt_for_mappings(cursor_paths: &[PathBuf]) -> Result<Vec<CursorMapping
             .report(false) // can get very messy as prompts are long
             .interact()?;
 
-        let path = cursor_paths[chosen_index].clone();
         let chosen = &mut cursor_paths_display[chosen_index];
 
         if !chosen.ends_with("(used)") {
             chosen.push_str(" (used)");
         }
 
-        mappings.push(CursorMapping { r#type, path });
+        let path = cursor_paths[chosen_index].clone();
+        let cursor = GenericCursor::from_path(path)?;
+        let typed = TypedCursor::new(cursor, variant);
+        typed_cursors.push(typed);
     }
 
-    Ok(mappings)
+    eprint!("Enter a theme name: ");
+    let name = Term::stderr().read_line()?;
+    let theme = CursorTheme::new(typed_cursors, name)?;
+
+    Ok(theme)
 }

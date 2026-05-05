@@ -41,7 +41,7 @@ pub enum CursorType {
     /// Looks like: ↖️ or 
     Arrow,
     /// Description: a hand pointing upwards
-    /// Used when: hovering over a link or anything that you can click.
+    /// Used when: hovering over a link or anything that you can click
     /// Names: link select, link
     /// Looks like: 👆 or 
     Hand,
@@ -75,7 +75,7 @@ pub enum CursorType {
     /// Names: precision select, precision, crosshair, cross
     /// Looks like: + or ➕ or ✛
     Crosshair,
-    /// Description: a slashed circle (no symbol), or crossbones
+    /// Description: a slashed circle (a "no symbol") or crossbones
     /// Used when: indicating something can't be clicked/dragged into
     /// Names: unavailable
     /// Looks like: 🚫 or ☠️
@@ -144,7 +144,8 @@ pub struct TypedCursor {
 }
 
 impl TypedCursor {
-    fn new(xcursor: GenericCursor, r#type: CursorType) -> Self {
+    #[must_use]
+    pub fn new(xcursor: GenericCursor, r#type: CursorType) -> Self {
         let aliases = get_symlinks(&r#type);
 
         Self {
@@ -158,11 +159,12 @@ impl TypedCursor {
     ///
     /// ## Errors
     ///
-    /// - if path contained inside of `mapping` doesn't exist,
-    ///   even after a case-insensitive check
+    /// - if path contained inside of `mapping` doesn't
+    ///   exist, even after a case-insensitive check
     /// - generic cursor parsing fails
     fn from_mapping(mapping: CursorMapping) -> Result<Self> {
         let path = mapping.path;
+
         let path = if path.exists() {
             path
         } else {
@@ -216,7 +218,14 @@ pub struct CursorTheme {
 }
 
 impl CursorTheme {
-    fn new(cursors: Vec<TypedCursor>, name: String) -> Result<Self> {
+    /// Validated constructor for [`CursorTheme`].
+    ///
+    /// ## Errors
+    ///
+    /// - `cursors` is empty
+    /// - more cursors than variants
+    /// - duplicate variants
+    pub fn new(cursors: Vec<TypedCursor>, name: String) -> Result<Self> {
         if cursors.is_empty() {
             bail!("can't create theme with no cursors (empty)");
         }
