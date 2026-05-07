@@ -10,22 +10,13 @@ use crate::{
 use std::{
     fs::{self, File},
     io::Write,
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 use anyhow::{Context, Result, anyhow, bail};
 use documented::DocumentedVariants;
 use fast_image_resize::ResizeAlg;
 use rayon::iter::{IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator};
-
-/// Cursor mappings stored in installer files.
-#[derive(Debug, PartialEq)]
-pub struct CursorMapping {
-    /// Semantic role of cursor.
-    pub r#type: CursorType,
-    /// Full path to (expected) cursor.
-    pub path: PathBuf,
-}
 
 /// Represents the possible cursors that exist in both Windows and Linux (X11).
 ///
@@ -139,68 +130,49 @@ pub struct TypedCursor {
     inner: GenericCursor,
     /// Semantic usage of cursor, e.g for typing.
     r#type: CursorType,
-    /// First entry is the filename, rest are used as symlinks.
-    aliases: &'static [&'static str],
 }
 
 impl TypedCursor {
     #[must_use]
-    pub fn new(xcursor: GenericCursor, r#type: CursorType) -> Self {
-        let aliases = get_symlinks(&r#type);
-
-        Self {
-            inner: xcursor,
-            r#type,
-            aliases,
-        }
+    pub fn new(inner: GenericCursor, r#type: CursorType) -> Self {
+        Self { inner, r#type }
     }
 
-    /// Creates a cursor from `mapping`.
-    ///
-    /// ## Errors
-    ///
-    /// - if path contained inside of `mapping` doesn't
-    ///   exist, even after a case-insensitive check
-    /// - generic cursor parsing fails
-    fn from_mapping(mapping: CursorMapping) -> Result<Self> {
-        let path = mapping.path;
-
-        let path = if path.exists() {
-            path
-        } else {
-            find_icase(&path)?.ok_or_else(|| {
+    fn from_path(cursor_path: &Path, r#type: CursorType, icase: bool) -> Result<Self> {
+        let cursor_path = if icase {
+            &find_icase(cursor_path)?.ok_or_else(|| {
                 anyhow!(
-                    "cursor path, path={} not found in parent (case-insensitive)",
-                    path.display()
+                    "cursor_path={} not found after case-insensitive search",
+                    cursor_path.display()
                 )
             })?
+        } else {
+            cursor_path
         };
 
-        Ok(Self::new(
-            GenericCursor::from_path(&path).with_context(|| {
-                format!("while reading path={} as generic cursor", path.display())
-            })?,
-            mapping.r#type,
-        ))
+        let inner = GenericCursor::from_path(cursor_path)?;
+
+        Ok(Self { inner, r#type })
     }
 
     /// Saves as Xcursor to `dir`, along with symlinks.
     fn save_as_xcursor(&self, dir: &Path) -> Result<()> {
-        self.inner.save_as_xcursor(dir.join(self.aliases[0]))?;
+        let aliases = get_symlinks(&self.r#type);
+        self.inner.save_as_xcursor(dir.join(aliases[0]))?;
 
         // relative symlink
         #[cfg(unix)]
-        for symlink in &self.aliases[1..] {
+        for symlink in &aliases[1..] {
             use std::{io, os::unix};
 
-            match unix::fs::symlink(self.aliases[0], dir.join(symlink)) {
+            match unix::fs::symlink(aliases[0], dir.join(symlink)) {
                 Ok(()) => Ok(()),
                 Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Ok(()),
                 Err(e) => Err(e).with_context(|| {
                     format!(
                         "failed to create symlink {} pointing to {}",
                         dir.join(symlink).display(),
-                        self.aliases[0]
+                        aliases[0]
                     )
                 }),
             }?;
@@ -280,7 +252,7 @@ impl CursorTheme {
 
         let typed_cursors: Vec<_> = mappings
             .into_iter()
-            .map(TypedCursor::from_mapping)
+            .map(|(path, r#type)| TypedCursor::from_path(&path, r#type, true))
             .collect::<Result<_>>()?;
 
         Self::new(typed_cursors, name)

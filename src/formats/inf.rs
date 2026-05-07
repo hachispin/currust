@@ -1,6 +1,7 @@
 //! Parses INF installer files for cursor themes.
 
-use crate::themes::theme::{CursorMapping, CursorType};
+use super::CursorMapping;
+use crate::themes::theme::CursorType;
 
 use std::{collections::HashMap, fs, path::Path};
 
@@ -11,7 +12,7 @@ const ROOT_KEYS: &[&str] = &["hkcr", "hkcu", "hklm", "hku", "hkcc"];
 
 /// Attempts to parse `inf_path` as an installer file for a cursor theme.
 ///
-/// Returns the tuple (`theme_name`, `cursor_mappings`).
+/// Returns the tuple (`theme_name`, `Vec<(cursor_path, cursor_type)>`).
 ///
 /// ## Errors
 ///
@@ -35,7 +36,7 @@ const ROOT_KEYS: &[&str] = &["hkcr", "hkcu", "hklm", "hku", "hkcc"];
 ///
 /// ## Panics
 ///
-/// Only for errors that have already been checked.
+/// Only for "handling" errors that have already been checked.
 pub fn parse_inf_installer(
     inf_path: &Path,
     theme_dir: &Path,
@@ -129,10 +130,7 @@ pub fn parse_inf_installer(
     let mappings: Vec<_> = paths
         .into_iter()
         .zip(0..15)
-        .map(|(p, i)| CursorMapping {
-            r#type: index_to_cursor_type(i),
-            path: theme_dir.join(p),
-        })
+        .map(|(p, i)| (theme_dir.join(p), index_to_cursor_type(i)))
         .collect();
 
     Ok((name, mappings))
@@ -258,10 +256,10 @@ mod tests {
         macro_rules! make_mappings {
             ($root:expr; $($variant:ident => $filename_suffix:literal),+ $(,)?) => {[
                 $(
-                    CursorMapping {
-                        r#type: crate::themes::theme::CursorType::$variant,
-                        path: $root.join(concat!("Neuro ", $filename_suffix, ".ani")),
-                    },
+                    (
+                        $root.join(concat!("Neuro ", $filename_suffix, ".ani")),
+                        crate::themes::theme::CursorType::$variant,
+                    ),
                 )+
             ]}
         }
@@ -282,6 +280,9 @@ mod tests {
             CenterPtr => "alt",          Hand => "link",
         );
 
-        assert_eq!(mappings, expected_mappings);
+        for (parsed, expected) in mappings.iter().zip(expected_mappings) {
+            assert_eq!(parsed.0, expected.0);
+            assert_eq!(parsed.1, expected.1);
+        }
     }
 }

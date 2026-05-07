@@ -2,7 +2,8 @@
 //!
 //! Pretty sure CRS is just TOML with required sections.
 
-use crate::themes::theme::{CursorMapping, CursorType};
+use super::CursorMapping;
+use crate::themes::theme::CursorType;
 
 use std::{fs, path::Path};
 
@@ -62,7 +63,7 @@ pub fn parse_crs_installer(crs_path: &Path, theme_dir: &Path) -> Result<Vec<Curs
         };
 
         let path = theme_dir.join(relative_path);
-        mappings.push(CursorMapping { r#type, path });
+        mappings.push((path, r#type));
     }
 
     Ok(mappings)
