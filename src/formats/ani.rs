@@ -7,7 +7,7 @@
 
 use std::{
     fmt,
-    io::{Cursor, Read, Seek},
+    io::{Cursor, Read},
 };
 
 use anyhow::{Context, Result, bail};
@@ -358,7 +358,6 @@ impl AniFile {
                 )
             })?;
 
-        // if we read `fram_size` bytes, are we still in the blob?
         if end > ani_blob_size.try_into()? {
             bail!("list_data_size={list_data_size} extends beyond blob");
         }
@@ -368,31 +367,21 @@ impl AniFile {
                 while cursor.position() < end {
                     cursor.read_exact(&mut buf)?;
 
-                    if buf == *b"INAM" {
-                        if ani.title.is_some() {
-                            bail!("duplicate 'INAM' subchunk in 'INFO'");
-                        }
-
-                        cursor.read_exact(&mut buf)?; // size
-                        ani.title = Some(NullString::read_le(cursor)?);
-
-                        if !u32::from_le_bytes(buf).is_multiple_of(2) {
-                            cursor.seek_relative(1)?;
-                        }
+                    let field = if buf == *b"INAM" {
+                        &mut ani.title
                     } else if buf == *b"IART" {
-                        if ani.author.is_some() {
-                            bail!("duplicate 'IART' subchunk in 'INFO'");
-                        }
-
-                        cursor.read_exact(&mut buf)?; // size
-                        ani.author = Some(NullString::read_le(cursor)?);
-
-                        if !u32::from_le_bytes(buf).is_multiple_of(2) {
-                            cursor.seek_relative(1)?;
-                        }
+                        &mut ani.author
                     } else {
                         bail!("expected 'INAM' or 'IART' subchunk in 'INFO', instead got {buf:?}");
+                    };
+
+                    if field.is_some() {
+                        bail!("duplicate 'INAM' or 'IART' subchunk in 'INFO'");
                     }
+
+                    // size of string
+                    cursor.read_exact(&mut buf)?;
+                    *field = Some(NullString::read_le(cursor)?);
                 }
             }
 
@@ -426,9 +415,13 @@ impl AniFile {
             _ => bail!("unexpected list_id={list_id:?}"),
         }
 
-        if list_data_size % 2 != 0 {
-            cursor.seek_relative(1)?;
-        }
+        // do NOT pad based on list_data_size here !!!
+        // the last subchunk is padded already, so padding here
+        // would pad *twice*, causing some annoying off-by-ones
+        //
+        //if list_data_size % 2 != 0 {
+        //    cursor.seek_relative(1)?;
+        //}
 
         Ok(())
     }
