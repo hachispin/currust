@@ -18,7 +18,7 @@ There are currently two supported methods of installation:
 The primary use-case of this tool is to convert a Windows _cursor theme_ to Linux. A _cursor theme_ is a
 directory that contains some cursors, along with an installer file that uses either the INF or CRS format.
 
-If the cursor theme being converted has no such installer file, read the [manual usage section](<#Usage-(manual)>).
+If the cursor theme being converted has no such installer file, read the [manual usage section](#usage-manual).
 
 You can convert a cursor theme as such:
 
