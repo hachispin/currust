@@ -105,7 +105,7 @@ of now, this configuration isn't saved--this must be done each time the theme is
 A prompt will appear for each cursor in the theme that needs to be converted. A checkmark
 will appear on cursors you've already selected (though, you can re-select them if needed).
 
-You can move up and down the list using the `j` and `k` keys respectively.
+You can move up and down the list using the `k` and `j` keys respectively.
 
 In case the (admittedly rudimentary) emoji/glyph visual representations of
 the cursor aren't enough, here's a convenient reference image you can use.
