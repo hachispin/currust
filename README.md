@@ -10,13 +10,15 @@ converting from the CUR/ANI format to the Xcursor format (plus some other featur
 
 There are currently two supported methods of installation:
 
-- download the binaries on the releases page (recommended)
+- download the binaries on the [releases page](https://github.com/hachispin/currust/releases/latest) (recommended)
 - build from crates with `cargo install currust` (requires `cargo`)
 
-## Usage
+## Usage (automatic)
 
-The intended use-case of this tool is to convert a Windows _cursor theme_ to Linux. A _cursor theme_
-is a directory that contains some cursors, **along with an installer file that uses the INF format**.
+The primary use-case of this tool is to convert a Windows _cursor theme_ to Linux. A _cursor theme_ is a
+directory that contains some cursors, along with an installer file that uses either the INF or CRS format.
+
+If the cursor theme being converted has no such installer file, read the [manual usage section](<#Usage-(manual)>).
 
 You can convert a cursor theme as such:
 
@@ -49,13 +51,6 @@ currust ./my-cursor-theme --scale-to 1.5 2 3 --scale-with mitchell
 Afterwards, move the converted theme to the system-wide `/usr/share/icons` or the local `~/.icons` (recommended).
 Anything listed [here](https://specifications.freedesktop.org/icon-theme/latest/#directory_layout) should work.
 Switching to this cursor theme depends on your distribution (or more so, your DE), so just (kindly) look it up.
-
-For more information on other commands and possible usages, view the help text:
-
-```bash
-currust -h      # Summarised help text
-currust --help  # Detailed help text
-```
 
 <details>
 <summary>Example usage</summary>
@@ -98,6 +93,51 @@ cursor from KDE's shake cursor effect not look blurry (since the cursor theme is
 
 </details>
 
+## Usage (manual)
+
+The cursor theme being converted may lack an installer file or have one in an unsupported format.
+To convert, pass the `--manual` flag, where a guided installation process will occur. Note that as
+of now, this configuration isn't saved--this must be done each time the theme is to-be converted.
+
+<details>
+<summary>Manual installation</summary>
+
+A prompt will appear for each cursor in the theme that needs to be converted. A checkmark
+will appear on cursors you've already selected (though, you can re-select them if needed).
+
+In case the (admittedly rudimentary) emoji/glyph visual representations of
+the cursor aren't enough, here's a convenient reference image you can use.
+
+![Windows cursors role reference](./windows-cursors.png)
+
+```bash
+? Select the file representing 'Hand'.
+Description: a hand pointing upwards
+Used when: hovering over a link or anything that you can click
+Names: link select, link
+Looks like: 👆 or  ›
+❯ 'Alternate Select.ani'
+  'Busy.ani'
+  'Diagonal Resize 1.ani'
+  'Diagonal Resize 2.ani'
+  'Handwriting.ani'
+  'Help Select.ani'
+  'Horizontal Resize.ani'
+  'Link Select.ani'
+  'Location Select.ani'
+  'Move.ani'
+  'Normal Select.ani' ✓
+  'Person Select.ani'
+  'Precision Select.ani'
+  'Text Select 2.ani'
+  'Text Select.ani'
+  'Unavailable.ani'
+  'Vertical Resize.ani'
+  'Working In Background.ani'
+```
+
+</details>
+
 ## About Windows
 
 If you're using Windows, you can still use this. For symlink coverage,
@@ -113,8 +153,8 @@ a "planned/future features" section. Note that not everything here may be added.
 - [ ] Conversion from X11 cursors to Windows cursors (i.e, the other way around)
 - [ ] [SVG cursor themes](https://blog.vladzahorodnii.com/2024/10/06/svg-cursors-everything-that-you-need-to-know-about-them) for KDE Plasma
 - [x] ~~hyprcursor (cursor format for hyprland) support~~
-      ➜ covered by [hyprcursor-util](https://github.com/hyprwm/hyprcursor/tree/main/hyprcursor-util)
-- [ ] Have a guided installation process for themes with no installer file
+      → covered by [hyprcursor-util](https://github.com/hyprwm/hyprcursor/tree/main/hyprcursor-util)
+- [x] Have a guided installation process for themes with no installer file
 
 ---
 

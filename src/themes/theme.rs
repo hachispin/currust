@@ -251,6 +251,14 @@ impl CursorTheme {
 
         let (name, mappings) = if manual {
             let cursor_paths: Vec<_> = find_extensions_icase(theme_dir, &["ani", "cur"])?.collect();
+
+            if cursor_paths.is_empty() {
+                bail!(
+                    "no cursors (files with .cur or .ani extension) found in {}",
+                    theme_dir.display()
+                )
+            }
+
             prompt_for_mappings(&cursor_paths)?
         } else {
             let installers: Vec<_> = find_extensions_icase(theme_dir, &["inf", "crs"])?.collect();
@@ -260,7 +268,7 @@ impl CursorTheme {
             }
 
             let Some(installer) = installers.first().cloned() else {
-                bail!("no installer (INF/CRS) file found");
+                bail!("no installer (INF/CRS) file found, consider adding the --manual flag");
             };
 
             if installers[0].extension().is_some_and(|ext| ext == "inf") {
