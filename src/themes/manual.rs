@@ -4,7 +4,11 @@ use crate::themes::theme::CursorMapping;
 use std::path::PathBuf;
 
 use anyhow::{Result, anyhow};
-use dialoguer::{Select, console::Term, theme::ColorfulTheme};
+use dialoguer::{
+    Select,
+    console::{Term, style},
+    theme::ColorfulTheme,
+};
 use documented::DocumentedVariants;
 
 /// Asks the user a series of prompts to construct a theme manually.
@@ -23,7 +27,7 @@ pub(super) fn prompt_for_mappings(
         .iter()
         .map(|p| {
             p.file_name()
-                .map(|f| format!("'{}'", f.display()))
+                .map(|f| format!("'{}' ", f.display()))
                 .ok_or_else(|| anyhow!("no file name for cursor path, p={}", p.display()))
         })
         .collect::<Result<_>>()?;
@@ -42,18 +46,23 @@ pub(super) fn prompt_for_mappings(
             .report(false) // can get very messy as prompts are long
             .interact()?;
 
-        let chosen = &mut cursor_paths_display[chosen_index];
-
-        if !chosen.ends_with("(used)") {
-            chosen.push_str(" (used)");
-        }
+        cursor_paths_display[chosen_index].push_str(&style("✓").green().to_string());
 
         let path = cursor_paths[chosen_index].clone();
         mappings.push(CursorMapping { r#type, path });
     }
 
-    eprint!("Enter a theme name: ");
-    let name = Term::stderr().read_line()?;
+    let name = loop {
+        eprint!("Enter a theme name: ");
+        let theme_name = Term::stderr().read_line()?;
+
+        // crude, but it works
+        if theme_name.contains(['/', '\\']) {
+            eprintln!("Theme name can't contain '/' or '\\'.");
+        } else {
+            break theme_name;
+        }
+    };
 
     Ok((name, mappings))
 }

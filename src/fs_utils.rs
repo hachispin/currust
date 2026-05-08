@@ -3,6 +3,8 @@
 use anyhow::{Result, anyhow, bail};
 use std::path::{Path, PathBuf};
 
+use crate::warn;
+
 /// Attempts to find `file_path` by searching through it's parent dir.
 ///
 /// This does not search recursively. Also, `file_path.file_name()`
@@ -81,10 +83,7 @@ fn read_dir_files(dir: &Path) -> Result<impl Iterator<Item = PathBuf>> {
         .read_dir()?
         .filter_map(|e| {
             e.inspect_err(|err| {
-                eprintln!(
-                    "[warning] couldn't read entry in dir={}: {err}",
-                    dir.display()
-                );
+                warn!("couldn't read entry in dir={}: {err}", dir.display());
             })
             .ok()
         })
@@ -92,10 +91,7 @@ fn read_dir_files(dir: &Path) -> Result<impl Iterator<Item = PathBuf>> {
         .filter(|p| {
             p.metadata()
                 .inspect_err(|err| {
-                    eprintln!(
-                        "[warning] failed to read metadata of path, p={}: {err}",
-                        p.display()
-                    );
+                    warn!("failed to read metadata of path, p={}: {err}", p.display());
                 })
                 .ok()
                 .is_some_and(|m| m.is_file())

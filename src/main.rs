@@ -41,6 +41,17 @@ use anyhow::{Context, Result, anyhow};
 use clap::Parser;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
+/// A warning.
+#[macro_export]
+macro_rules! warn {
+    ($($msg:tt)*) => {
+        eprintln!(
+            "{} {}", ::dialoguer::console::style("[warning]").yellow(),
+            ::dialoguer::console::style(format_args!($($msg)*)).yellow()
+        )
+    };
+}
+
 fn main() -> Result<()> {
     let raw_args = Args::parse();
     let args = ParsedArgs::from_args(raw_args)?;

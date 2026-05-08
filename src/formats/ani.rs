@@ -13,6 +13,8 @@ use std::{
 use anyhow::{Context, Result, bail};
 use binrw::{BinRead, NullString, binread};
 
+use crate::warn;
+
 /// RIFF chunk with [`Self::data`] as `Vec<u32>`.
 #[binread]
 #[derive(Debug)]
@@ -471,9 +473,9 @@ impl AniFile {
         }
 
         if hdr.flags == Sequenced && ani.sequence.is_none() {
-            eprintln!(
-                "[warning] expected 'seq ' chunk from flags={:?}, found None. \
-                the order in which frames were stored will be used instead",
+            warn!(
+                "expected 'seq ' chunk from flags={:?}, found None. the \
+                order in which frames were stored will be used instead",
                 hdr.flags
             );
         }
@@ -482,9 +484,9 @@ impl AniFile {
             && hdr.flags == Unsequenced
             && seq.data != (0..hdr.num_steps).collect::<Vec<_>>()
         {
-            eprintln!(
-                "[warning] expected 'seq ' chunk to be None from flags={:?}, found \
-                non-linear sequence={:?}. note that this sequence will still be used",
+            warn!(
+                "expected 'seq ' chunk to be None from flags={:?}, found the non \
+                linear sequence={:?}, note that this sequence will still be used",
                 hdr.flags, ani.sequence
             );
         }

@@ -2,7 +2,10 @@
 //!
 //! Pretty sure CRS is just TOML with required sections.
 
-use crate::themes::theme::{CursorMapping, CursorType};
+use crate::{
+    themes::theme::{CursorMapping, CursorType},
+    warn,
+};
 
 use std::{fs, path::Path};
 
@@ -57,7 +60,7 @@ pub fn parse_crs_installer(crs_path: &Path, theme_dir: &Path) -> Result<Vec<Curs
         let relative_path = crs.get(section_name).and_then(|s| s.get("path"));
 
         let Some(Some(relative_path)) = relative_path else {
-            eprintln!("[warning] skipping section_name={section_name}");
+            warn!("skipping section_name={section_name}");
             continue;
         };
 

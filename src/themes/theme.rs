@@ -6,6 +6,7 @@ use crate::{
     formats::{crs::parse_crs_installer, inf::parse_inf_installer},
     fs_utils::{find_extensions_icase, find_icase},
     themes::manual::prompt_for_mappings,
+    warn,
 };
 
 use std::{
@@ -312,7 +313,15 @@ impl CursorTheme {
     ///
     /// If writing Xcursor/symlinks fail.
     pub fn save_as_x11_theme(&self, dir: &Path) -> Result<()> {
-        let theme_dir = dir.join(&self.name);
+        let name = if self.name.is_empty() {
+            warn!("blank theme name, using a placeholder name");
+            String::from("placeholder_theme_name")
+        } else {
+            self.name.clone()
+        };
+
+        let sanitized = name.replace(['/', '\\'], "_");
+        let theme_dir = dir.join(sanitized);
         let cursor_dir = theme_dir.join("cursors");
         fs::create_dir_all(&cursor_dir)
             .with_context(|| format!("failed to write cursor_dir={}", cursor_dir.display()))?;
@@ -321,8 +330,8 @@ impl CursorTheme {
         // copies are not a good alternative due to storage concerns
         #[cfg(windows)]
         {
-            eprintln!(
-                "[warning] symlinks won't be created as we're on windows, a \
+            warn!(
+                "symlinks won't be created as we're on windows, a \
                 bash script for usage on linux will be created instead"
             );
 

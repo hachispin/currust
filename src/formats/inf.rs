@@ -1,6 +1,9 @@
 //! Parses INF installer files for cursor themes.
 
-use crate::themes::theme::{CursorMapping, CursorType};
+use crate::{
+    themes::theme::{CursorMapping, CursorType},
+    warn,
+};
 
 use std::{collections::HashMap, fs, path::Path};
 
@@ -64,9 +67,9 @@ pub fn parse_inf_installer(
         .ok_or_else(|| anyhow!("no {reg_section} section found"))?;
 
     if reg.keys().len() != 1 {
-        eprintln!(
-            "[warning] expected {reg_section} to have one key, instead \
-            has {}, only the first key will be parsed (reg={:?})",
+        warn!(
+            "expected {reg_section} to have one key, instead has \
+            {} keys, only the first key will be parsed (reg={:?})",
             reg.keys().len(),
             reg
         );
@@ -115,10 +118,7 @@ pub fn parse_inf_installer(
 
     if paths.len() != 17 {
         // maybe upgrade to error?
-        eprintln!(
-            "[warning] expected 17 paths, instead got {} paths",
-            paths.len()
-        );
+        warn!("expected 17 paths, instead got {} paths", paths.len());
     }
 
     let end = paths.len() - 1;
@@ -195,7 +195,7 @@ fn dequote_value(entry: (&String, &Option<String>)) -> Option<(String, String)> 
         )),
         (k, None) => {
             // side effect but shhh
-            eprintln!("[warning] key={k} has value None");
+            warn!("key={k} has value None");
             None
         }
     }
