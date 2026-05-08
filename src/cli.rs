@@ -3,18 +3,12 @@
 //! This contains the [`Args`] struct, which has the [`Parser`]
 //! trait, and the [`ParsedArgs`] struct, which is just plain old data.
 
-use crate::{
-    cursors::generic_cursor::GenericCursor,
-    fs_utils::find_extensions_icase,
-    themes::theme::{CursorTheme, CursorType, TypedCursor},
-};
+use crate::fs_utils::find_extensions_icase;
 
 use std::{fs, path::PathBuf};
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Result, bail};
 use clap::{Parser, ValueEnum};
-use dialoguer::{Select, console::Term, theme::ColorfulTheme};
-use documented::DocumentedVariants;
 use fast_image_resize::{FilterType, ResizeAlg};
 
 /// Raw arguments from CLI. Has the [`Parser`] trait.
@@ -257,59 +251,4 @@ impl ParsedArgs {
             self.downscale_with
         }
     }
-}
-
-// this can maybe go in crate::themes::theme? it's a blurry line though
-// pros: can encapsulate fns more; cons: mixing interaction with theme
-
-/// Asks the user a series of prompts to construct a theme manually.
-///
-/// This is used for when no installer file is present.
-///
-/// ## Errors
-///
-/// - any path in `cursor_paths` has no filename
-/// - [`Select`] prompt fails (e.g., if user is not in a terminal)
-pub fn prompt_for_theme(cursor_paths: &[PathBuf]) -> Result<CursorTheme> {
-    let mut typed_cursors = Vec::with_capacity(cursor_paths.len());
-    let mut cursor_paths_display: Vec<_> = cursor_paths
-        .iter()
-        .map(|p| {
-            p.file_name()
-                .map(|f| format!("'{}'", f.display()))
-                .ok_or_else(|| anyhow!("no file name for cursor path, p={}", p.display()))
-        })
-        .collect::<Result<_>>()?;
-
-    for variant in CursorType::VARIANTS {
-        let prompt = format!(
-            "Select the file representing '{:?}'.\n{}",
-            variant,
-            variant.get_variant_docs()
-        );
-
-        let chosen_index = Select::with_theme(&ColorfulTheme::default())
-            .items(&cursor_paths_display)
-            .with_prompt(prompt)
-            .default(0)
-            .report(false) // can get very messy as prompts are long
-            .interact()?;
-
-        let chosen = &mut cursor_paths_display[chosen_index];
-
-        if !chosen.ends_with("(used)") {
-            chosen.push_str(" (used)");
-        }
-
-        let path = cursor_paths[chosen_index].clone();
-        let cursor = GenericCursor::from_path(path)?;
-        let typed = TypedCursor::new(cursor, variant);
-        typed_cursors.push(typed);
-    }
-
-    eprint!("Enter a theme name: ");
-    let name = Term::stderr().read_line()?;
-    let theme = CursorTheme::new(typed_cursors, name)?;
-
-    Ok(theme)
 }

@@ -5,6 +5,7 @@ use crate::{
     cursors::generic_cursor::GenericCursor,
     formats::{crs::parse_crs_installer, inf::parse_inf_installer},
     fs_utils::{find_extensions_icase, find_icase},
+    themes::manual::prompt_for_mappings,
 };
 
 use std::{
@@ -139,23 +140,13 @@ pub struct TypedCursor {
     inner: GenericCursor,
     /// Semantic usage of cursor, e.g for typing.
     r#type: CursorType,
-    /// First entry is the filename, rest are used as symlinks.
-    aliases: &'static [&'static str],
 }
 
 impl TypedCursor {
-    #[must_use]
-    pub fn new(xcursor: GenericCursor, r#type: CursorType) -> Self {
-        let aliases = get_symlinks(&r#type);
-
-        Self {
-            inner: xcursor,
-            r#type,
-            aliases,
-        }
-    }
-
     /// Creates a cursor from `mapping`.
+    ///
+    /// Note that this does a case-insensitive search if
+    /// the path stored in `mapping` doesn't exist.
     ///
     /// ## Errors
     ///
@@ -163,7 +154,7 @@ impl TypedCursor {
     ///   exist, even after a case-insensitive check
     /// - generic cursor parsing fails
     fn from_mapping(mapping: CursorMapping) -> Result<Self> {
-        let path = mapping.path;
+        let CursorMapping { path, r#type } = mapping;
 
         let path = if path.exists() {
             path
@@ -176,31 +167,30 @@ impl TypedCursor {
             })?
         };
 
-        Ok(Self::new(
-            GenericCursor::from_path(&path).with_context(|| {
-                format!("while reading path={} as generic cursor", path.display())
-            })?,
-            mapping.r#type,
-        ))
+        let inner = GenericCursor::from_path(&path)
+            .with_context(|| format!("while reading path={} as generic cursor", path.display()))?;
+
+        Ok(Self { inner, r#type })
     }
 
     /// Saves as Xcursor to `dir`, along with symlinks.
     fn save_as_xcursor(&self, dir: &Path) -> Result<()> {
-        self.inner.save_as_xcursor(dir.join(self.aliases[0]))?;
+        let aliases = get_symlinks(&self.r#type);
+        self.inner.save_as_xcursor(dir.join(aliases[0]))?;
 
         // relative symlink
         #[cfg(unix)]
-        for symlink in &self.aliases[1..] {
+        for symlink in &aliases[1..] {
             use std::{io, os::unix};
 
-            match unix::fs::symlink(self.aliases[0], dir.join(symlink)) {
+            match unix::fs::symlink(aliases[0], dir.join(symlink)) {
                 Ok(()) => Ok(()),
                 Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Ok(()),
                 Err(e) => Err(e).with_context(|| {
                     format!(
                         "failed to create symlink {} pointing to {}",
                         dir.join(symlink).display(),
-                        self.aliases[0]
+                        aliases[0]
                     )
                 }),
             }?;
@@ -255,27 +245,41 @@ impl CursorTheme {
     /// ## Errors
     ///
     /// Mostly from parsing the INF file and filesystem operations.
-    pub fn from_theme_dir<P: AsRef<Path>>(theme_dir: P) -> Result<Self> {
+    pub fn from_theme_dir(theme_dir: impl AsRef<Path>, manual: bool) -> Result<Self> {
         let theme_dir = theme_dir.as_ref();
-        let installers: Vec<_> = find_extensions_icase(theme_dir, &["inf", "crs"])?.collect();
 
-        if installers.len() > 1 {
-            bail!("found more than one installer (INF/CRS) file");
-        }
-
-        let Some(installer) = installers.first().cloned() else {
-            bail!("no installer (INF/CRS) file found");
-        };
-
-        // a bit ugly
-        let (name, mappings) = if installer
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("inf"))
-        {
-            parse_inf_installer(&installer, theme_dir)
-                .with_context(|| format!("while attempting to parse {}", installer.display()))?
+        let (name, mappings) = if manual {
+            let cursor_paths: Vec<_> = find_extensions_icase(theme_dir, &["ani", "cur"])?.collect();
+            prompt_for_mappings(&cursor_paths)?
         } else {
-            (String::new(), parse_crs_installer(&installer, theme_dir)?)
+            let installers: Vec<_> = find_extensions_icase(theme_dir, &["inf", "crs"])?.collect();
+
+            if installers.len() > 1 {
+                bail!("found more than one installer (INF/CRS) file");
+            }
+
+            let Some(installer) = installers.first().cloned() else {
+                bail!("no installer (INF/CRS) file found");
+            };
+
+            if installers[0].extension().is_some_and(|ext| ext == "inf") {
+                parse_inf_installer(&installer, theme_dir).with_context(|| {
+                    format!(
+                        "while attempting to parse inf installer {}",
+                        installer.display()
+                    )
+                })?
+            } else {
+                (
+                    String::new(),
+                    parse_crs_installer(&installer, theme_dir).with_context(|| {
+                        format!(
+                            "while attempting to parse crs installer {}",
+                            installer.display()
+                        )
+                    })?,
+                )
+            }
         };
 
         let typed_cursors: Vec<_> = mappings
@@ -313,9 +317,8 @@ impl CursorTheme {
         fs::create_dir_all(&cursor_dir)
             .with_context(|| format!("failed to write cursor_dir={}", cursor_dir.display()))?;
 
-        // copies are *not* a good alternative here.
-        // xcursor can get very large, very quickly
-        // and there are wayy too many symlinks.
+        // TODO: replace with tar.gz
+        // copies are not a good alternative due to storage concerns
         #[cfg(windows)]
         {
             eprintln!(
@@ -371,7 +374,7 @@ impl CursorTheme {
         let mut f = File::create(cursor_dir.join("write_symlinks.sh"))?;
         writeln!(&mut f, "#!/usr/bin/env bash\n")?;
 
-        for filenames in self.cursors.iter().map(|c| c.aliases) {
+        for filenames in self.cursors.iter().map(|c| get_symlinks(&c.r#type)) {
             let src = filenames[0];
             let symlinks = &filenames[1..];
 

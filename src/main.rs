@@ -32,9 +32,8 @@ macro_rules! from_root {
 use from_root;
 
 use crate::{
-    cli::{Args, ParsedArgs, prompt_for_theme},
+    cli::{Args, ParsedArgs},
     cursors::generic_cursor::GenericCursor,
-    fs_utils::find_extensions_icase,
     themes::theme::CursorTheme,
 };
 
@@ -47,13 +46,8 @@ fn main() -> Result<()> {
     let args = ParsedArgs::from_args(raw_args)?;
 
     args.cursor_theme_dirs.par_iter().try_for_each(|d| {
-        let mut theme = if args.manual {
-            let paths: Vec<_> = find_extensions_icase(d, &["ani", "cur"])?.collect();
-            prompt_for_theme(&paths)?
-        } else {
-            CursorTheme::from_theme_dir(d)
-                .with_context(|| format!("while reading dir={} as theme", d.display()))?
-        };
+        let mut theme = CursorTheme::from_theme_dir(d, args.manual)
+            .with_context(|| format!("while reading dir={} as theme", d.display()))?;
 
         for &sf in &args.scale_to {
             theme.add_scale(sf, args.get_algorithm(sf))?;
