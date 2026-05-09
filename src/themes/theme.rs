@@ -44,17 +44,17 @@ pub enum CursorType {
     Arrow,
     /// Description: a hand pointing upwards
     /// Used when: hovering over a link or anything that you can click
-    /// Names: link select, link
+    /// Names: link select, link, hand
     /// Looks like: 👆 or 
     Hand,
     /// Description: a spinning wheel or a spinner
     /// Used when: something is loading
-    /// Names: busy
+    /// Names: busy, wait, waitcursor
     /// Looks like: 🔃 or 
     Watch,
     /// Description: a pointer with a spinning wheel or spinner
     /// Used when: something is loading in the background
-    /// Names: working in background, work
+    /// Names: working in background, work, appstarting
     /// Looks like: ( ↖️ and 🔃 ) or (  and  )
     LeftPtrWatch,
     /// Description: a question mark, may include a pointer
@@ -64,7 +64,7 @@ pub enum CursorType {
     Help,
     /// Description: an I-beam or a serifed I
     /// Used when: hovering over a text input field
-    /// Names: text select, text
+    /// Names: text select, text, ibeam
     /// Looks like: ⌶ or 𝙸 or エ or 
     Text,
     /// Description: a pencil or pen
@@ -79,37 +79,37 @@ pub enum CursorType {
     Crosshair,
     /// Description: a slashed circle (a "no symbol") or crossbones
     /// Used when: indicating something can't be clicked/dragged into
-    /// Names: unavailable
+    /// Names: unavailable, no
     /// Looks like: 🚫 or ☠️
     Forbidden,
     /// Description: a double-sided vertical arrow
     /// Used when: resizing something vertically
-    /// Names: vertical resize, vert
+    /// Names: vertical resize, vert, sizens
     /// Looks like: ↕ or 
     NsResize,
     /// Description: a double-sided horizontal arrow
     /// Used when: resizing something horizontally
-    /// Names: horizontal resize, horz
+    /// Names: horizontal resize, horz, sizewe
     /// Looks like: ↔ or 
     EwResize,
     /// Description: a double-sided diagonal arrow taking the top-left and bottom-right corners
     /// Used when: resizing something from the top-left or bottom-right corner
-    /// Names: diagonal resize 1, dgn1
+    /// Names: diagonal resize 1, dgn1, sizenwse
     /// Looks like: ⤡ or 󰹵
     NwseResize,
     /// Description: a double-sided diagonal arrow taking the top-right and bottom-left corners
     /// Used when: resizing something from the top-right or bottom-left corner
-    /// Names: diagonal resize 2, dgn2
+    /// Names: diagonal resize 2, dgn2, sizenesw
     /// Looks like: ⤢ or 󰹷
     NeswResize,
     /// Description: four arrows pointing up, down, left and right joined together
     /// Used when: moving/dragging something
-    /// Names: move
+    /// Names: move, sizeall
     /// Looks like: ( ↔ and ↕ ) or ✥ or 󰁁
     Move,
     /// Description: an arrow facing upwards
     /// Used when: the normal cursor would be disruptive
-    /// Names: alternate select, alt
+    /// Names: alternate select, alt, uparrow
     /// Looks like: ↑ or 
     CenterPtr,
 }

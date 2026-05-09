@@ -20,7 +20,7 @@ use configparser::ini::Ini; // inf is an "ini-like" format
 ///
 /// ## Implementation details
 ///
-/// In INF installer files, the `Scheme.Reg` section should be formatted as such:
+/// In INF installer files, the `Scheme.Reg` section is usually (but not always!) like this
 ///
 /// ```text
 /// ; note that this is pseudocode, this isn't a valid inf file
@@ -55,28 +55,21 @@ pub fn parse_inf_installer(
         .as_ref()
         .ok_or_else(|| anyhow!("no value for addreg key"))?;
 
-    let reg_section = addreg
-        .split_once(',')
-        .map_or(addreg.as_str(), |s| s.0)
-        .to_ascii_lowercase();
-
-    let reg = inf
-        .get(&reg_section)
-        .ok_or_else(|| anyhow!("no {reg_section} section found"))?;
-
+    // find the right registry entries (the ones we can parse)
     // https://github.com/quantum5/win2xcur/blob/c8a390b79456a45104fe42133b9d7eb4ce7c8638/win2xcur/parser/inf.py#L47-L50
-    let raw_mappings = reg
-        .keys()
-        .into_iter()
-        .find(|k|
-            k.starts_with(r#"hkcu,"control panel\cursors\schemes","#) ||
-            k.starts_with(r#"hklm,"software\\microsoft\\windows\\currentversion\\control panel\\cursors\\schemes","#)
+    let scheme = addreg.split(',')
+        .filter_map(|k| inf.get(&k.to_ascii_lowercase()))
+        .flat_map(|v| v.keys())
+            .find(|k|
+                k.starts_with(r#"hkcu,"control panel\cursors\schemes","#) ||
+                k.starts_with(r#"hklm,"software\\microsoft\\windows\\currentversion\\control panel\\cursors\\schemes","#)
         )
-        .ok_or_else(|| anyhow!("no mappings found, reg={reg:?}"))?;
+        .ok_or_else(|| anyhow!("couldn't find cursor mappings"))?;
 
     let subs = inf.get("strings");
-    let expanded_reg = expand_mappings(raw_mappings, subs)?;
+    let expanded_reg = expand_scheme(scheme, subs)?;
     let mut reg_info = expanded_reg.split(',');
+
     reg_info.next(); // root key, e.g., hkcu, hklm
     reg_info.next(); // path
 
@@ -84,10 +77,9 @@ pub fn parse_inf_installer(
         .next()
         .ok_or_else(|| anyhow!("couldn't parse theme name; reg_info doesn't have enough info"))?
         .strip_prefix('"') // refrain from trim_matches; only one quote should be removed
-        .unwrap_or_default() // ...
-        .strip_suffix('"') // ...
-        .map(str::to_string)
-        .ok_or_else(|| anyhow!("expected theme name to be quoted"))?;
+        .and_then(|n| n.strip_suffix('"'))
+        .ok_or_else(|| anyhow!("expected theme name to be quoted"))?
+        .to_string();
 
     reg_info.next(); // flags
 
@@ -142,7 +134,7 @@ const fn index_to_cursor_type(index: usize) -> CursorType {
 ///
 /// NOTE: this does **not** handle nested substitutions,
 ///       but there should be no need for that. Hopefully.
-fn expand_mappings(reg: &str, subs: Option<&HashMap<String, Option<String>>>) -> Result<String> {
+fn expand_scheme(reg: &str, subs: Option<&HashMap<String, Option<String>>>) -> Result<String> {
     let Some(subs) = subs else {
         let empty: HashMap<String, String> = HashMap::new();
         return expand(reg, &empty);
