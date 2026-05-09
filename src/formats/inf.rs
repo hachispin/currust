@@ -10,8 +10,6 @@ use std::{collections::HashMap, fs, path::Path};
 use anyhow::{Result, anyhow, bail};
 use configparser::ini::Ini; // inf is an "ini-like" format
 
-const ROOT_KEYS: &[&str] = &["hkcr", "hkcu", "hklm", "hku", "hkcc"];
-
 /// Attempts to parse `inf_path` as an installer file for a cursor theme.
 ///
 /// Returns the tuple (`theme_name`, `cursor_mappings`).
@@ -66,47 +64,32 @@ pub fn parse_inf_installer(
         .get(&reg_section)
         .ok_or_else(|| anyhow!("no {reg_section} section found"))?;
 
-    if reg.keys().len() != 1 {
-        warn!(
-            "expected {reg_section} to have one key, instead has \
-            {} keys, only the first key will be parsed (reg={:?})",
-            reg.keys().len(),
-            reg
-        );
-    }
-
-    if reg.values().next() != Some(&None) {
-        bail!(
-            "expected no value (None) for reg, instead got {:?}",
-            reg.values().next()
+    // https://github.com/quantum5/win2xcur/blob/c8a390b79456a45104fe42133b9d7eb4ce7c8638/win2xcur/parser/inf.py#L47-L50
+    let raw_mappings = reg
+        .keys()
+        .into_iter()
+        .find(|k|
+            k.starts_with(r#"hkcu,"control panel\cursors\schemes","#) ||
+            k.starts_with(r#"hklm,"software\\microsoft\\windows\\currentversion\\control panel\\cursors\\schemes","#)
         )
-    }
-
-    let Some(reg) = reg.keys().next() else {
-        bail!("no cursor mappings found in reg (0 keys)");
-    };
+        .ok_or_else(|| anyhow!("no mappings found, reg={reg:?}"))?;
 
     let subs = inf.get("strings");
-    let expanded_reg = expand_reg(reg, subs)?;
+    let expanded_reg = expand_mappings(raw_mappings, subs)?;
     let mut reg_info = expanded_reg.split(',');
-
-    let root_key = reg_info.next();
-    let _ = reg_info.next(); // sometimes blank, sometimes 0x00010000...?
-
-    if !root_key.is_some_and(|k| ROOT_KEYS.contains(&k)) {
-        bail!("root_key={root_key:?} not in accepted ROOT_KEYS={ROOT_KEYS:?}");
-    }
+    reg_info.next(); // root key, e.g., hkcu, hklm
+    reg_info.next(); // path
 
     let name = reg_info
         .next()
         .ok_or_else(|| anyhow!("couldn't parse theme name; reg_info doesn't have enough info"))?
-        .strip_prefix('"')
-        .unwrap_or_default()
-        .strip_suffix('"')
+        .strip_prefix('"') // refrain from trim_matches; only one quote should be removed
+        .unwrap_or_default() // ...
+        .strip_suffix('"') // ...
         .map(str::to_string)
         .ok_or_else(|| anyhow!("expected theme name to be quoted"))?;
 
-    reg_info.next(); // unused field
+    reg_info.next(); // flags
 
     let mut paths: Vec<_> = reg_info
         .map(|s| {
@@ -115,11 +98,6 @@ pub fn parse_inf_installer(
                 .map(|s| s.1)
         })
         .collect::<Result<_>>()?;
-
-    if paths.len() != 17 {
-        // maybe upgrade to error?
-        warn!("expected 17 paths, instead got {} paths", paths.len());
-    }
 
     let end = paths.len() - 1;
     paths[end] = paths[paths.len() - 1]
@@ -164,7 +142,7 @@ const fn index_to_cursor_type(index: usize) -> CursorType {
 ///
 /// NOTE: this does **not** handle nested substitutions,
 ///       but there should be no need for that. Hopefully.
-fn expand_reg(reg: &str, subs: Option<&HashMap<String, Option<String>>>) -> Result<String> {
+fn expand_mappings(reg: &str, subs: Option<&HashMap<String, Option<String>>>) -> Result<String> {
     let Some(subs) = subs else {
         let empty: HashMap<String, String> = HashMap::new();
         return expand(reg, &empty);
@@ -216,7 +194,7 @@ fn expand(value: &str, subs: &HashMap<String, String>) -> Result<String> {
     }
 
     for &[start, end] in sub_ranges.as_chunks::<2>().0 {
-        let sub_key = value[start..=end].to_string();
+        let sub_key = value[start..=end].to_string().to_ascii_lowercase();
         let sub_value = subs
             .get(&sub_key)
             .map(String::as_str)
