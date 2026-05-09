@@ -64,7 +64,7 @@ pub struct Args {
     /// lanczos3  general-purpose downscaling, preserves details but may cause artifacts.
     #[arg(
         long,
-        default_value = "lanczos3",
+        default_value = "box",
         value_name = "ALGORITHM",
         verbatim_doc_comment
     )]

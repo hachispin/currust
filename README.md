@@ -3,7 +3,7 @@
 [![Release](https://github.com/hachispin/currust/actions/workflows/release.yml/badge.svg)](https://github.com/hachispin/currust/actions/workflows/release.yml)
 [![crates.io](https://img.shields.io/crates/v/currust.svg)](https://crates.io/crates/currust)
 
-A tool written in Rust to convert cursors between Windows and Linux. Specifically,
+A tool written in Rust to convert cursors formats between Windows and Linux. Specifically,
 converting from the CUR/ANI format to the Xcursor format (plus some other features).
 
 ## Installation
@@ -15,12 +15,12 @@ There are currently two supported methods of installation:
 
 ## Usage (automatic)
 
-The primary use-case of this tool is to convert a Windows _cursor theme_ to Linux. A _cursor theme_ is a
+The primary use-case of currust is to convert a Windows _cursor theme_ to Linux. A _cursor theme_ is a
 directory that contains some cursors, along with an installer file that uses either the INF or CRS format.
 
 If the cursor theme being converted has no such installer file, read the [manual usage section](#usage-manual).
 
-You can convert a cursor theme as such:
+A Windows cursor theme can be converted as such:
 
 ```bash
 currust ./my-cursor-theme
@@ -33,20 +33,26 @@ directory. Add the `--out` (or `-o` for short) argument to place it in the speci
 currust ./my-cursor-theme -o ./please/go/here/instead
 ```
 
-Cursor themes on Windows can be scaled by Windows itself. Unfortunately, this feature doesn't
-exist on most Linux distributions, so Xcursor themes have to include their own size variations.
+Cursor themes on Windows can be scaled by Windows itself. Unfortunately, this feature
+doesn't exist anywhere on Linux from what I know, so Xcursor themes have to include
+their own size variations if the provided sizes (usually just 32x32) is too small.
 
-The `--scale-to` argument is available to provide some scale factors, along
-with `--scale-with` to provide a scaling algorithm to use (default: Lanczos3).
+currust has support for both upscaling and downscaling cursors.
 
-Note that this increases the size of the resulting cursor theme.
+The `--scale-to` argument is used to specify what scale factors to scale to,
+along with `--scale-with` to specify a scaling algorithm to use (default: box).
 
 > [!TIP]
-> For pixel art cursors, use nearest-neighbour scaling with `--scale-with nearest`. Integer scale factors work best.
+> The default scaling (box) is meant for pixel-art. If you want smoother
+> scaling, specify scaling with, e.g., Lanczos3 using `--scale-with lanczos`.
+
+For example, to scale my-cursor=theme to 0.5x, 2x and 3x using Mitchell:
 
 ```bash
-currust ./my-cursor-theme --scale-to 1.5 2 3 --scale-with mitchell
+currust ./my-cursor-theme --scale-to 0.5 2 3 --scale-with mitchell
 ```
+
+Note that this increases the size of the resulting cursor theme.
 
 Afterwards, move the converted theme to the system-wide `/usr/share/icons` or the local `~/.icons` (recommended).
 Anything listed [here](https://specifications.freedesktop.org/icon-theme/latest/#directory_layout) should work.
@@ -81,7 +87,7 @@ Switching to this cursor theme depends on your distribution (or more so, your DE
 
 2 directories, 19 files
 
-❯ currust \[The\ Herta\ Cursor\ ver.2.0.0\] --scale-to 5 --scale-with nearest -o ~/.icons
+❯ currust \[The\ Herta\ Cursor\ ver.2.0.0\] --scale-to 5 -o ~/.icons
 
 ❯ plasma-apply-cursortheme ~/.icons/The\ Herta\ Cursor\ ver\ 2.0.0 # If you're on KDE
 Successfully applied the mouse cursor theme The Herta Cursor ver 2.0.0 to your current Plasma session
@@ -161,3 +167,5 @@ a "planned/future features" section. Note that not everything here may be added.
 ---
 
 The name ("currust") comes from a portmanteau of "cursor" and "Rust".
+
+Any time I refer to "Linux", it may be better thought of as "Linux distributions" or "Xcursor".
