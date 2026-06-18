@@ -93,7 +93,6 @@ fn read_dir_files(dir: &Path) -> Result<impl Iterator<Item = PathBuf>> {
                 .inspect_err(|err| {
                     warn!("failed to read metadata of path, p={}: {err}", p.display());
                 })
-                .ok()
-                .is_some_and(|m| m.is_file())
+                .is_ok_and(|m| m.is_file())
         }))
 }

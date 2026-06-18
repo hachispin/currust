@@ -362,7 +362,7 @@ impl CursorTheme {
         if self.name.is_empty() {
             writeln!(&mut f, "# Name=theme_name")?;
         } else {
-            writeln!(&mut f, "Name={}", &self.name)?;
+            writeln!(&mut f, "Name={}", self.name)?;
         }
 
         writeln!(
