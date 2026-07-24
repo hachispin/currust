@@ -237,8 +237,8 @@ fn to_pre_argb(rgba: &mut [u8]) {
 }
 
 /// Formula used for pre-multiplying a color channel with an alpha channel.
-#[expect(clippy::cast_possible_truncation, clippy::inline_always)]
-#[inline(always)]
+#[expect(clippy::cast_possible_truncation)]
+#[inline]
 const fn pre_alpha_formula(c: u8, a: u8) -> u8 {
     // +127 rounds to closest integer instead of floor
     let prod = (c as u16) * (a as u16);
@@ -296,14 +296,13 @@ mod tests {
 
     use std::{
         fmt::Write,
-        fs::File,
         io::{BufWriter, Seek, SeekFrom},
-        os::fd::AsRawFd,
+        os::fd::IntoRawFd,
         ptr::NonNull,
     };
 
     use binrw::BinWrite;
-    use libc::{FILE, fdopen};
+    use libc::{FILE, fclose, fdopen};
     use tempfile::tempfile;
 
     macro_rules! denullify {
@@ -312,51 +311,55 @@ mod tests {
         };
     }
 
-    /// Returns `(tempfile, c_handle)`.
-    ///
-    /// SAFETY(1): If `c_handle` is being used, `tempfile` must still exist.
-    ///            In other words, `lifetime(c_handle) <= lifetime(tempfile)`.
-    ///
-    /// SAFETY(2): Don't close `tempfile` manually (either through Rust or C)
-    ///            unless there's a very strong reason to do so.
-    fn xcursor_make_c_handle(xcursor: &Xcursor) -> (File, NonNull<FILE>) {
-        let mut tempfile = tempfile().unwrap();
-        let fd = tempfile.as_raw_fd();
+    #[repr(transparent)]
+    struct CFile(NonNull<FILE>);
 
-        xcursor.write(&mut BufWriter::new(&tempfile)).unwrap();
-        tempfile.seek(SeekFrom::Start(0)).unwrap();
-
-        let c_handle = denullify!(
-            unsafe { fdopen(fd, c"r".as_ptr()) },
-            "fdopen() returned NULL with fd={fd}"
-        );
-
-        (tempfile, c_handle)
+    impl Drop for CFile {
+        fn drop(&mut self) {
+            unsafe {
+                fclose(self.0.as_ptr());
+            }
+        }
     }
 
-    // NOTE: mark any test that uses libXcursor as #[cfg(target_os = "linux")]
-    // if libXcursor tests (cargo test) fail to link, add RUSTFLAGS='-lXcursor'
+    impl CFile {
+        fn new(fd: i32) -> Self {
+            let f = denullify!(
+                unsafe { fdopen(fd, c"r".as_ptr()) },
+                "fdopen() returned NULL with fd={fd}"
+            );
 
+            Self(f)
+        }
+    }
+
+    // NOTE: Mark any test that uses libXcursor as `#[cfg(target_os = "linux")]`.
+    // If libXcursor tests (cargo test) fail to link, add `RUSTFLAGS='-lXcursor'`.
+
+    /// Attempts to load the cursor produced from `black_and_white()` with libXcursor.
     #[cfg(target_os = "linux")]
     #[test]
-    /// Attempts to load the cursor produced from `black_and_white()` with libXcursor.
     fn libxcursor() {
         use x11::xcursor::{XcursorFileLoadImages, XcursorImagesDestroy};
 
         let xcursor = Xcursor::new(&black_and_white()).unwrap();
-        let (_tempfile, c_handle) = xcursor_make_c_handle(&xcursor);
+        let mut tempfile = tempfile().unwrap();
+        xcursor.write(&mut BufWriter::new(&tempfile)).unwrap();
+        tempfile.seek(SeekFrom::Start(0)).unwrap();
+
+        let f = CFile::new(tempfile.into_raw_fd());
 
         let image_ptr = denullify!(
-            unsafe { XcursorFileLoadImages(c_handle.as_ptr(), 32) },
-            "XcursorFileLoadImages() returned NULL with c_file={:p}",
-            c_handle.as_ptr()
+            unsafe { XcursorFileLoadImages(f.0.as_ptr(), 32) },
+            "XcursorFileLoadImages() returned NULL with f={:p}",
+            f.0.as_ptr()
         );
 
         unsafe {
             XcursorImagesDestroy(image_ptr.as_ptr());
         }
 
-        // _tempfile is dropped here, so fclose() isn't needed
+        // NOTE: `tempfile` is cleaned up by the OS.
     }
 
     /// Golden file test.
