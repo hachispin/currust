@@ -7,7 +7,7 @@ use crate::{
 
 use std::{collections::HashMap, fs, path::Path};
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use configparser::ini::Ini; // inf is an "ini-like" format
 
 /// Attempts to parse `inf_path` as an installer file for a cursor theme.
@@ -131,13 +131,10 @@ const fn index_to_cursor_type(index: usize) -> CursorType {
 }
 
 /// Helper function for [`parse_inf_installer`]. This expands `Scheme.Reg` if needed.
-///
-/// NOTE: this does **not** handle nested substitutions,
-///       but there should be no need for that. Hopefully.
 fn expand_scheme(reg: &str, subs: Option<&HashMap<String, Option<String>>>) -> Result<String> {
     let Some(subs) = subs else {
         let empty: HashMap<String, String> = HashMap::new();
-        return expand(reg, &empty);
+        return expand(reg, &empty).with_context(|| format!("for input reg={reg}"));
     };
 
     let subs: HashMap<_, _> = subs
@@ -146,7 +143,7 @@ fn expand_scheme(reg: &str, subs: Option<&HashMap<String, Option<String>>>) -> R
         .map(|(k, v)| (format!("%{k}%"), v))
         .collect();
 
-    expand(reg, &subs)
+    expand(reg, &subs).with_context(|| format!("for input reg={reg}"))
 }
 
 /// Helper function for [`expand_reg`] for removing the outer pair of quotes.
@@ -171,55 +168,94 @@ fn dequote_value(entry: (&String, &Option<String>)) -> Option<(String, String)> 
     }
 }
 
-/// Expands percent-delimited values using `subs` as a lookup table.
-fn expand(value: &str, subs: &HashMap<String, String>) -> Result<String> {
-    let mut expanded_value = value.to_string();
-    let value_ilen = i64::try_from(value.len())?;
-    let sub_ranges: Vec<_> = value.match_indices('%').map(|(i, _)| i).collect();
+/// Expands percent-delimited keys using `subs` as a lookup table.
+///
+/// `subs` keys must contain the delimiters (e.g., "%name%" => "hachispin").
+/// This also does not expand recursively - hopefully there's no need for that.
+fn expand(input: &str, subs: &HashMap<String, String>) -> Result<String> {
+    let mut expanded = String::with_capacity(input.len());
+    let mut chars = input.char_indices();
 
-    if !sub_ranges.len().is_multiple_of(2) {
-        bail!(
-            "unclosed delimiter in value={value}: the number of found \
-            percentage (%) delimiters (len()={}) aren't a multiple of 2",
-            sub_ranges.len()
-        );
-    }
+    while let Some((i, c)) = chars.next() {
+        if c != '%' {
+            expanded.push(c);
+            continue;
+        }
 
-    for &[start, end] in sub_ranges.as_chunks::<2>().0 {
-        let sub_key = value[start..=end].to_string().to_ascii_lowercase();
-        let sub_value = subs
-            .get(&sub_key)
+        let start = i;
+
+        let Some((end, _)) = chars.find(|(_, c)| *c == '%') else {
+            bail!("unclosed '%' delimiter starting at i={i}");
+        };
+
+        let key = &input[start..=end].to_ascii_lowercase();
+
+        let value = subs
+            .get(key)
             .map(String::as_str)
-            .or_else(|| if sub_key == "%%" { Some("%") } else { None })
+            .or_else(|| if key == "%%" { Some("%") } else { None })
             .or_else(|| {
-                if sub_key.chars().all(|c| c.is_ascii_digit() || c == '%') {
+                if key.chars().all(|c| c.is_ascii_digit() || c == '%') {
                     // let's just assume it's a DIRID and leave it :)
-                    Some(&sub_key)
+                    Some(key)
                 } else {
                     None
                 }
             })
-            .ok_or_else(|| {
-                anyhow!("no substitution exists for sub_key={sub_key} for value={value}")
-            })?;
+            .ok_or_else(|| anyhow!("no substitution exists for key={key}"))?;
 
-        let offset = i64::try_from(expanded_value.len())? - value_ilen;
-        let (istart, iend) = (i64::try_from(start)?, i64::try_from(end)?);
-        let (start, end) = (
-            usize::try_from(istart + offset)?,
-            usize::try_from(iend + offset)?,
-        );
-
-        expanded_value.replace_range(start..=end, sub_value);
+        expanded.push_str(value);
     }
 
-    Ok(expanded_value)
+    Ok(expanded)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::from_root;
+
+    /// Various tests for the [`expand`] function that should all return [`Ok`].
+    #[test]
+    fn expand_ok() {
+        let mut subs = HashMap::new();
+        subs.insert("%name%".to_string(), "hachispin".to_string());
+        subs.insert("%mood%".to_string(), r"¯\_(ツ)_/¯".to_string());
+
+        let value = "Hello! My name is %name%. Right now? I feel pretty meh. %mood%.";
+        let expected = r"Hello! My name is hachispin. Right now? I feel pretty meh. ¯\_(ツ)_/¯.";
+        assert_eq!(expand(value, &subs).unwrap(), expected);
+
+        let value = "憧%name%";
+        let expected = "憧hachispin";
+        assert_eq!(expand(value, &subs).unwrap(), expected);
+
+        let value = "21%%, 22%%, 23%%, 24%%, 25%%… 憧れ悩み　パンプアップ";
+        let expected = "21%, 22%, 23%, 24%, 25%… 憧れ悩み　パンプアップ";
+        assert_eq!(expand(value, &subs).unwrap(), expected);
+
+        let value = "Madam Herta is a {'peerless gem','unrivaled genius','inimitable beauty'}.";
+        assert_eq!(expand(value, &subs).unwrap(), value);
+
+        let value = "";
+        assert_eq!(expand(value, &subs).unwrap(), value);
+    }
+
+    /// Various tests for the [`expand`] function that should all return [`Err`].
+    #[test]
+    fn expand_err() {
+        let mut subs = HashMap::new();
+        subs.insert("pitiful".to_string(), "so close!".to_string());
+
+        let value = "One forgot to escape their delimiter. Only 50% of their body was found.";
+        assert!(expand(value, &subs).is_err());
+
+        let value = "The next escaped but forgot to insert the matching %value%.";
+        assert!(expand(value, &subs).is_err());
+
+        let value = "The last didn't read the documentation. How %pitiful%.";
+        assert!(expand(value, &subs).is_err());
+    }
 
     /// Golden file test for INF fixture.
     #[test]
