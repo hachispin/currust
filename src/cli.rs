@@ -3,13 +3,24 @@
 //! This contains the [`Args`] struct, which has the [`Parser`] trait,
 //! and the [`ParsedArgs`] struct, which is just plain old data.
 
-use crate::{fs_utils::find_extensions_icase, warn};
+use crate::{
+    fs_utils::find_extensions_icase,
+    themes::theme::{CursorMapping, CursorTheme, CursorType, TypedCursor},
+    warn,
+};
 
 use std::{fs, path::PathBuf};
 
-use anyhow::{Result, bail};
+use anyhow::{Result, anyhow, bail};
 use clap::{Parser, ValueEnum};
 use fast_image_resize::{FilterType, ResizeAlg};
+
+use dialoguer::{
+    Select,
+    console::{Term, style},
+    theme::ColorfulTheme,
+};
+use documented::DocumentedVariants;
 
 /// Raw arguments from CLI. Has the [`Parser`] trait.
 #[derive(Parser)]
@@ -232,4 +243,65 @@ impl ParsedArgs {
             self.downscale_with
         }
     }
+}
+
+/// Asks the user a series of prompts to construct a theme manually.
+///
+/// This is used for when no installer file is present.
+///
+/// ## Errors
+///
+/// - any path in `cursor_paths` has no filename
+/// - [`Select`] prompt fails (e.g., if user is not in a terminal)
+pub(super) fn prompt_for_theme(cursor_files: &[PathBuf]) -> Result<CursorTheme> {
+    let mut mappings = Vec::with_capacity(cursor_files.len());
+    let mut cursor_paths_display: Vec<_> = cursor_files
+        .iter()
+        .map(|p| {
+            p.file_name()
+                .map(|f| format!("'{}' ", f.display()))
+                .ok_or_else(|| anyhow!("no file name for cursor path, p={}", p.display()))
+        })
+        .collect::<Result<_>>()?;
+
+    for r#type in CursorType::VARIANTS {
+        let prompt = format!(
+            "Select the file representing '{:?}'.\n{}",
+            r#type,
+            r#type.get_variant_docs()
+        );
+
+        let chosen_index = Select::with_theme(&ColorfulTheme::default())
+            .items(&cursor_paths_display)
+            .with_prompt(prompt)
+            .default(0)
+            .report(false) // can get very messy as prompts are long
+            .interact()?;
+
+        cursor_paths_display[chosen_index].push_str(&style("✓").green().to_string());
+
+        let path = cursor_files[chosen_index].clone();
+        mappings.push(CursorMapping { r#type, path });
+    }
+
+    let name = loop {
+        eprint!("Enter a theme name: ");
+        let theme_name = Term::stderr().read_line()?;
+
+        // crude, but it works
+        if theme_name.contains(['/', '\\']) {
+            eprintln!("Theme name can't contain '/' or '\\'.");
+        } else {
+            break theme_name;
+        }
+    };
+
+    let typed_cursors = mappings
+        .into_iter()
+        .map(TypedCursor::from_mapping)
+        .collect::<Result<_>>()?;
+
+    let theme = CursorTheme::new(typed_cursors, name)?;
+
+    Ok(theme)
 }

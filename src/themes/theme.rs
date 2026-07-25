@@ -5,7 +5,6 @@ use crate::{
     cursors::generic_cursor::GenericCursor,
     formats::{crs::parse_crs_installer, inf::parse_inf_installer},
     fs_utils::{find_extensions_icase, find_icase},
-    themes::manual::prompt_for_mappings,
     warn,
 };
 
@@ -146,15 +145,15 @@ pub struct TypedCursor {
 impl TypedCursor {
     /// Creates a cursor from `mapping`.
     ///
-    /// Note that this does a case-insensitive search if
-    /// the path stored in `mapping` doesn't exist.
+    /// Note that this does a case-insensitive search if the path stored in `mapping` doesn't
+    /// exist. This aspect is also why this isn't inside of a [`TryFrom`] implementation.
     ///
     /// ## Errors
     ///
     /// - if path contained inside of `mapping` doesn't
     ///   exist, even after a case-insensitive check
     /// - generic cursor parsing fails
-    fn from_mapping(mapping: CursorMapping) -> Result<Self> {
+    pub fn from_mapping(mapping: CursorMapping) -> Result<Self> {
         let CursorMapping { path, r#type } = mapping;
 
         let path = if path.exists() {
@@ -246,21 +245,10 @@ impl CursorTheme {
     /// ## Errors
     ///
     /// Mostly from parsing the INF file and filesystem operations.
-    pub fn from_theme_dir(theme_dir: impl AsRef<Path>, manual: bool) -> Result<Self> {
+    pub fn from_theme_dir(theme_dir: impl AsRef<Path>) -> Result<Self> {
         let theme_dir = theme_dir.as_ref();
 
-        let (name, mappings) = if manual {
-            let cursor_paths: Vec<_> = find_extensions_icase(theme_dir, &["ani", "cur"])?.collect();
-
-            if cursor_paths.is_empty() {
-                bail!(
-                    "no cursors (files with .cur or .ani extension) found in {}",
-                    theme_dir.display()
-                )
-            }
-
-            prompt_for_mappings(&cursor_paths)?
-        } else {
+        let (name, mappings) = {
             let installers: Vec<_> = find_extensions_icase(theme_dir, &["inf", "crs"])?.collect();
 
             if installers.len() > 1 {
