@@ -1,9 +1,9 @@
 //! Module for [`clap`] code.
 //!
-//! This contains the [`Args`] struct, which has the [`Parser`]
-//! trait, and the [`ParsedArgs`] struct, which is just plain old data.
+//! This contains the [`Args`] struct, which has the [`Parser`] trait,
+//! and the [`ParsedArgs`] struct, which is just plain old data.
 
-use crate::fs_utils::find_extensions_icase;
+use crate::{fs_utils::find_extensions_icase, warn};
 
 use std::{fs, path::PathBuf};
 
@@ -15,42 +15,28 @@ use fast_image_resize::{FilterType, ResizeAlg};
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 pub struct Args {
-    /// The paths to either cursor theme directories, cursor files, or both.
+    /// The paths to cursor theme installers, cursor files, directories.
     ///
-    /// Cursor file paths are converted to Xcursor (named the same as the cursor file),
-    /// while theme directory paths are converted fully into an X11 theme directory.
+    /// Supported theme installer formats include INF and CRS as of now.
     ///
-    /// Themes are expected to contain some cursor files and a
-    /// corresponding installer file that uses the INF/CRS format.
-    ///
-    /// To override this behaviour, use the "--no-theme" flag, which only
-    /// converts the contained cursor files and ignores any installer files.
+    /// Cursor file paths are converted to Xcursor (named the same as the cursor file, bar
+    /// extension), while directories are expanded to all the cursor files it contains
+    /// (non-recursively). This acts as an alternative for shells that can't glob (e.g., cmd).
     #[arg(required = true)]
     paths: Vec<PathBuf>,
 
-    /// Uses a manual and interactive installation process.
+    /// Uses a manual and interactive conversion process.
     ///
-    /// This is for when no installer file is present to provide each cursor's semantic
-    /// role. Only a cursor "theme" (directory with cursor files) can be passed into this.
+    /// This is intended for when a theme installer isn't present. All provided cursor file paths will be used.
     ///
     /// Notes for usage:
     ///
     /// - You can re-select already used cursors if needed.
     /// - Person/Location Select on Windows have no equivalent on Linux, so ignore them.
-    /// - You may see missing glyphs, shown as □, �, etc. This is fine, but
-    ///   if you do want to see them, consider downloading a nerd font.
-    #[arg(long, verbatim_doc_comment, conflicts_with = "no_theme")]
+    /// - You may see missing glyphs, shown as □, �, etc. This is fine,
+    ///   but if you want to see them, consider downloading a nerd font.
+    #[arg(long, verbatim_doc_comment)]
     manual: bool,
-
-    /// Indicates that the directory provided is **not** a theme.
-    ///
-    /// Cursor files will be converted but no other work, such as writing symlinks,
-    /// theme files and mapping the cursor to the correct equivalent is done.
-    ///
-    /// This means that any installer files are ignored. This isn't
-    /// recommended for most use-cases as it makes conversion more manual.
-    #[arg(long)]
-    no_theme: bool,
 
     /// Uses the provided scaling algorithm.
     ///
@@ -72,32 +58,28 @@ pub struct Args {
 
     /// Uses the provided scaling algorithm for upscaling.
     ///
-    /// This algorithm overrides the "--scale-with"
-    /// algorithm when upscaling, if it's provided.
+    /// This algorithm overrides the "--scale-with" algorithm when upscaling, if it's provided.
     #[arg(long, value_name = "ALGORITHM")]
     upscale_with: Option<ScalingAlgorithm>,
 
     /// Uses the provided scaling algorithm for downscaling.
     ///
-    /// This algorithm overrides the "--scale-with"
-    /// algorithm when downscaling, if it's provided.
+    /// This algorithm overrides the "--scale-with" algorithm when downscaling, if it's provided.
     #[arg(long, value_name = "ALGORITHM")]
     downscale_with: Option<ScalingAlgorithm>,
 
     /// A list of scale factors to scale the original cursor(s) to.
     ///
-    /// Scale factors can be floats (decimals) e.g: 0.5, 1.5, 2.3, etc.
-    /// Any negative values are considered invalid scale factors.
+    /// Scale factors can be floats (decimals) e.g: 0.5, 1.5, 2.3,
+    /// etc. Any negative values are considered invalid scale factors.
     ///
-    /// All scaled variations and the original cursor
-    /// are included in the produced Xcursor file(s).
+    /// All scaled variations and the original cursor are included in the produced Xcursor file(s).
     #[arg(long, value_parser, num_args(1..), value_name = "F64_SCALE_FACTORS")]
     scale_to: Vec<f64>,
 
     /// The directory to place the parsed themes/files.
     ///
-    /// If the provided path doesn't exist yet, this
-    /// attempts to create it, including parents.
+    /// If the provided path doesn't exist yet, this attempts to create it, including parents.
     #[arg(short, long, default_value = "./")]
     out: PathBuf,
 }
@@ -137,8 +119,8 @@ impl From<&ScalingAlgorithm> for ResizeAlg {
 /// Parsed CLI arguments.
 #[derive(Debug)]
 pub struct ParsedArgs {
-    /// All theme directories.
-    pub cursor_theme_dirs: Vec<PathBuf>,
+    /// All installer files.
+    pub installer_files: Vec<PathBuf>,
     /// All cursor files.
     pub cursor_files: Vec<PathBuf>,
     /// Installation is manual. Or not.
@@ -166,7 +148,7 @@ impl ParsedArgs {
     pub fn from_args(args: Args) -> Result<Self> {
         let paths = args.paths;
         let manual = args.manual;
-        let mut cursor_theme_dirs = Vec::new();
+        let mut installer_files = Vec::new();
         let mut cursor_files = Vec::new();
 
         for path in paths {
@@ -186,14 +168,20 @@ impl ParsedArgs {
             }
 
             if path.is_dir() {
-                cursor_theme_dirs.push(path);
+                cursor_files.extend(find_extensions_icase(&path, &["cur", "ani"])?);
             } else if path.is_file() {
-                cursor_files.push(path);
+                let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+                    warn!("ignoring file {path_display} as it has no extension");
+                    continue;
+                };
+
+                match ext.to_ascii_lowercase().as_str() {
+                    "inf" | "crs" => installer_files.push(path),
+                    "cur" | "ani" => cursor_files.push(path),
+                    _ => warn!("ignoring file {path_display} as it is not a cursor"),
+                }
             } else {
-                bail!(
-                    "provided path={} is neither a dir or a file",
-                    path.display()
-                );
+                warn!("ignoring path={path_display} as it is neither a dir or a file",);
             }
         }
 
@@ -224,15 +212,8 @@ impl ParsedArgs {
         let out = args.out;
         fs::create_dir_all(&out)?;
 
-        if args.no_theme {
-            for theme in cursor_theme_dirs.drain(..) {
-                let cursors = find_extensions_icase(&theme, &["cur", "ani"])?;
-                cursor_files.extend(cursors);
-            }
-        }
-
         Ok(Self {
-            cursor_theme_dirs,
+            installer_files,
             cursor_files,
             manual,
             scale_to,
