@@ -59,7 +59,7 @@ fn main() -> Result<()> {
     let args = ParsedArgs::from_args(raw_args)?;
 
     args.installer_files.par_iter().try_for_each(|d| {
-        let mut theme = CursorTheme::from_theme_dir(d)
+        let mut theme = CursorTheme::from_installer_file(d)
             .with_context(|| format!("while reading dir={} as theme", d.display()))?;
 
         for &sf in &args.scale_to {

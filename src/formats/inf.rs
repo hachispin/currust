@@ -20,32 +20,50 @@ use configparser::ini::Ini; // inf is an "ini-like" format
 ///
 /// ## Implementation details
 ///
-/// In INF installer files, the `Scheme.Reg` section is usually (but not always!) like this
+/// First, parse the order stored in `Scheme.Reg` to get each cursors' semantic role. Since the
+/// paths stored there are the _destination_ paths, we need to get the _source_ paths (the ones
+/// relative to the INF). This can be done by reading the section(s) stored in `CopyFiles`).
+///
+/// Each entry in the aforementioned section will look like this:
+///
+/// `destination-file-name[,[source-file-name][,[unused][,flag]]]`
+///
+/// To get the source file, we match the filename of the destination paths stored in `Scheme.Reg`.
+/// If the source is omitted, both the source and destination filenames are the same.
+///
+/// ## INF `AddReg`
+///
+/// The `AddReg` directive refers to sections that add entries to the registry. The section
+/// that installs the cursor theme is usually called `Scheme.Reg` and looks something like this:
 ///
 /// ```text
 /// ; note that this is pseudocode, this isn't a valid inf file
+/// ; each entry follows the format:
+/// ; reg-root,[subkey],[value-entry-name],[flags],[value][,[value]]
 ///
-/// ; this section always starts like this
-/// HKCU,"Control Panel\Cursors\Schemes","theme_name",<IGNORE>,
-///
-/// ; the cursors are always ordered like this
-/// ; sometimes they're variables, sometimes not
-/// "pointer,help,work,busy,cross,text,hand,unavailable,
+/// HKCU,"Control Panel\Cursors\Schemes","theme_name",<IGNORE>, \
+/// "pointer,help,work,busy,cross,text,hand,unavailable, \
 /// vert,horz,dgn1,dgn2,move,alternate,link,pin,person"
+///
+/// ; ^ the cursors are always ordered like this. sometimes
+/// ; they're variables (in the `Strings` section), sometimes not
 /// ```
-pub fn parse_inf_installer(
-    inf_path: &Path,
-    theme_dir: &Path,
-) -> Result<(String, Vec<CursorMapping>)> {
+pub fn parse_inf_installer(inf_path: &Path) -> Result<(String, Vec<CursorMapping>)> {
     let inf_string = fs::read_to_string(inf_path)?;
 
-    let inf = Ini::new()
+    let parent = inf_path
+        .parent()
+        .ok_or_else(|| anyhow!("no parent for inf_path={}", inf_path.display()))?;
+
+    let inf: HashMap<String, HashMap<String, Option<String>>> = Ini::new()
         .read(inf_string)
         .map_err(|e| anyhow!("failed to read inf, error e={e}"))?;
 
-    let addreg = inf
+    let defaultinstall: &HashMap<String, Option<String>> = inf
         .get("defaultinstall")
-        .ok_or_else(|| anyhow!("no defaultinstall section found"))?
+        .ok_or_else(|| anyhow!("no defaultinstall section found"))?;
+
+    let addreg = defaultinstall
         .get("addreg")
         .ok_or_else(|| anyhow!("no addreg key found in defaultinstall"))?
         .as_ref()
@@ -53,13 +71,11 @@ pub fn parse_inf_installer(
 
     // find the right registry entries (the ones we can parse)
     // https://github.com/quantum5/win2xcur/blob/c8a390b79456a45104fe42133b9d7eb4ce7c8638/win2xcur/parser/inf.py#L47-L50
-    let scheme = addreg.split(',')
+    let scheme = addreg
+        .split(',')
         .filter_map(|k| inf.get(&k.to_ascii_lowercase()))
         .flat_map(|v| v.keys())
-            .find(|k|
-                k.starts_with(r#"hkcu,"control panel\cursors\schemes","#) ||
-                k.starts_with(r#"hklm,"software\microsoft\windows\currentversion\control panel\cursors\schemes","#)
-        )
+        .find(|k| k.contains(r#""control panel\cursors\schemes","#))
         .ok_or_else(|| anyhow!("couldn't find cursor mappings"))?;
 
     let subs = inf.get("strings");
@@ -67,7 +83,7 @@ pub fn parse_inf_installer(
     let mut reg_info = expanded_reg.split(',');
 
     reg_info.next(); // root key, e.g., hkcu, hklm
-    reg_info.next(); // path
+    reg_info.next(); // subkey
 
     let name = reg_info
         .next()
@@ -83,21 +99,24 @@ pub fn parse_inf_installer(
         .map(|s| {
             s.rsplit_once('\\')
                 .ok_or_else(|| anyhow!("failed to extract filename from path, s={s}"))
-                .map(|s| s.1)
+                .map(|s| s.1.to_ascii_lowercase())
         })
         .collect::<Result<_>>()?;
 
     let end = paths.len() - 1;
     paths[end] = paths[paths.len() - 1]
         .strip_suffix('"')
-        .ok_or_else(|| anyhow!("expected closing quotation for paths, didn't find it"))?;
+        .ok_or_else(|| anyhow!("expected closing quotation for paths, didn't find it"))?
+        .to_string();
+
+    let paths = resolve_paths(&inf, defaultinstall, &paths)?;
 
     let mappings: Vec<_> = paths
         .into_iter()
         .zip(0..15)
         .map(|(p, i)| CursorMapping {
             r#type: index_to_cursor_type(i),
-            path: theme_dir.join(p),
+            path: parent.join(p),
         })
         .collect();
 
@@ -126,6 +145,63 @@ const fn index_to_cursor_type(index: usize) -> CursorType {
     }
 }
 
+/// Resolves destination paths to source paths.
+fn resolve_paths(
+    inf: &HashMap<String, HashMap<String, Option<String>>>,
+    defaultinstall: &HashMap<String, Option<String>>,
+    paths: &[String],
+) -> Result<Vec<String>> {
+    let copyfiles = defaultinstall
+        .get("copyfiles")
+        .cloned()
+        .flatten()
+        .ok_or_else(|| anyhow!("..."))?;
+
+    // configparser makes all keys lowercase so all filenames
+    // in copyfiles directive sections become lowercase too ☹
+    let mut mappings = HashMap::with_capacity(paths.len());
+
+    for field in copyfiles.split(',') {
+        // TODO: Implement this later.
+        assert_ne!(copyfiles.chars().next(), Some('@'));
+
+        let field = field.trim();
+
+        let section = inf
+            .get(&field.to_ascii_lowercase())
+            .ok_or_else(|| anyhow!("copyfiles specifies '{field}' should exist, but doesn't"))?;
+
+        for k in section.keys() {
+            // destination-file-name[,[source-file-name][,[unused][,flag]]]
+            let entry: Vec<_> = k.split(',').map(|f| f.replace('\\', "/")).collect();
+
+            if entry.is_empty() {
+                bail!("empty entry?");
+            }
+
+            if entry.len() == 1 {
+            } else {
+                mappings.insert(dequote(&entry[0]), dequote(&entry[1]));
+            }
+        }
+    }
+
+    dbg!(&mappings);
+
+    let mut new = Vec::with_capacity(paths.len());
+
+    for p in paths {
+        new.push(
+            mappings
+                .get(p.as_str())
+                .ok_or_else(|| anyhow!("missing mapping for {p}"))?
+                .clone(),
+        );
+    }
+
+    Ok(new)
+}
+
 /// Helper function for [`parse_inf_installer`]. This expands `Scheme.Reg` if needed.
 fn expand_scheme(reg: &str, subs: Option<&HashMap<String, Option<String>>>) -> Result<String> {
     let Some(subs) = subs else {
@@ -142,20 +218,30 @@ fn expand_scheme(reg: &str, subs: Option<&HashMap<String, Option<String>>>) -> R
     expand(reg, &subs).with_context(|| format!("for input reg={reg}"))
 }
 
-/// Helper function for [`expand_reg`] for removing the outer pair of quotes.
+/// Dequotes following INF spec.
+///
+/// The INF parser not only discards the outermost pair of enclosing double quotation
+/// marks for any "quoted string" in this section, but also condenses each subsequent
+/// sequential pair of double quotation marks into a single double quotation marks character.
+///
+/// For example, """some string""" also becomes "some string" when it is parsed.
+fn dequote(input: &str) -> String {
+    let mut input = input.trim();
+
+    if input.starts_with('"') && input.ends_with('"') && input.len() >= 2 {
+        input = &input[1..(input.len() - 1)];
+    }
+
+    input.replace("\"\"", "\"")
+}
+
+/// Helper function for [`expand_scheme`] to remove the outer pair of quotes.
 ///
 /// This is because [`configparser`] takes _everything_ as a string,
 /// for example: `key = "value"` means `config["key"] == "\"value\""`.
 fn dequote_value(entry: (&String, &Option<String>)) -> Option<(String, String)> {
     match entry {
-        (k, Some(v)) => Some((
-            k.clone(),
-            v.strip_suffix('"')
-                .unwrap_or_default()
-                .strip_prefix('"')
-                .unwrap_or_default()
-                .to_string(),
-        )),
+        (k, Some(v)) => Some((k.clone(), dequote(v))),
         (k, None) => {
             // side effect but shhh
             warn!("key={k} has value None");
@@ -263,7 +349,7 @@ mod tests {
                 $(
                     CursorMapping {
                         r#type: crate::themes::theme::CursorType::$variant,
-                        path: $root.join(concat!("Neuro ", $filename_suffix, ".ani")),
+                        path: $root.join(concat!("neuro ", $filename_suffix, ".ani")),
                     },
                 )+
             ]}
@@ -271,7 +357,7 @@ mod tests {
 
         let theme_dir = Path::new(from_root!("/testing/fixtures/neuro"));
         let inf_path = theme_dir.join("Install.inf");
-        let (theme_name, mappings) = parse_inf_installer(&inf_path, theme_dir).unwrap();
+        let (theme_name, mappings) = parse_inf_installer(&inf_path).unwrap();
         assert_eq!(theme_name, "Neuro-sama Cursor");
 
         let expected_mappings = make_mappings!(

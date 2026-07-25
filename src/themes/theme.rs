@@ -2,10 +2,8 @@
 
 use super::symlinks::get_symlinks;
 use crate::{
-    cursors::generic_cursor::GenericCursor,
-    formats::{crs::parse_crs_installer, inf::parse_inf_installer},
-    fs_utils::{find_extensions_icase, find_icase},
-    warn,
+    cursors::generic_cursor::GenericCursor, formats::inf::parse_inf_installer,
+    fs_utils::find_icase, warn,
 };
 
 use std::{
@@ -245,39 +243,25 @@ impl CursorTheme {
     /// ## Errors
     ///
     /// Mostly from parsing the INF file and filesystem operations.
-    pub fn from_theme_dir(theme_dir: impl AsRef<Path>) -> Result<Self> {
-        let theme_dir = theme_dir.as_ref();
+    pub fn from_installer_file(installer_file: impl AsRef<Path>) -> Result<Self> {
+        let installer_file = installer_file.as_ref();
+        let ext = installer_file.extension().ok_or_else(|| {
+            anyhow!(
+                "no extension for installer_file={}",
+                installer_file.display()
+            )
+        })?;
 
-        let (name, mappings) = {
-            let installers: Vec<_> = find_extensions_icase(theme_dir, &["inf", "crs"])?.collect();
+        let name;
+        let mappings;
 
-            if installers.len() > 1 {
-                bail!("found more than one installer (INF/CRS) file");
-            }
-
-            let Some(installer) = installers.first().cloned() else {
-                bail!("no installer (INF/CRS) file found, consider adding the --manual flag");
-            };
-
-            if installers[0].extension().is_some_and(|ext| ext == "inf") {
-                parse_inf_installer(&installer, theme_dir).with_context(|| {
-                    format!(
-                        "while attempting to parse inf installer {}",
-                        installer.display()
-                    )
-                })?
-            } else {
-                (
-                    String::new(),
-                    parse_crs_installer(&installer, theme_dir).with_context(|| {
-                        format!(
-                            "while attempting to parse crs installer {}",
-                            installer.display()
-                        )
-                    })?,
-                )
-            }
-        };
+        if ext.eq_ignore_ascii_case("inf") {
+            (name, mappings) = parse_inf_installer(installer_file)?;
+        } else if ext.eq_ignore_ascii_case("crs") {
+            panic!();
+        } else {
+            bail!("unsupported installer file extension ext={}", ext.display());
+        }
 
         let typed_cursors: Vec<_> = mappings
             .into_iter()
