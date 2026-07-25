@@ -33,10 +33,6 @@ use configparser::ini::Ini; // inf is an "ini-like" format
 /// "pointer,help,work,busy,cross,text,hand,unavailable,
 /// vert,horz,dgn1,dgn2,move,alternate,link,pin,person"
 /// ```
-///
-/// ## Panics
-///
-/// Only for errors that have already been checked.
 pub fn parse_inf_installer(
     inf_path: &Path,
     theme_dir: &Path,
@@ -62,7 +58,7 @@ pub fn parse_inf_installer(
         .flat_map(|v| v.keys())
             .find(|k|
                 k.starts_with(r#"hkcu,"control panel\cursors\schemes","#) ||
-                k.starts_with(r#"hklm,"software\\microsoft\\windows\\currentversion\\control panel\\cursors\\schemes","#)
+                k.starts_with(r#"hklm,"software\microsoft\windows\currentversion\control panel\cursors\schemes","#)
         )
         .ok_or_else(|| anyhow!("couldn't find cursor mappings"))?;
 
@@ -234,10 +230,11 @@ mod tests {
         let expected = "21%, 22%, 23%, 24%, 25%… 憧れ悩み　パンプアップ";
         assert_eq!(expand(value, &subs).unwrap(), expected);
 
-        let value = "Madam Herta is a {'peerless gem','unrivaled genius','inimitable beauty'}.";
-        assert_eq!(expand(value, &subs).unwrap(), value);
+        let value = "%%%name%%%%mood%%%";
+        let expected = r"%hachispin%¯\_(ツ)_/¯%";
+        assert_eq!(expand(value, &subs).unwrap(), expected);
 
-        let value = "";
+        let value = "Madam Herta is a {'peerless gem','unrivaled genius','inimitable beauty'}.";
         assert_eq!(expand(value, &subs).unwrap(), value);
     }
 
