@@ -254,7 +254,7 @@ impl AniFile {
         let ani_blob_len_u64 = u64::try_from(ani_blob.len())?;
         let mut ani = Self::default();
         let mut cursor = Cursor::new(ani_blob);
-        let mut buf = [0u8; 4];
+        let mut buf = [0_u8; 4];
         cursor.read_exact(&mut buf)?;
 
         if buf != *b"RIFF" {
@@ -333,8 +333,8 @@ impl AniFile {
     /// The "INFO" chunk isn't required. The "fram" chunk is.
     fn parse_list(cursor: &mut Cursor<&[u8]>, ani: &mut Self) -> Result<()> {
         let ani_blob_size = cursor.get_ref().len();
-        let mut buf = [0u8; 4];
-        let mut list_id = [0u8; 4];
+        let mut buf = [0_u8; 4];
+        let mut list_id = [0_u8; 4];
         cursor.read_exact(&mut buf)?; // list size
         cursor.read_exact(&mut list_id)?;
         let list_size = u32::from_le_bytes(buf);

@@ -11,8 +11,10 @@
     clippy::semicolon_inside_block,
     clippy::allow_attributes
 )]
-// when used, scope is restricted (use statement inside functions)
-#![allow(clippy::enum_glob_use)]
+#![allow(
+    clippy::enum_glob_use,
+    reason = "when used, scope is restricted (e.g., inside functions)"
+)]
 
 pub mod cli;
 pub mod cursors;

@@ -20,7 +20,7 @@ use fast_image_resize::ResizeAlg;
 use rayon::iter::{IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator};
 
 /// Cursor mappings stored in installer files.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct CursorMapping {
     /// Semantic role of cursor.
     pub r#type: CursorType,
@@ -32,7 +32,7 @@ pub struct CursorMapping {
 ///
 /// Some cursors, such as `Crosshair`, have symlinks to Xcursors
 /// that aren't _exactly_ the same, such as `color-picker`.
-#[derive(Debug, PartialEq, Clone, DocumentedVariants)]
+#[derive(Debug, PartialEq, Eq, Clone, DocumentedVariants)]
 pub enum CursorType {
     // using https://github.com/khayalhus/win2xcur-batch/blob/main/map.json
     // NOTE: documentation here is displayed to users in manual installs.

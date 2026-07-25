@@ -189,7 +189,7 @@ fn expand(input: &str, subs: &HashMap<String, String>) -> Result<String> {
         let value = subs
             .get(key)
             .map(String::as_str)
-            .or_else(|| if key == "%%" { Some("%") } else { None })
+            .or_else(|| (key == "%%").then_some("%"))
             .or_else(|| {
                 if key.chars().all(|c| c.is_ascii_digit() || c == '%') {
                     // let's just assume it's a DIRID and leave it :)
