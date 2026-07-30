@@ -180,6 +180,7 @@ fn resolve_paths(
             }
 
             if entry.len() == 1 {
+                mappings.insert(dequote(&entry[0]), dequote(&entry[0]));
             } else {
                 mappings.insert(dequote(&entry[0]), dequote(&entry[1]));
             }
