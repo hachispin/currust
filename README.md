@@ -15,22 +15,26 @@ There are currently two supported methods of installation:
 
 ## Usage (automatic)
 
-The primary use-case of currust is to convert a Windows _cursor theme_ to Linux. A _cursor theme_ is a
-directory that contains some cursors, along with an installer file that uses either the INF or CRS format.
+The primary use-case of currust is to convert a Windows _cursor theme_ to Linux.
+A _cursor theme_ is simply any collection of cursors which may or may not be
+accompanied which an installer file that uses either the INF or CRS format.
 
-If the cursor theme being converted doesn't include an installer file, read the [manual usage section](#usage-manual).
+If the cursor theme being converted doesn't include an
+installer file, read the [manual usage section](#usage-manual).
 
 A Windows cursor theme can be converted as such:
 
 ```bash
-currust ./my-cursor-theme
+$ currust ./my-cursor-theme/installer.inf
+# Or:
+$ currust ./my-other-cursor-theme/installer.crs
 ```
 
 This converts the theme and writes the produced X11 theme (which is a directory) in the current
 directory. Add the `--out` (or `-o` for short) argument to place it in the specified path.
 
 ```bash
-currust ./my-cursor-theme -o ./please/go/here/instead
+$ currust ./my-cursor-theme/installer.inf -o ./please/go/here/instead
 ```
 
 Cursor themes on Windows can be scaled by Windows itself. Unfortunately, this feature
@@ -49,7 +53,7 @@ along with `--scale-with` to specify a scaling algorithm to use (default: box).
 For example, to scale my-cursor-theme to 0.5x, 2x and 3x using Mitchell:
 
 ```bash
-currust ./my-cursor-theme --scale-to 0.5 2 3 --scale-with mitchell
+$ currust ./my-cursor-theme/installer.inf --scale-to 0.5 2 3 --scale-with mitchell
 ```
 
 Note that this increases the size of the resulting cursor theme.
@@ -59,6 +63,10 @@ Note that this increases the size of the resulting cursor theme.
 The cursor theme being converted may lack an installer file or have one in an unsupported format.
 To convert, pass the `--manual` flag, where a guided installation process will occur. Note that as
 of now, this configuration isn't saved--this must be done each time the theme is to be converted.
+
+The `--manual` flag must also be accompanied with the paths of cursors to use.
+Directories are expanded (non-recursively) to the cursor files they contain, providing
+a similar function to _globbing_ on shells that don't support it (e.g., `pwsh`).
 
 <details>
 <summary>Manual conversion</summary>
@@ -74,19 +82,20 @@ the cursor aren't enough, here's a convenient reference image you can use.
 ![Windows cursors role reference](./windows-cursors.png)
 
 ```bash
-? Select the file representing 'Hand'.
-Description: a hand pointing upwards
-Used when: hovering over a link or anything that you can click
-Names: link select, link
-Looks like: 👆 or  ›
-❯ 'Alternate Select.ani'
-  'Busy.ani'
+$ currust --manual Cursors  # Directory with cursor files
+? Select the file representing 'Help'.
+Description: a question mark, may include a pointer
+Used when: hovering over something that has a tooltip
+Names: help select, help
+Looks like: [( ↖️ or  ) + ?] or ? ›
+  'Alternate Select.ani'
+  'Busy.ani' ✓✓  # n checkmark(s) ⇒ already selected n time(s)
   'Diagonal Resize 1.ani'
   'Diagonal Resize 2.ani'
   'Handwriting.ani'
-  'Help Select.ani'
+❯ 'Help Select.ani'  # Selector: move up/down with k/j; enter to confirm
   'Horizontal Resize.ani'
-  'Link Select.ani'
+  'Link Select.ani' ✓
   'Location Select.ani'
   'Move.ani'
   'Normal Select.ani' ✓
@@ -110,19 +119,20 @@ Afterwards, move the converted theme to the local `~/.icons`. Any location speci
 > Placing cursor themes in the system-wide `/usr/share/icons`
 > isn't recommended due to the extra permissions required.
 
-You can then set the converted theme as your cursor as such, depending on your DE:
+You can then set the converted theme as your cursor depending on your DE:
 
 - KDE: `plasma-apply-cursortheme <theme_name> --size <size>`
 - GNOME: `gsettings set org.gnome.desktop.interface cursor-theme <theme_name> && gsettings set org.gnome.desktop.interface cursor-size <size>`
 - Hyprland: `hyprctl setcursor <theme_name> <size>`
 
-The theme name is the same as the name of the converted theme directory. If your DE isn't listed, look it up.
+The theme name is the same as the name of the converted
+theme directory. If your DE isn't listed, look it up.
 
 <details>
 <summary>Example installation on KDE</summary>
 
 ```bash
-❯ tree  # Expected cursor theme layout (as input)
+$ tree  # Expected cursor theme layout (as input)
 .
 └── [The Herta Cursor ver.2.0.0]
     ├── 01-Normal.ani
@@ -143,13 +153,13 @@ The theme name is the same as the name of the converted theme directory. If your
     ├── 15-Move.ani
     ├── 16-Alternate Select.ani
     ├── [Changelog].txt
-    └── Installer.inf
+    └── Installer.inf  # ← A supported installer file!
 
 2 directories, 19 files
 
-❯ currust \[The\ Herta\ Cursor\ ver.2.0.0\] --scale-to 5 -o ~/.icons
+$ currust \[The\ Herta\ Cursor\ ver.2.0.0\]/Installer.inf --scale-to 5 -o ~/.icons
 
-❯ plasma-apply-cursortheme ~/.icons/The\ Herta\ Cursor\ ver\ 2.0.0 # If you're on KDE
+$ plasma-apply-cursortheme ~/.icons/The\ Herta\ Cursor\ ver\ 2.0.0
 Successfully applied the mouse cursor theme The Herta Cursor ver 2.0.0 to your current Plasma session
 ```
 
@@ -162,10 +172,9 @@ can be done through a created bash script once the converted theme is on a Linux
 
 Note that the script (once on Linux) will need to be given execution permissions with `chmod +x`.
 
-## Goals
+## Next steps?
 
-All the baseline goals I had for this project are complete, so this is closer to
-a "planned/future features" section. Note that not everything here may be added.
+Possible tasks to consider doing. May not be done.
 
 - [x] Publish or otherwise for usage with `cargo` and package managers
 - [ ] Replace bash script generation by exporting to tar.gz
