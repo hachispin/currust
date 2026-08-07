@@ -4,8 +4,7 @@ use super::symlinks::get_symlinks;
 use crate::{
     cursors::generic_cursor::GenericCursor,
     formats::{crs::parse_crs_installer, inf::parse_inf_installer},
-    fs_utils::{find_extensions_icase, find_icase},
-    themes::manual::prompt_for_mappings,
+    fs_utils::resolve_icase,
     warn,
 };
 
@@ -21,7 +20,7 @@ use fast_image_resize::ResizeAlg;
 use rayon::iter::{IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator};
 
 /// Cursor mappings stored in installer files.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct CursorMapping {
     /// Semantic role of cursor.
     pub r#type: CursorType,
@@ -33,7 +32,7 @@ pub struct CursorMapping {
 ///
 /// Some cursors, such as `Crosshair`, have symlinks to Xcursors
 /// that aren't _exactly_ the same, such as `color-picker`.
-#[derive(Debug, PartialEq, Clone, DocumentedVariants)]
+#[derive(Debug, PartialEq, Eq, Clone, DocumentedVariants)]
 pub enum CursorType {
     // using https://github.com/khayalhus/win2xcur-batch/blob/main/map.json
     // NOTE: documentation here is displayed to users in manual installs.
@@ -146,21 +145,20 @@ pub struct TypedCursor {
 impl TypedCursor {
     /// Creates a cursor from `mapping`.
     ///
-    /// Note that this does a case-insensitive search if
-    /// the path stored in `mapping` doesn't exist.
+    /// Note that this does a case-insensitive search if the path stored in `mapping` doesn't
+    /// exist. This aspect is also why this isn't inside of a [`TryFrom`] implementation.
     ///
     /// ## Errors
     ///
-    /// - if path contained inside of `mapping` doesn't
-    ///   exist, even after a case-insensitive check
+    /// - if path contained inside of `mapping` doesn't exist, even after a case-insensitive check
     /// - generic cursor parsing fails
-    fn from_mapping(mapping: CursorMapping) -> Result<Self> {
+    pub fn from_mapping(mapping: CursorMapping) -> Result<Self> {
         let CursorMapping { path, r#type } = mapping;
 
         let path = if path.exists() {
             path
         } else {
-            find_icase(&path)?.ok_or_else(|| {
+            resolve_icase(&path)?.ok_or_else(|| {
                 anyhow!(
                     "cursor path, path={} not found in parent (case-insensitive)",
                     path.display()
@@ -246,49 +244,21 @@ impl CursorTheme {
     /// ## Errors
     ///
     /// Mostly from parsing the INF file and filesystem operations.
-    pub fn from_theme_dir(theme_dir: impl AsRef<Path>, manual: bool) -> Result<Self> {
-        let theme_dir = theme_dir.as_ref();
+    pub fn from_installer_file(installer_file: impl AsRef<Path>) -> Result<Self> {
+        let installer_file = installer_file.as_ref();
+        let ext = installer_file.extension().ok_or_else(|| {
+            anyhow!(
+                "no extension for installer_file={}",
+                installer_file.display()
+            )
+        })?;
 
-        let (name, mappings) = if manual {
-            let cursor_paths: Vec<_> = find_extensions_icase(theme_dir, &["ani", "cur"])?.collect();
-
-            if cursor_paths.is_empty() {
-                bail!(
-                    "no cursors (files with .cur or .ani extension) found in {}",
-                    theme_dir.display()
-                )
-            }
-
-            prompt_for_mappings(&cursor_paths)?
+        let (name, mappings) = if ext.eq_ignore_ascii_case("inf") {
+            parse_inf_installer(installer_file)?
+        } else if ext.eq_ignore_ascii_case("crs") {
+            (String::new(), parse_crs_installer(installer_file)?)
         } else {
-            let installers: Vec<_> = find_extensions_icase(theme_dir, &["inf", "crs"])?.collect();
-
-            if installers.len() > 1 {
-                bail!("found more than one installer (INF/CRS) file");
-            }
-
-            let Some(installer) = installers.first().cloned() else {
-                bail!("no installer (INF/CRS) file found, consider adding the --manual flag");
-            };
-
-            if installers[0].extension().is_some_and(|ext| ext == "inf") {
-                parse_inf_installer(&installer, theme_dir).with_context(|| {
-                    format!(
-                        "while attempting to parse inf installer {}",
-                        installer.display()
-                    )
-                })?
-            } else {
-                (
-                    String::new(),
-                    parse_crs_installer(&installer, theme_dir).with_context(|| {
-                        format!(
-                            "while attempting to parse crs installer {}",
-                            installer.display()
-                        )
-                    })?,
-                )
-            }
+            bail!("unsupported installer file extension ext={}", ext.display())
         };
 
         let typed_cursors: Vec<_> = mappings
@@ -328,13 +298,14 @@ impl CursorTheme {
             self.name.clone()
         };
 
-        let sanitized = name.replace(['/', '\\'], "_");
+        let sanitized = name.replace(['/', '\\', '.'], "_");
         let theme_dir = dir.join(sanitized);
         let cursor_dir = theme_dir.join("cursors");
         fs::create_dir_all(&cursor_dir)
             .with_context(|| format!("failed to write cursor_dir={}", cursor_dir.display()))?;
 
-        // TODO: replace with tar.gz
+        // TODO: Replace with direct writing of tar.gz to deal with less Windows nonsense.
+
         // copies are not a good alternative due to storage concerns
         #[cfg(windows)]
         {

@@ -340,7 +340,7 @@ impl GenericCursor {
 
     /// Trivial accessor for `base` field.
     #[must_use]
-    pub fn base_images(&self) -> &CursorImages {
+    pub const fn base_images(&self) -> &CursorImages {
         &self.base
     }
 

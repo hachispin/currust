@@ -109,7 +109,7 @@ struct CommentChunk {
 }
 
 impl CommentChunk {
-    fn new(string: String, subtype: CommentRole, position: u32) -> (Self, TableOfContents) {
+    const fn new(string: String, subtype: CommentRole, position: u32) -> (Self, TableOfContents) {
         let comment = Self {
             role: subtype,
             string: string.into_bytes(),
@@ -230,7 +230,7 @@ fn to_pre_argb(rgba: &mut [u8]) {
         // less swaps needed and NE speeds (if on LE arch)
         pixel.swap(0, 2);
 
-        for i in 0..3usize {
+        for i in 0..3_usize {
             pixel[i] = pre_alpha_formula(pixel[i], pixel[3]);
         }
     }

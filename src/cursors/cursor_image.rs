@@ -190,7 +190,7 @@ impl fmt::Debug for CursorImage {
 /// - If there is one frame, the delay of it is zero.
 /// - If there are multiple frames, all delays are non-zero.
 #[derive(Debug)]
-#[expect(clippy::len_without_is_empty)] // it's never empty
+#[expect(clippy::len_without_is_empty, reason = "it's never empty")]
 pub struct CursorImages {
     inner: Vec<CursorImage>,
 }
@@ -265,7 +265,7 @@ pub mod tests {
         hotspot_x: 0,
         hotspot_y: 0,
         delay: 100,
-        rgba: vec![0u8; 4096],
+        rgba: vec![0_u8; 4096],
     });
 
     pub static WHITE: LazyLock<CursorImage> = LazyLock::new(|| CursorImage {

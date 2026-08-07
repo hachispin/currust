@@ -44,27 +44,31 @@ fn section_to_type(section: &str) -> Option<CursorType> {
 ///
 /// If file is failed to be read or has unexpected sections.
 /// Note that missing sections are not treated as an error.
-pub fn parse_crs_installer(crs_path: &Path, theme_dir: &Path) -> Result<Vec<CursorMapping>> {
-    let crs_string = fs::read_to_string(crs_path)?;
+pub fn parse_crs_installer(crs_path: &Path) -> Result<Vec<CursorMapping>> {
+    // I assume paths are relative to the CRS file? Wouldn't
+    // make sense otherwise but this format has no spec :P
+    let parent = crs_path
+        .parent()
+        .ok_or_else(|| anyhow!("no parent for crs_path={}", crs_path.display()))?;
+
     let crs = Ini::new()
-        .read(crs_string)
+        .read(fs::read_to_string(crs_path)?)
         .map_err(|e| anyhow!("failed to read crs, error e={e}"))?;
 
     let mut mappings = Vec::with_capacity(CursorType::NUM_VARIANTS);
 
-    for section_name in crs.keys() {
-        let Some(r#type) = section_to_type(section_name) else {
-            bail!("unexpected section in crs file (please report), section={section_name}");
+    for (section, value) in crs {
+        let Some(r#type) = section_to_type(&section) else {
+            bail!("unexpected section in crs file (please report), section={section}");
         };
 
-        let relative_path = crs.get(section_name).and_then(|s| s.get("path"));
-
-        let Some(Some(relative_path)) = relative_path else {
-            warn!("skipping section_name={section_name}");
+        let Some(relative) = value.get("path").and_then(Option::as_ref) else {
+            warn!("skipping section_name={section}");
             continue;
         };
 
-        let path = theme_dir.join(relative_path);
+        let path = parent.join(relative);
+
         mappings.push(CursorMapping { r#type, path });
     }
 
