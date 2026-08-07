@@ -1,6 +1,6 @@
 [package]
 name = "currust"
-version = "2.0.0"
+version = "2.0.1"
 edition = "2024"
 description = "A tool to convert Windows (CUR/ANI) cursor themes to Linux (Xcursor) cursor themes."
 readme = "README.md"
