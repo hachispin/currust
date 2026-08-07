@@ -2,8 +2,10 @@
 
 use super::symlinks::get_symlinks;
 use crate::{
-    cursors::generic_cursor::GenericCursor, formats::inf::parse_inf_installer,
-    fs_utils::resolve_icase, warn,
+    cursors::generic_cursor::GenericCursor,
+    formats::{crs::parse_crs_installer, inf::parse_inf_installer},
+    fs_utils::resolve_icase,
+    warn,
 };
 
 use std::{
@@ -251,16 +253,13 @@ impl CursorTheme {
             )
         })?;
 
-        let name;
-        let mappings;
-
-        if ext.eq_ignore_ascii_case("inf") {
-            (name, mappings) = parse_inf_installer(installer_file)?;
+        let (name, mappings) = if ext.eq_ignore_ascii_case("inf") {
+            parse_inf_installer(installer_file)?
         } else if ext.eq_ignore_ascii_case("crs") {
-            panic!();
+            (String::new(), parse_crs_installer(installer_file)?)
         } else {
-            bail!("unsupported installer file extension ext={}", ext.display());
-        }
+            bail!("unsupported installer file extension ext={}", ext.display())
+        };
 
         let typed_cursors: Vec<_> = mappings
             .into_iter()
