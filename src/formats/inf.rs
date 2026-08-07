@@ -155,15 +155,18 @@ fn resolve_paths(
         .get("copyfiles")
         .cloned()
         .flatten()
-        .ok_or_else(|| anyhow!("..."))?;
+        .ok_or_else(|| anyhow!("no copyfiles section"))?;
 
-    // configparser makes all keys lowercase so all filenames
-    // in copyfiles directive sections become lowercase too ☹
+    // paths are coerced to lowercase because they're "keys" (from configparser's perspective).
+    // this most likely causes some extra lookups, since the initial path most likely has
+    // the correct casing. could be solved with Ini::new_cs() but probably isn't worth it.
     let mut mappings = HashMap::with_capacity(paths.len());
 
     for field in copyfiles.split(',') {
         // TODO: Implement this later.
-        assert_ne!(copyfiles.chars().next(), Some('@'));
+        if matches!(copyfiles.chars().next(), Some('@')) {
+            bail!("unsupported '@' syntax in copyfiles");
+        }
 
         let field = field.trim();
 
@@ -176,7 +179,7 @@ fn resolve_paths(
             let entry: Vec<_> = k.split(',').map(|f| f.replace('\\', "/")).collect();
 
             if entry.is_empty() {
-                bail!("empty entry?");
+                bail!("empty entry in section={field}");
             }
 
             if entry.len() == 1 {
@@ -186,8 +189,6 @@ fn resolve_paths(
             }
         }
     }
-
-    dbg!(&mappings);
 
     let mut new = Vec::with_capacity(paths.len());
 
@@ -203,7 +204,9 @@ fn resolve_paths(
     Ok(new)
 }
 
-/// Helper function for [`parse_inf_installer`]. This expands `Scheme.Reg` if needed.
+/// Helper function for [`parse_inf_installer`].
+///
+/// This expands `Scheme.Reg` if needed.
 fn expand_scheme(reg: &str, subs: Option<&HashMap<String, Option<String>>>) -> Result<String> {
     let Some(subs) = subs else {
         let empty: HashMap<String, String> = HashMap::new();
