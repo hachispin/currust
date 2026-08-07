@@ -3,7 +3,7 @@
 use super::symlinks::get_symlinks;
 use crate::{
     cursors::generic_cursor::GenericCursor, formats::inf::parse_inf_installer,
-    fs_utils::find_icase, warn,
+    fs_utils::resolve_icase, warn,
 };
 
 use std::{
@@ -148,8 +148,7 @@ impl TypedCursor {
     ///
     /// ## Errors
     ///
-    /// - if path contained inside of `mapping` doesn't
-    ///   exist, even after a case-insensitive check
+    /// - if path contained inside of `mapping` doesn't exist, even after a case-insensitive check
     /// - generic cursor parsing fails
     pub fn from_mapping(mapping: CursorMapping) -> Result<Self> {
         let CursorMapping { path, r#type } = mapping;
@@ -157,7 +156,7 @@ impl TypedCursor {
         let path = if path.exists() {
             path
         } else {
-            find_icase(&path)?.ok_or_else(|| {
+            resolve_icase(&path)?.ok_or_else(|| {
                 anyhow!(
                     "cursor path, path={} not found in parent (case-insensitive)",
                     path.display()
@@ -300,13 +299,14 @@ impl CursorTheme {
             self.name.clone()
         };
 
-        let sanitized = name.replace(['/', '\\'], "_");
+        let sanitized = name.replace(['/', '\\', '.'], "_");
         let theme_dir = dir.join(sanitized);
         let cursor_dir = theme_dir.join("cursors");
         fs::create_dir_all(&cursor_dir)
             .with_context(|| format!("failed to write cursor_dir={}", cursor_dir.display()))?;
 
-        // TODO: replace with tar.gz
+        // TODO: Replace with direct writing of tar.gz to deal with less Windows nonsense.
+
         // copies are not a good alternative due to storage concerns
         #[cfg(windows)]
         {
