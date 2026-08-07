@@ -6,6 +6,9 @@
 A tool written in Rust to convert cursor formats between Windows and Linux. Specifically,
 converting from the CUR/ANI format to the Xcursor format (plus some other features).
 
+Once installed, you can run `currust --help` (or `currust -h` for a
+shorter summary) to see information regarding available options and flags.
+
 ## Installation
 
 There are currently two supported methods of installation:
@@ -15,9 +18,9 @@ There are currently two supported methods of installation:
 
 ## Usage (automatic)
 
-The primary use-case of currust is to convert a Windows _cursor theme_ to Linux.
-A _cursor theme_ is simply any collection of cursors which may or may not be
-accompanied which an installer file that uses either the INF or CRS format.
+The primary use-case of currust is to convert a Windows _cursor theme_
+to Linux. A _cursor theme_ is simply a collection of cursor files
+usually accompanied by an installer file in the INF or CRS format.
 
 If the cursor theme being converted doesn't include an
 installer file, read the [manual usage section](#usage-manual).
