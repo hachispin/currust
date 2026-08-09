@@ -401,7 +401,7 @@ impl AniFile {
 
         if let Some(seq) = &ani.sequence
             && hdr.flags == Unsequenced
-            && seq.data != (0..hdr.num_steps).collect::<Vec<_>>()
+            && seq.data.iter().copied().eq(0..hdr.num_steps)
         {
             warn!(
                 "expected 'seq ' chunk to be None from flags={:?}, found the non \
