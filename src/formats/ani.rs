@@ -173,11 +173,11 @@ impl TryFrom<AniParserState> for AniFile {
 
     fn try_from(state: AniParserState) -> Result<Self> {
         let Some(header) = state.header else {
-            bail!("AniHeader is required")
+            bail!("required 'anih' chunk is missing")
         };
 
         let Some(ico_frames) = state.ico_frames else {
-            bail!("ico_frames is required")
+            bail!("required 'fram' chunk is missing")
         };
 
         Ok(Self {
