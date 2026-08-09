@@ -26,6 +26,10 @@ pub fn resolve_icase(path: &Path) -> Result<Option<PathBuf>> {
 
     let mut resolved = PathBuf::new();
 
+    if path.is_relative() {
+        resolved.push(".");
+    }
+
     for component in path.components() {
         if resolved.join(component).try_exists()? {
             resolved.push(component);
