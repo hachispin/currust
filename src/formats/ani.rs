@@ -151,12 +151,12 @@ impl fmt::Debug for AniFile {
 
 #[derive(Default)]
 struct AniParserState {
-    pub header: Option<Range<u64>>,
-    pub title: Option<Range<u64>>,
-    pub author: Option<Range<u64>>,
-    pub rate: Option<Range<u64>>,
-    pub sequence: Option<Range<u64>>,
-    pub ico_frames: Option<Range<u64>>,
+    header: Option<Range<u64>>,
+    title: Option<Range<u64>>,
+    author: Option<Range<u64>>,
+    rate: Option<Range<u64>>,
+    sequence: Option<Range<u64>>,
+    ico_frames: Option<Range<u64>>,
 }
 
 fn process_ranges(blob: &[u8], state: &AniParserState) -> Result<AniFile> {
@@ -370,10 +370,7 @@ impl AniFile {
                 state.ico_frames = Some((cursor.position()..end).into());
             }
 
-            // skip
-            _ => {
-                cursor.seek(SeekFrom::Start(list_chunk.next))?;
-            }
+            _ => (),
         }
 
         Ok(())
