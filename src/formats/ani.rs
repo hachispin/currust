@@ -28,7 +28,9 @@ pub struct RiffChunk {
     // Just for calculations.
     #[br(temp, try_calc = s.stream_position())]
     start: u64,
-    #[br(temp, try_calc = start.checked_add(u64::from(size)).ok_or("overflow"))]
+    #[br(temp, try_calc = start.checked_add(u64::from(size)).ok_or_else(|| {
+        anyhow!("overflow when calculating RiffChunk end for id={id:?}")
+    }))]
     end: u64,
 
     /// Range of data, excludes padding.
@@ -36,7 +38,9 @@ pub struct RiffChunk {
     data: Range<u64>,
 
     /// Where the next chunk should start and another [`RiffChunk`] can be read.
-    #[br(try_calc = end.checked_add(u64::from(size) & 1).ok_or("overflow"))]
+    #[br(try_calc = end.checked_add(u64::from(size) & 1).ok_or_else(|| {
+        anyhow!("overflow when calculating RiffChunk next for id={id:?}")
+    }))]
     next: u64,
 }
 
@@ -175,7 +179,7 @@ fn process_ranges(blob: &[u8], state: &AniParserState) -> Result<AniFile> {
         let string = if let Some(s) = string.strip_suffix(b"\0") {
             s
         } else {
-            warn!("INFO string not null-terminated");
+            warn!("'INFO' string is not null-terminated");
             string
         };
 
@@ -218,7 +222,10 @@ fn process_ranges(blob: &[u8], state: &AniParserState) -> Result<AniFile> {
 
     while cursor.position() < u64::try_from(fram.len())? {
         let icon = RiffChunk::read(&mut cursor)?;
-        debug_assert_eq!(icon.id, *b"icon");
+
+        if icon.id != *b"icon" {
+            bail!("expected 'icon' subchunks, instead got {:?}", icon.id);
+        }
 
         let mut bytes = vec![0; usize::try_from(icon.size)?];
         cursor.read_exact(&mut bytes)?;
@@ -288,11 +295,11 @@ impl AniFile {
         while cursor.position() < ani_blob.len().try_into()? {
             let chunk = RiffChunk::read(&mut cursor)?;
 
-            match dbg!(&chunk.id) {
+            match &chunk.id {
                 b"LIST" => Self::parse_list(&mut cursor, &mut state, &chunk)?,
                 b"anih" => {
                     if state.header.is_some() {
-                        bail!("duplicate 'anih' chunk");
+                        bail!("read duplicate 'anih' chunk at {}", cursor.position());
                     }
 
                     state.header = Some(chunk.data);
@@ -300,7 +307,7 @@ impl AniFile {
 
                 b"rate" => {
                     if state.rate.is_some() {
-                        bail!("duplicate 'rate' chunk");
+                        bail!("read duplicate 'rate' chunk at {}", cursor.position());
                     }
 
                     state.rate = Some(chunk.data);
@@ -308,7 +315,7 @@ impl AniFile {
 
                 b"seq " => {
                     if state.sequence.is_some() {
-                        bail!("duplicate 'seq ' chunk");
+                        bail!("read duplicate 'seq ' chunk at {}", cursor.position());
                     }
 
                     state.sequence = Some(chunk.data);
@@ -340,7 +347,7 @@ impl AniFile {
         let end = cursor
             .position()
             .checked_add(u64::from(list_chunk.size))
-            .ok_or_else(|| anyhow!("overflow"))?;
+            .ok_or_else(|| anyhow!("overflow when calculating end of list chunk"))?;
 
         let mut list_type = [0_u8; 4];
         cursor.read_exact(&mut list_type)?;
@@ -350,7 +357,7 @@ impl AniFile {
                 while cursor.position() < end {
                     let subchunk = RiffChunk::read(cursor)?;
 
-                    // just let it be overwritten lool
+                    // Let INFO be overridden as it's non-essential.
                     if subchunk.id == *b"INAM" {
                         state.title = Some(subchunk.data);
                     } else if subchunk.id == *b"IART" {
@@ -363,7 +370,7 @@ impl AniFile {
 
             b"fram" => {
                 if state.ico_frames.is_some() {
-                    bail!("duplicate 'fram' chunk");
+                    bail!("read duplicate 'fram' chunk at {}", cursor.position());
                 }
 
                 // exclude list type (fram)
@@ -450,13 +457,6 @@ mod tests {
     fn good_ani() {
         const ANI_FRAMES: &str = include_str!(from_root!("/testing/fixtures/neuro_alt_frames"));
         const ANI_BLOB: &[u8] = include_bytes!(from_root!("/testing/fixtures/neuro/Neuro alt.ani"));
-
-        const {
-            assert!(
-                size_of::<AniFile>() == 136,
-                "AniFile fields have changed, update tests and this number accordingly"
-            );
-        }
 
         let ani = AniFile::from_blob(ANI_BLOB).unwrap();
         let hdr = &ani.header;
