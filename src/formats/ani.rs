@@ -177,12 +177,10 @@ fn process_ranges(blob: &[u8], state: &AniParserState) -> Result<AniFile> {
     let bytes_to_string = |r: Range<u64>| {
         let string = slice_blob(blob, r)?;
 
-        let string = if let Some(s) = string.strip_suffix(b"\0") {
-            s
-        } else {
+        let string = &string[..(string.iter().position(|&b| b == 0).unwrap_or_else(|| {
             warn!("'INFO' string is not null-terminated");
-            string
-        };
+            string.len()
+        }))];
 
         anyhow::Ok(String::from_utf8_lossy(string).to_string())
     };
