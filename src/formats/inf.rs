@@ -97,13 +97,20 @@ pub fn parse_inf_installer(inf_path: &Path) -> Result<(String, Vec<CursorMapping
         .ok_or_else(|| anyhow!("no value for addreg key"))?;
 
     // find the right registry entries (the ones we can parse)
+    //
     // https://github.com/quantum5/win2xcur/blob/c8a390b79456a45104fe42133b9d7eb4ce7c8638/win2xcur/parser/inf.py#L47-L50
-    let scheme = addreg
+    let scheme: Vec<_> = addreg
         .split(',')
         .filter_map(|k| inf.get(&k.to_ascii_lowercase()))
         .flat_map(|v| v.keys())
-        .find(|k| k.contains(r#""control panel\cursors\schemes","#))
-        .ok_or_else(|| anyhow!("couldn't find cursor mappings"))?;
+        .filter(|k| k.contains(r#""control panel\cursors\schemes","#))
+        .collect();
+
+    let scheme = match scheme.as_slice() {
+        [] => bail!("couldn't find any cursor mappings"),
+        [entry] => entry,
+        _ => bail!("more than one cursor mapping found: {scheme:?}"),
+    };
 
     let subs = inf.get("strings");
     let expanded_reg = expand_scheme(scheme, subs)?;
