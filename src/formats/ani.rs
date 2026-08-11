@@ -163,18 +163,19 @@ struct AniParserState {
     ico_frames: Option<Range<u64>>,
 }
 
+fn slice_blob(blob: &[u8], range: Range<u64>) -> Result<&[u8]> {
+    let start = usize::try_from(range.start)?;
+    let end = usize::try_from(range.end)?;
+
+    blob.get(start..end)
+        .ok_or_else(|| anyhow!("range {start}..{end} outside of blob (len={})", blob.len()))
+}
+
 fn process_ranges(blob: &[u8], state: &AniParserState) -> Result<AniFile> {
     // helpers
 
-    let to_usize_range = |range: Range<u64>| -> Result<_> {
-        let start = usize::try_from(range.start)?;
-        let end = usize::try_from(range.end)?;
-
-        Ok(start..end)
-    };
-
     let bytes_to_string = |r: Range<u64>| {
-        let string = &blob[to_usize_range(r)?];
+        let string = slice_blob(blob, r)?;
 
         let string = if let Some(s) = string.strip_suffix(b"\0") {
             s
@@ -183,13 +184,11 @@ fn process_ranges(blob: &[u8], state: &AniParserState) -> Result<AniFile> {
             string
         };
 
-        str::from_utf8(string)
-            .map(ToString::to_string)
-            .map_err(Into::<anyhow::Error>::into)
+        anyhow::Ok(String::from_utf8_lossy(string).to_string())
     };
 
     let to_u32_vec = |r: Range<u64>| {
-        let bytes = &blob[to_usize_range(r)?];
+        let bytes = slice_blob(blob, r)?;
 
         let (bytes, rem) = bytes.as_chunks::<4>();
 
@@ -215,10 +214,12 @@ fn process_ranges(blob: &[u8], state: &AniParserState) -> Result<AniFile> {
         bail!("'fram' chunk is required but is missing")
     };
 
-    let header = AniHeader::read(&mut Cursor::new(&blob[to_usize_range(header)?]))?;
-    let fram = &blob[to_usize_range(ico_frames)?];
+    let header = AniHeader::read(&mut Cursor::new(slice_blob(blob, header)?))?;
+    let fram = slice_blob(blob, ico_frames)?;
     let mut cursor = Cursor::new(fram);
-    let mut ico_frames = Vec::with_capacity(usize::try_from(header.num_frames)?);
+
+    // don't reserve the non-validated num_frames
+    let mut ico_frames = Vec::new();
 
     while cursor.position() < u64::try_from(fram.len())? {
         let icon = RiffChunk::read(&mut cursor)?;
@@ -227,9 +228,8 @@ fn process_ranges(blob: &[u8], state: &AniParserState) -> Result<AniFile> {
             bail!("expected 'icon' subchunks, instead got {:?}", icon.id);
         }
 
-        let mut bytes = vec![0; usize::try_from(icon.size)?];
-        cursor.read_exact(&mut bytes)?;
-        ico_frames.push(bytes);
+        let bytes = slice_blob(fram, icon.data)?;
+        ico_frames.push(bytes.to_vec());
 
         cursor.seek(SeekFrom::Start(icon.next))?;
     }
@@ -302,6 +302,13 @@ impl AniFile {
                         bail!("read duplicate 'anih' chunk at {}", cursor.position());
                     }
 
+                    if chunk.size != 36 {
+                        bail!(
+                            "expected 'anih' chunk size to be 36, instead got {}",
+                            chunk.size
+                        )
+                    }
+
                     state.header = Some(chunk.data);
                 }
 
@@ -344,6 +351,13 @@ impl AniFile {
         state: &mut AniParserState,
         list_chunk: &RiffChunk,
     ) -> Result<()> {
+        if list_chunk.size < 4 {
+            bail!(
+                "expected 'LIST' chunk to have size four or greater, instead got {}",
+                list_chunk.size
+            );
+        }
+
         let end = cursor
             .position()
             .checked_add(u64::from(list_chunk.size))
