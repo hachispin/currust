@@ -8,7 +8,34 @@ use crate::{
 use std::{collections::HashMap, fs, path::Path};
 
 use anyhow::{Context, Result, anyhow, bail};
-use configparser::ini::Ini; // inf is an "ini-like" format
+use configparser::ini::{Ini, IniDefault}; // inf is an "ini-like" format
+
+fn inf_new() -> Ini {
+    let mut defaults = IniDefault::default();
+
+    // non-exhaustive so we gotta do this
+    defaults.comment_symbols = vec![';'];
+    defaults.delimiters = vec!['='];
+
+    Ini::new_from_defaults(defaults)
+}
+
+/// [`fs::read_to_string`] with UTF16 considerations.
+///
+/// Follows the BOM if present, otherwise, parses as
+/// lossy UTF-8 to account for ASCII and ANSI code pages.
+fn read_to_string_utf16(path: &Path) -> Result<String> {
+    let bytes = fs::read(path)?;
+    let bom = bytes.get(0..2);
+
+    if bom == Some(&[0xff, 0xfe]) {
+        return Ok(String::from_utf16le(&bytes)?);
+    } else if bom == Some(&[0xfe, 0xff]) {
+        return Ok(String::from_utf16be(&bytes)?);
+    }
+
+    Ok(String::from_utf8_lossy_owned(bytes))
+}
 
 /// Attempts to parse `inf_path` as an installer file for a cursor theme.
 ///
@@ -49,17 +76,17 @@ use configparser::ini::Ini; // inf is an "ini-like" format
 /// ; they're variables (in the `Strings` section), sometimes not
 /// ```
 pub fn parse_inf_installer(inf_path: &Path) -> Result<(String, Vec<CursorMapping>)> {
-    let inf_string = fs::read_to_string(inf_path)?;
+    let inf_string = read_to_string_utf16(inf_path)?;
 
     let parent = inf_path
         .parent()
         .ok_or_else(|| anyhow!("no parent for inf_path={}", inf_path.display()))?;
 
-    let inf: HashMap<String, HashMap<String, Option<String>>> = Ini::new()
+    let inf = inf_new()
         .read(inf_string)
         .map_err(|e| anyhow!("failed to read inf, error e={e}"))?;
 
-    let defaultinstall: &HashMap<String, Option<String>> = inf
+    let defaultinstall = inf
         .get("defaultinstall")
         .ok_or_else(|| anyhow!("no defaultinstall section found"))?;
 
