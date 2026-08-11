@@ -433,6 +433,14 @@ impl AniFile {
             bail!("frame indices of 'seq ' chunk go out of bounds");
         }
 
+        let observed_steps = ani.sequence.as_ref().map_or(num_frames, Vec::len);
+        if observed_steps != num_steps {
+            bail!(
+                "num_steps={num_steps} does not match length of \
+                sequence table (observed_steps={observed_steps})"
+            );
+        }
+
         if hdr.flags == Sequenced && ani.sequence.is_none() {
             warn!(
                 "expected 'seq ' chunk from flags={:?}, found None. the \
