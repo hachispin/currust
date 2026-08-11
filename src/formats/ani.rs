@@ -7,43 +7,41 @@
 
 use std::{
     fmt,
-    io::{Cursor, Read},
+    io::{Cursor, Read, Seek, SeekFrom},
+    range::Range,
 };
 
-use anyhow::{Context, Result, bail};
-use binrw::{BinRead, NullString, binread};
+use anyhow::{Result, anyhow, bail};
+use binrw::{BinRead, binread};
 
 use crate::warn;
 
-/// RIFF chunk with [`Self::data`] as [`Vec<u32>`].
+/// Generic RIFF chunk structure.
 #[binread]
 #[derive(Debug)]
 #[br(little)]
-pub struct RiffChunkU32 {
-    // temp because `data` stores its own length
-    #[br(temp)]
-    data_size: u32,
+#[br(stream = s)]
+pub struct RiffChunk {
+    id: [u8; 4],
+    size: u32,
 
-    #[br(try_calc = usize::try_from(data_size / 4), temp)]
-    data_length: usize,
+    // Just for calculations.
+    #[br(temp, try_calc = s.stream_position())]
+    start: u64,
+    #[br(temp, try_calc = start.checked_add(u64::from(size)).ok_or_else(|| {
+        anyhow!("overflow when calculating RiffChunk end for id={id:?}")
+    }))]
+    end: u64,
 
-    #[br(count = data_length)]
-    pub data: Vec<u32>,
-    // no padding needed, data is inherently even (u32)
-}
+    /// Range of data, excludes padding.
+    #[br(calc = (start..end).into())]
+    data: Range<u64>,
 
-/// RIFF chunk with [`Self::data`] as [`Vec<u8>`].
-#[binread]
-#[derive(Debug)]
-#[br(little)]
-pub struct RiffChunkU8 {
-    // size == length here since `data` is Vec<u8>
-    #[br(temp)]
-    data_size: u32,
-
-    #[br(count = data_size, pad_after = data_size % 2)]
-    pub data: Vec<u8>,
-    // padding byte skipped with `pad_after`
+    /// Where the next chunk should start and another [`RiffChunk`] can be read.
+    #[br(try_calc = end.checked_add(u64::from(size) & 1).ok_or_else(|| {
+        anyhow!("overflow when calculating RiffChunk next for id={id:?}")
+    }))]
+    next: u64,
 }
 
 // NOTE: this is storing the valid combinations of bitflags and are not meant to be composable.
@@ -62,12 +60,11 @@ pub struct RiffChunkU8 {
 ///
 /// - `0`: no flags are set
 /// - `2`: frames are not ICO
-#[derive(Debug, Default, PartialEq, BinRead)]
+#[derive(Debug, PartialEq, BinRead)]
 #[br(little)]
 #[br(repr = u32)]
 enum AniFlags {
     /// Contains ICO frames that play in the order they're defined (no "seq " chunk).
-    #[default]
     Unsequenced = 1,
     /// Contains ICO frames with a custom "seq " chunk,
     /// which defines the order frames should be played.
@@ -78,12 +75,10 @@ enum AniFlags {
 
 /// Models an ANI file's header (or the "anih" chunk).
 #[binread]
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, PartialEq)]
 #[br(little)]
 pub struct AniHeader {
-    #[br(temp)]
-    anih_size: u32,
-    #[br(assert(anih_size == header_size && header_size == 36), temp)]
+    #[br(assert(header_size == 36), temp)]
     header_size: u32,
     /// Number of frames in "fram" LIST. Not to be confused with [`Self::num_steps`]:
     ///
@@ -111,16 +106,15 @@ pub struct AniHeader {
 }
 
 /// Models a parsed ANI file.
-#[derive(Default)]
 pub struct AniFile {
     /// The header, i.e, the "anih" chunk.
     pub header: AniHeader,
     /// The title stored in the "INFO" ("LIST" subtype) chunk, with
     /// the identifier: "INAM". Note that this is rarely present.
-    pub title: Option<NullString>,
+    pub title: Option<String>,
     /// The author stored in the "INFO" ("LIST" subtype) chunk, with
     /// the identifier: "IART". Note that this is rarely present.
-    pub author: Option<NullString>,
+    pub author: Option<String>,
     /// Per-frame timings. Usually [`None`].
     ///
     /// rate:   `[t_0, t_1, t_2, ...]`\
@@ -130,20 +124,20 @@ pub struct AniFile {
     ///
     /// The rate is applied **after sequencing**, so `frames` is
     /// better said as the "display order", see [`Self::sequence`].
-    pub rate: Option<RiffChunkU32>,
+    pub rate: Option<Vec<u32>>,
     /// Stores frame indices to indicate the order in which
     /// frames are played. Frames can also be repeated.
     ///
     /// frames:         `[f_0, f_1, f_2, f_3, ...]`\
     /// sequence:       `[2, 3, 0, 0, 1, ...]`\
     /// display order:  `[f_2, f_3, f_0, f_0, f_1, ...]`
-    pub sequence: Option<RiffChunkU32>,
+    pub sequence: Option<Vec<u32>>,
     /// ICO frames. Each frame should have a hotspot.
     ///
     /// Each ICO frame can contain multiple images, usually for supporting different sizes.
     ///
     /// _Although redundant, since Windows scales cursors already._
-    pub ico_frames: Vec<RiffChunkU8>,
+    pub ico_frames: Vec<Vec<u8>>,
 }
 
 // skip ico_frames
@@ -159,10 +153,103 @@ impl fmt::Debug for AniFile {
     }
 }
 
-impl AniFile {
-    /// Max blob size for any (dynamic length) chunk.
-    const MAX_CHUNK_SIZE: usize = 2_097_152;
+#[derive(Default)]
+struct AniParserState {
+    header: Option<Range<u64>>,
+    title: Option<Range<u64>>,
+    author: Option<Range<u64>>,
+    rate: Option<Range<u64>>,
+    sequence: Option<Range<u64>>,
+    ico_frames: Option<Range<u64>>,
+}
 
+fn slice_blob(blob: &[u8], range: Range<u64>) -> Result<&[u8]> {
+    let start = usize::try_from(range.start)?;
+    let end = usize::try_from(range.end)?;
+
+    blob.get(start..end)
+        .ok_or_else(|| anyhow!("range {start}..{end} outside of blob (len={})", blob.len()))
+}
+
+fn process_ranges(blob: &[u8], state: &AniParserState) -> Result<AniFile> {
+    // helpers
+
+    let bytes_to_string = |r: Range<u64>| {
+        let string = slice_blob(blob, r)?;
+
+        let string = &string[..(string.iter().position(|&b| b == 0).unwrap_or_else(|| {
+            warn!("'INFO' string is not null-terminated");
+            string.len()
+        }))];
+
+        anyhow::Ok(String::from_utf8_lossy(string).to_string())
+    };
+
+    let to_u32_vec = |r: Range<u64>| {
+        let bytes = slice_blob(blob, r)?;
+
+        let (bytes, rem) = bytes.as_chunks::<4>();
+
+        if !rem.is_empty() {
+            bail!("u32 data not divisible by 4")
+        }
+
+        anyhow::Ok(
+            bytes
+                .iter()
+                .map(|&b| u32::from_le_bytes(b))
+                .collect::<Vec<_>>(),
+        )
+    };
+
+    // required stuff
+
+    let Some(header) = state.header else {
+        bail!("'anih' chunk is required but is missing")
+    };
+
+    let Some(ico_frames) = state.ico_frames else {
+        bail!("'fram' chunk is required but is missing")
+    };
+
+    let header = AniHeader::read(&mut Cursor::new(slice_blob(blob, header)?))?;
+    let fram = slice_blob(blob, ico_frames)?;
+    let mut cursor = Cursor::new(fram);
+
+    // don't reserve the non-validated num_frames
+    let mut ico_frames = Vec::new();
+
+    while cursor.position() < u64::try_from(fram.len())? {
+        let icon = RiffChunk::read(&mut cursor)?;
+
+        if icon.id != *b"icon" {
+            bail!("expected 'icon' subchunks, instead got {:?}", icon.id);
+        }
+
+        let bytes = slice_blob(fram, icon.data)?;
+        ico_frames.push(bytes.to_vec());
+
+        cursor.seek(SeekFrom::Start(icon.next))?;
+    }
+
+    // optional things
+
+    let title = state.title.map(bytes_to_string).transpose()?;
+    let author = state.author.map(bytes_to_string).transpose()?;
+    let rate = state.rate.map(to_u32_vec).transpose()?;
+    let sequence = state.sequence.map(to_u32_vec).transpose()?;
+
+    Ok(AniFile {
+        header,
+        title,
+        author,
+        rate,
+        sequence,
+        ico_frames,
+    })
+}
+
+impl AniFile {
     /// Parses `ani_blob`.
     ///
     /// ## Errors
@@ -178,83 +265,74 @@ impl AniFile {
     ///
     /// - [gdgsoft](https://www.gdgsoft.com/anituner/help/aniformat.htm)
     pub fn from_blob(ani_blob: &[u8]) -> Result<Self> {
-        if ani_blob.len() > Self::MAX_CHUNK_SIZE {
-            bail!(
-                "ani_blob.len()={} unreasonably large (2MB+)",
-                ani_blob.len()
-            )
-        }
-
-        // for sanity checks against read sizes
         let ani_blob_len_u64 = u64::try_from(ani_blob.len())?;
-        let mut ani = Self::default();
+        let mut state = AniParserState::default();
         let mut cursor = Cursor::new(ani_blob);
-        let mut buf = [0_u8; 4];
-        cursor.read_exact(&mut buf)?;
 
-        if buf != *b"RIFF" {
-            bail!("expected 'RIFF' chunk, instead got {buf:?}");
+        let riff = RiffChunk::read(&mut cursor)?;
+
+        if riff.id != *b"RIFF" {
+            bail!("expected 'RIFF' chunk, instead got {:?}", riff.id);
         }
-
-        cursor.read_exact(&mut buf)?;
-        let riff_size = u32::from_le_bytes(buf);
 
         // NOTE: stricter checks like this fail on "valid" files
         // `riff_size == blob.len() - 8`
         // https://github.com/quantum5/win2xcur/commit/ac9552ce83d2955a96a4d7a5cfde7c113ec5a4c5
-        if u64::from(riff_size) > ani_blob_len_u64 {
-            bail!("riff_size={riff_size} extends beyond blob")
+        if u64::from(riff.size) > ani_blob_len_u64 {
+            bail!("riff_size={} extends beyond blob", riff.size)
         }
 
-        cursor.read_exact(&mut buf)?;
+        let mut list_type = [0_u8; 4];
+        cursor.read_exact(&mut list_type)?;
 
-        if buf != *b"ACON" {
-            bail!("expected 'ACON' as 'RIFF' subtype, instead got {buf:?}");
+        if list_type != *b"ACON" {
+            bail!("expected 'ACON' as 'RIFF' subtype, instead got {list_type:?}");
         }
 
         // read chunks and parse
         while cursor.position() < ani_blob.len().try_into()? {
-            cursor.read_exact(&mut buf)?;
+            let chunk = RiffChunk::read(&mut cursor)?;
 
-            match &buf {
-                b"LIST" => Self::parse_list(&mut cursor, &mut ani)?,
+            match &chunk.id {
+                b"LIST" => Self::parse_list(&mut cursor, &mut state, &chunk)?,
                 b"anih" => {
-                    if ani.header != AniHeader::default() {
-                        bail!("duplicate 'anih' chunk");
+                    if state.header.is_some() {
+                        bail!("read duplicate 'anih' chunk at {}", cursor.position());
                     }
 
-                    ani.header =
-                        AniHeader::read_le(&mut cursor).context("failed to read 'anih' chunk")?;
+                    if chunk.size != 36 {
+                        bail!(
+                            "expected 'anih' chunk size to be 36, instead got {}",
+                            chunk.size
+                        )
+                    }
+
+                    state.header = Some(chunk.data);
                 }
 
                 b"rate" => {
-                    if ani.rate.is_some() {
-                        bail!("duplicate 'rate' chunk");
+                    if state.rate.is_some() {
+                        bail!("read duplicate 'rate' chunk at {}", cursor.position());
                     }
 
-                    ani.rate = Some(
-                        RiffChunkU32::read_le(&mut cursor)
-                            .context("failed to read 'rate' chunk")?,
-                    );
+                    state.rate = Some(chunk.data);
                 }
 
                 b"seq " => {
-                    if ani.sequence.is_some() {
-                        bail!("duplicate 'seq ' chunk");
+                    if state.sequence.is_some() {
+                        bail!("read duplicate 'seq ' chunk at {}", cursor.position());
                     }
 
-                    ani.sequence = Some(
-                        RiffChunkU32::read_le(&mut cursor)
-                            .context("failed to read 'seq ' chunk")?,
-                    );
+                    state.sequence = Some(chunk.data);
                 }
 
-                // consider attempting to read size and skipping
-                // for unknown chunks (but it's a bit unreliable)
-                _ => bail!("unexpected fourcc(?) buf={buf:?}"),
+                _ => (),
             }
+
+            cursor.seek(SeekFrom::Start(chunk.next))?;
         }
 
+        let ani = process_ranges(ani_blob, &state)?;
         Self::check_invariants(&ani)?;
 
         Ok(ani)
@@ -266,88 +344,52 @@ impl AniFile {
     /// either be "INFO" (title/author) or "fram" (frame data).
     ///
     /// The "INFO" chunk isn't required. The "fram" chunk is.
-    fn parse_list(cursor: &mut Cursor<&[u8]>, ani: &mut Self) -> Result<()> {
-        let ani_blob_size = cursor.get_ref().len();
-        let mut buf = [0_u8; 4];
-        let mut list_id = [0_u8; 4];
-        cursor.read_exact(&mut buf)?; // list size
-        cursor.read_exact(&mut list_id)?;
-        let list_size = u32::from_le_bytes(buf);
-
-        // excluding subtype fourcc (and padding)
-        let list_data_size = list_size
-            .checked_sub(4)
-            .with_context(|| format!("underflow on list_size={list_size} - 4"))?;
-
-        if usize::try_from(list_data_size)? > Self::MAX_CHUNK_SIZE {
-            bail!("list_data_size={list_data_size} unreasonably large (2MB+)");
+    fn parse_list(
+        cursor: &mut Cursor<&[u8]>,
+        state: &mut AniParserState,
+        list_chunk: &RiffChunk,
+    ) -> Result<()> {
+        if list_chunk.size < 4 {
+            bail!(
+                "expected 'LIST' chunk to have size four or greater, instead got {}",
+                list_chunk.size
+            );
         }
 
         let end = cursor
             .position()
-            .checked_add(u64::from(list_data_size))
-            .with_context(|| {
-                format!(
-                    "overflow on cursor.position={} + list_data_size={list_data_size}",
-                    cursor.position()
-                )
-            })?;
+            .checked_add(u64::from(list_chunk.size))
+            .ok_or_else(|| anyhow!("overflow when calculating end of list chunk"))?;
 
-        if end > ani_blob_size.try_into()? {
-            bail!("list_data_size={list_data_size} extends beyond blob");
-        }
+        let mut list_type = [0_u8; 4];
+        cursor.read_exact(&mut list_type)?;
 
-        match &list_id {
+        match &list_type {
             b"INFO" => {
                 while cursor.position() < end {
-                    cursor.read_exact(&mut buf)?;
+                    let subchunk = RiffChunk::read(cursor)?;
 
-                    let field = if buf == *b"INAM" {
-                        &mut ani.title
-                    } else if buf == *b"IART" {
-                        &mut ani.author
-                    } else {
-                        bail!("expected 'INAM' or 'IART' subchunk in 'INFO', instead got {buf:?}");
-                    };
-
-                    if field.is_some() {
-                        bail!("duplicate 'INAM' or 'IART' subchunk in 'INFO'");
+                    // Let INFO be overridden as it's non-essential.
+                    if subchunk.id == *b"INAM" {
+                        state.title = Some(subchunk.data);
+                    } else if subchunk.id == *b"IART" {
+                        state.author = Some(subchunk.data);
                     }
 
-                    // size of string
-                    cursor.read_exact(&mut buf)?;
-                    *field = Some(NullString::read_le(cursor)?);
+                    cursor.seek(SeekFrom::Start(subchunk.next))?;
                 }
             }
 
             b"fram" => {
-                if !ani.ico_frames.is_empty() {
-                    bail!("duplicate 'fram' chunk");
+                if state.ico_frames.is_some() {
+                    bail!("read duplicate 'fram' chunk at {}", cursor.position());
                 }
 
-                let mut chunks = Vec::with_capacity(usize::try_from(ani.header.num_frames)?);
-
-                while cursor.position() < end {
-                    cursor.read_exact(&mut buf)?;
-
-                    if buf != *b"icon" {
-                        bail!("expected 'icon' subchunk, instead got {buf:?}");
-                    }
-
-                    let chunk = RiffChunkU8::read_le(cursor)
-                        .context("failed to read 'icon' subchunk of 'fram'")?;
-
-                    chunks.push(chunk);
-                }
-
-                if chunks.is_empty() {
-                    bail!("failed to parse any frames from 'fram' chunk");
-                }
-
-                ani.ico_frames = chunks;
+                // exclude list type (fram)
+                state.ico_frames = Some((cursor.position()..end).into());
             }
 
-            _ => bail!("unexpected list_id={list_id:?}"),
+            _ => (),
         }
 
         Ok(())
@@ -373,11 +415,11 @@ impl AniFile {
         }
 
         if let Some(rate) = &ani.rate
-            && rate.data.len() != num_steps
+            && rate.len() != num_steps
         {
             bail!(
                 "expected num_steps={num_steps}, instead got rate.len()={}",
-                rate.data.len(),
+                rate.len(),
             )
         }
 
@@ -386,9 +428,17 @@ impl AniFile {
         }
 
         if let Some(seq) = &ani.sequence
-            && seq.data.iter().max() >= Some(&hdr.num_frames)
+            && seq.iter().max() >= Some(&hdr.num_frames)
         {
             bail!("frame indices of 'seq ' chunk go out of bounds");
+        }
+
+        let observed_steps = ani.sequence.as_ref().map_or(num_frames, Vec::len);
+        if observed_steps != num_steps {
+            bail!(
+                "num_steps={num_steps} does not match length of \
+                sequence table (observed_steps={observed_steps})"
+            );
         }
 
         if hdr.flags == Sequenced && ani.sequence.is_none() {
@@ -401,7 +451,7 @@ impl AniFile {
 
         if let Some(seq) = &ani.sequence
             && hdr.flags == Unsequenced
-            && seq.data != (0..hdr.num_steps).collect::<Vec<_>>()
+            && !seq.iter().copied().eq(0..hdr.num_steps)
         {
             warn!(
                 "expected 'seq ' chunk to be None from flags={:?}, found the non \
@@ -428,13 +478,6 @@ mod tests {
         const ANI_FRAMES: &str = include_str!(from_root!("/testing/fixtures/neuro_alt_frames"));
         const ANI_BLOB: &[u8] = include_bytes!(from_root!("/testing/fixtures/neuro/Neuro alt.ani"));
 
-        const {
-            assert!(
-                size_of::<AniFile>() == 136,
-                "AniFile fields have changed, update tests and this number accordingly"
-            );
-        }
-
         let ani = AniFile::from_blob(ANI_BLOB).unwrap();
         let hdr = &ani.header;
 
@@ -446,7 +489,7 @@ mod tests {
         assert!(ani.rate.is_none());
 
         assert_eq!(
-            ani.sequence.as_ref().unwrap().data,
+            ani.sequence.as_ref().unwrap(),
             &[
                 0, 1, 2, 2, 3, 3, 3, 3, 4, 5, 6, 7, 3, 3, 3, 2, 2, 2, 3, 8, 9
             ]
@@ -459,13 +502,13 @@ mod tests {
 
         assert_eq!(
             usize::try_from(hdr.num_steps).unwrap(),
-            ani.sequence.as_ref().unwrap().data.len()
+            ani.sequence.as_ref().unwrap().len()
         );
 
         let mut ani_frames = String::new();
 
         for frame in ani.ico_frames {
-            writeln!(&mut ani_frames, "{:?}", frame.data).unwrap();
+            writeln!(&mut ani_frames, "{frame:?}").unwrap();
         }
 
         assert_eq!(ani_frames, ANI_FRAMES);

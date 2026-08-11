@@ -222,13 +222,13 @@ impl GenericCursor {
         let icos: Vec<IconDir> = ani_file
             .ico_frames
             .into_iter()
-            .map(|chunk| IconDir::read(&mut Cursor::new(&chunk.data)))
+            .map(|chunk| IconDir::read(&mut Cursor::new(&chunk)))
             .collect::<Result<_, _>>()?;
 
         // get display order as indices into icos
         let sequence: Option<Vec<usize>> = ani_file
             .sequence
-            .map(|chunk| chunk.data.into_iter().map(usize::try_from).collect())
+            .map(|chunk| chunk.into_iter().map(usize::try_from).collect())
             .transpose()?;
 
         // indices validated in-bounds in AniFile
@@ -241,7 +241,7 @@ impl GenericCursor {
         let num_steps = usize::try_from(header.num_steps)?;
         let delays_jiffies = ani_file
             .rate
-            .map_or_else(|| vec![header.jiffy_rate; num_steps], |chunk| chunk.data);
+            .unwrap_or_else(|| vec![header.jiffy_rate; num_steps]);
 
         // jiffies are 1/60th of a second
         //
