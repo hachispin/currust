@@ -8,7 +8,8 @@ use crate::{
 use std::{collections::HashMap, fs, path::Path};
 
 use anyhow::{Context, Result, anyhow, bail};
-use configparser::ini::{Ini, IniDefault}; // inf is an "ini-like" format
+use configparser::ini::{Ini, IniDefault};
+use csv::{ReaderBuilder, StringRecord}; // inf is an "ini-like" format
 
 fn inf_new() -> Ini {
     let mut defaults = IniDefault::default();
@@ -35,6 +36,28 @@ fn read_to_string_utf16(path: &Path) -> Result<String> {
     }
 
     Ok(String::from_utf8_lossy_owned(bytes))
+}
+
+/// Reads a single record and splits fields following CSV behaviour.
+///
+/// Also trims.
+fn split_csv(record_str: &str) -> Result<StringRecord> {
+    let mut rdr = ReaderBuilder::new()
+        .has_headers(false)
+        .from_reader(record_str.as_bytes());
+
+    let Some(record) = rdr.records().next() else {
+        bail!("no records found")
+    };
+
+    let mut record = record?;
+    record.trim();
+
+    if rdr.records().next().is_some() {
+        warn!("more than one record found, returning first");
+    }
+
+    Ok(record)
 }
 
 /// Attempts to parse `inf_path` as an installer file for a cursor theme.
@@ -90,17 +113,18 @@ pub fn parse_inf_installer(inf_path: &Path) -> Result<(String, Vec<CursorMapping
         .get("defaultinstall")
         .ok_or_else(|| anyhow!("no defaultinstall section found"))?;
 
-    let addreg = defaultinstall
+    let addreg_sections_string = defaultinstall
         .get("addreg")
-        .ok_or_else(|| anyhow!("no addreg key found in defaultinstall"))?
-        .as_ref()
-        .ok_or_else(|| anyhow!("no value for addreg key"))?;
+        .and_then(|v| v.as_ref())
+        .ok_or_else(|| anyhow!("no addreg found in defaultinstall"))?;
+
+    let addreg_sections = split_csv(addreg_sections_string)?;
 
     // find the right registry entries (the ones we can parse)
     //
     // https://github.com/quantum5/win2xcur/blob/c8a390b79456a45104fe42133b9d7eb4ce7c8638/win2xcur/parser/inf.py#L47-L50
-    let scheme: Vec<_> = addreg
-        .split(',')
+    let scheme: Vec<_> = addreg_sections
+        .iter()
         .filter_map(|k| inf.get(&k.to_ascii_lowercase()))
         .flat_map(|v| v.keys())
         .filter(|k| k.contains(r#""control panel\cursors\schemes","#))
@@ -114,38 +138,30 @@ pub fn parse_inf_installer(inf_path: &Path) -> Result<(String, Vec<CursorMapping
 
     let subs = inf.get("strings");
     let expanded_reg = expand_scheme(scheme, subs)?;
-    let mut reg_info = expanded_reg.split(',');
 
-    reg_info.next(); // root key, e.g., hkcu, hklm
-    reg_info.next(); // subkey
+    // reg-root,[subkey],[value-entry-name],[flags],[value][,[value]]
+    let reg_info = split_csv(&expanded_reg)?;
 
-    let name = reg_info
-        .next()
-        .ok_or_else(|| anyhow!("couldn't parse theme name; reg_info doesn't have enough info"))?
-        .strip_prefix('"') // refrain from trim_matches; only one quote should be removed
-        .and_then(|n| n.strip_suffix('"'))
-        .ok_or_else(|| anyhow!("expected theme name to be quoted"))?
-        .to_string();
+    let (Some(name), Some(paths)) = (reg_info.get(2), reg_info.get(4)) else {
+        bail!("expected cursor registry entry to have at least five fields, reg_info={reg_info:?}");
+    };
 
-    reg_info.next(); // flags
+    let name = name.to_string();
+    let paths = split_csv(paths)?;
 
-    let mut paths: Vec<_> = reg_info
-        .map(|s| {
-            s.rsplit_once('\\')
-                .ok_or_else(|| anyhow!("failed to extract filename from path, s={s}"))
-                .map(|s| s.1.to_ascii_lowercase())
+    // get filenames
+    let dst_filenames: Vec<_> = paths
+        .iter()
+        .map(|p| {
+            p.rsplit_once('\\')
+                .ok_or_else(|| anyhow!("failed to extract filename from path, p={p}"))
+                .map(|p| p.1.to_ascii_lowercase())
         })
         .collect::<Result<_>>()?;
 
-    let end = paths.len() - 1;
-    paths[end] = paths[paths.len() - 1]
-        .strip_suffix('"')
-        .ok_or_else(|| anyhow!("expected closing quotation for paths, didn't find it"))?
-        .to_string();
+    let src_paths = resolve_paths(&inf, defaultinstall, &dst_filenames)?;
 
-    let paths = resolve_paths(&inf, defaultinstall, &paths)?;
-
-    let mappings: Vec<_> = paths
+    let mappings: Vec<_> = src_paths
         .into_iter()
         .zip(0..15)
         .map(|(p, i)| CursorMapping {
