@@ -26,16 +26,17 @@ fn inf_new() -> Ini {
 /// Follows the BOM if present, otherwise, parses as
 /// lossy UTF-8 to account for ASCII and ANSI code pages.
 fn read_to_string_utf16(path: &Path) -> Result<String> {
-    let bytes = fs::read(path)?;
-    let bom = bytes.get(0..2);
+    let mut bytes = fs::read(path)?;
 
-    if bom == Some(&[0xff, 0xfe]) {
-        return Ok(String::from_utf16le(&bytes)?);
-    } else if bom == Some(&[0xfe, 0xff]) {
-        return Ok(String::from_utf16be(&bytes)?);
-    }
-
-    Ok(String::from_utf8_lossy_owned(bytes))
+    Ok(match bytes.as_slice() {
+        [0xff, 0xfe, rest @ ..] => String::from_utf16le(rest)?,
+        [0xfe, 0xff, rest @ ..] => String::from_utf16be(rest)?,
+        [0xef, 0xbb, 0xbf, ..] => {
+            bytes.drain(0..3);
+            String::from_utf8(bytes)?
+        }
+        _ => String::from_utf8_lossy_owned(bytes),
+    })
 }
 
 /// Reads a single record and splits fields following CSV behaviour.
