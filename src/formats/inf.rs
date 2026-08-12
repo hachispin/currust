@@ -128,7 +128,7 @@ pub fn parse_inf_installer(inf_path: &Path) -> Result<(String, Vec<CursorMapping
         .iter()
         .filter_map(|k| inf.get(&k.to_ascii_lowercase()))
         .flat_map(|v| v.keys())
-        .filter(|k| k.contains(r#""control panel\cursors\schemes","#))
+        .filter(|k| k.contains("control panel\\cursors\\schemes"))
         .collect();
 
     let scheme = match scheme.as_slice() {
@@ -165,6 +165,7 @@ pub fn parse_inf_installer(inf_path: &Path) -> Result<(String, Vec<CursorMapping
     let mappings: Vec<_> = src_paths
         .into_iter()
         .zip(0..15)
+        .filter(|(p, _)| !p.is_empty())
         .map(|(p, i)| CursorMapping {
             r#type: index_to_cursor_type(i),
             path: parent.join(p),
@@ -191,8 +192,7 @@ const fn index_to_cursor_type(index: usize) -> CursorType {
         12 => Move,          13 => CenterPtr,
         14 => Hand,           _ => unreachable!(),
 
-        // 15/16 are person and pin, which do not 
-        // have (commonly-used) xcursor equivalents
+        // 15/16 are pin and person, which do not have (commonly-used) Xcursor equivalents
     }
 }
 
@@ -325,7 +325,7 @@ fn expand(input: &str, subs: &HashMap<String, String>) -> Result<String> {
             .or_else(|| (key == "%%").then_some("%"))
             .or_else(|| {
                 if key.chars().all(|c| c.is_ascii_digit() || c == '%') {
-                    // let's just assume it's a DIRID and leave it :)
+                    // let's just assume it's a DIRID and leave it, ok?
                     Some(key)
                 } else {
                     None
