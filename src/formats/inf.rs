@@ -235,9 +235,13 @@ fn resolve_paths(
                 bail!("empty entry in section={field}")
             };
 
-            let src = entry.next().unwrap_or_else(|| dst.clone());
-
-            mappings.insert(dst, src);
+            if let Some(src) = entry.next()
+                && !src.is_empty()
+            {
+                mappings.insert(dst, src);
+            } else {
+                mappings.insert(dst.clone(), dst);
+            }
         }
     }
 
