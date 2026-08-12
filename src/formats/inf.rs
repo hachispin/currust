@@ -155,8 +155,8 @@ pub fn parse_inf_installer(inf_path: &Path) -> Result<(String, Vec<CursorMapping
         .iter()
         .map(|p| {
             p.rsplit_once('\\')
+                .map(|(_, filename)| Some(filename.to_ascii_lowercase()))
                 .ok_or_else(|| anyhow!("failed to extract filename from path, p={p}"))
-                .map(|p| p.1.to_ascii_lowercase())
         })
         .collect::<Result<_>>()?;
 
@@ -165,10 +165,11 @@ pub fn parse_inf_installer(inf_path: &Path) -> Result<(String, Vec<CursorMapping
     let mappings: Vec<_> = src_paths
         .into_iter()
         .zip(0..15)
-        .filter(|(p, _)| !p.is_empty())
-        .map(|(p, i)| CursorMapping {
-            r#type: index_to_cursor_type(i),
-            path: parent.join(p),
+        .filter_map(|(path, i)| {
+            path.map(|p| CursorMapping {
+                r#type: index_to_cursor_type(i),
+                path: parent.join(p),
+            })
         })
         .collect();
 
@@ -200,8 +201,8 @@ const fn index_to_cursor_type(index: usize) -> CursorType {
 fn resolve_paths(
     inf: &HashMap<String, HashMap<String, Option<String>>>,
     defaultinstall: &HashMap<String, Option<String>>,
-    paths: &[String],
-) -> Result<Vec<String>> {
+    paths: &[Option<String>],
+) -> Result<Vec<Option<String>>> {
     let copyfiles = defaultinstall
         .get("copyfiles")
         .cloned()
@@ -248,12 +249,17 @@ fn resolve_paths(
     let mut new = Vec::with_capacity(paths.len());
 
     for p in paths {
-        new.push(
+        let Some(p) = p else {
+            new.push(None);
+            continue;
+        };
+
+        new.push(Some(
             mappings
                 .get(p)
                 .ok_or_else(|| anyhow!("missing mapping for {p}"))?
                 .clone(),
-        );
+        ));
     }
 
     Ok(new)
