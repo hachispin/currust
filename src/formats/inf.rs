@@ -207,18 +207,18 @@ fn resolve_paths(
         .flatten()
         .ok_or_else(|| anyhow!("no copyfiles section"))?;
 
+    let fields = split_csv(&copyfiles)?;
+
     // paths are coerced to lowercase because they're "keys" (from configparser's perspective).
     // this most likely causes some extra lookups, since the initial path most likely has
     // the correct casing. could be solved with Ini::new_cs() but probably isn't worth it.
     let mut mappings = HashMap::with_capacity(paths.len());
 
-    for field in copyfiles.split(',') {
+    for field in &fields {
         // TODO: Implement this later.
-        if matches!(copyfiles.chars().next(), Some('@')) {
+        if matches!(field.chars().next(), Some('@')) {
             bail!("unsupported '@' syntax in copyfiles");
         }
-
-        let field = field.trim();
 
         let section = inf
             .get(&field.to_ascii_lowercase())
@@ -226,17 +226,16 @@ fn resolve_paths(
 
         for k in section.keys() {
             // destination-file-name[,[source-file-name][,[unused][,flag]]]
-            let entry: Vec<_> = k.split(',').map(|f| f.replace('\\', "/")).collect();
+            let entry = split_csv(k)?;
+            let mut entry = entry.iter().map(|f| f.replace('\\', "/"));
 
-            if entry.is_empty() {
-                bail!("empty entry in section={field}");
-            }
+            let Some(dst) = entry.next() else {
+                bail!("empty entry in section={field}")
+            };
 
-            if entry.len() == 1 {
-                mappings.insert(dequote(&entry[0]), dequote(&entry[0]));
-            } else {
-                mappings.insert(dequote(&entry[0]), dequote(&entry[1]));
-            }
+            let src = entry.next().unwrap_or_else(|| dst.clone());
+
+            mappings.insert(dst, src);
         }
     }
 
@@ -245,7 +244,7 @@ fn resolve_paths(
     for p in paths {
         new.push(
             mappings
-                .get(p.as_str())
+                .get(p)
                 .ok_or_else(|| anyhow!("missing mapping for {p}"))?
                 .clone(),
         );
