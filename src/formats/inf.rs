@@ -158,6 +158,10 @@ pub fn parse_inf_installer(inf_path: &Path) -> Result<(String, Vec<CursorMapping
     let dst_filenames: Vec<_> = paths
         .iter()
         .map(|p| {
+            if p.is_empty() {
+                return Ok(None);
+            }
+
             p.rsplit_once('\\')
                 .map(|(_, filename)| Some(filename.to_ascii_lowercase()))
                 .ok_or_else(|| anyhow!("failed to extract filename from path, p={p}"))
