@@ -8,7 +8,60 @@ use crate::{
 use std::{collections::HashMap, fs, path::Path};
 
 use anyhow::{Context, Result, anyhow, bail};
-use configparser::ini::Ini; // inf is an "ini-like" format
+use configparser::ini::{Ini, IniDefault};
+use csv::{ReaderBuilder, StringRecord}; // inf is an "ini-like" format
+
+fn inf_new() -> Ini {
+    let mut defaults = IniDefault::default();
+
+    // non-exhaustive so we gotta do this
+    defaults.comment_symbols = vec![';'];
+    defaults.delimiters = vec!['='];
+
+    Ini::new_from_defaults(defaults)
+}
+
+/// [`fs::read_to_string`] with UTF16 considerations.
+///
+/// Follows the BOM if present, otherwise, parses as
+/// lossy UTF-8 to account for ASCII and ANSI code pages.
+fn read_to_string_utf16(path: &Path) -> Result<String> {
+    let mut bytes = fs::read(path)?;
+
+    Ok(match bytes.as_slice() {
+        [0xff, 0xfe, rest @ ..] => String::from_utf16le(rest)?,
+        [0xfe, 0xff, rest @ ..] => String::from_utf16be(rest)?,
+        [0xef, 0xbb, 0xbf, ..] => {
+            bytes.drain(0..3);
+            String::from_utf8(bytes)?
+        }
+        _ => String::from_utf8_lossy_owned(bytes),
+    })
+}
+
+/// Reads a single record and splits fields following CSV behaviour.
+///
+/// Also trims.
+fn split_csv(record_str: &str) -> Result<StringRecord> {
+    // TODO: Consider handling cases such as `a , "b"` becoming ["a", "\"b\""]
+
+    let mut rdr = ReaderBuilder::new()
+        .has_headers(false)
+        .from_reader(record_str.as_bytes());
+
+    let Some(record) = rdr.records().next() else {
+        bail!("no records found")
+    };
+
+    let mut record = record?;
+    record.trim();
+
+    if rdr.records().next().is_some() {
+        warn!("more than one record found, returning first");
+    }
+
+    Ok(record)
+}
 
 /// Attempts to parse `inf_path` as an installer file for a cursor theme.
 ///
@@ -49,74 +102,82 @@ use configparser::ini::Ini; // inf is an "ini-like" format
 /// ; they're variables (in the `Strings` section), sometimes not
 /// ```
 pub fn parse_inf_installer(inf_path: &Path) -> Result<(String, Vec<CursorMapping>)> {
-    let inf_string = fs::read_to_string(inf_path)?;
+    // TODO: Handle line continuation. Or just don't and delete this TODO.
+
+    let inf_string = read_to_string_utf16(inf_path)?;
 
     let parent = inf_path
         .parent()
         .ok_or_else(|| anyhow!("no parent for inf_path={}", inf_path.display()))?;
 
-    let inf: HashMap<String, HashMap<String, Option<String>>> = Ini::new()
+    let inf = inf_new()
         .read(inf_string)
         .map_err(|e| anyhow!("failed to read inf, error e={e}"))?;
 
-    let defaultinstall: &HashMap<String, Option<String>> = inf
+    let defaultinstall = inf
         .get("defaultinstall")
         .ok_or_else(|| anyhow!("no defaultinstall section found"))?;
 
-    let addreg = defaultinstall
+    let addreg_sections_string = defaultinstall
         .get("addreg")
-        .ok_or_else(|| anyhow!("no addreg key found in defaultinstall"))?
-        .as_ref()
-        .ok_or_else(|| anyhow!("no value for addreg key"))?;
+        .and_then(|v| v.as_ref())
+        .ok_or_else(|| anyhow!("no addreg found in defaultinstall"))?;
+
+    let addreg_sections = split_csv(addreg_sections_string)?;
 
     // find the right registry entries (the ones we can parse)
+    //
     // https://github.com/quantum5/win2xcur/blob/c8a390b79456a45104fe42133b9d7eb4ce7c8638/win2xcur/parser/inf.py#L47-L50
-    let scheme = addreg
-        .split(',')
+    let scheme: Vec<_> = addreg_sections
+        .iter()
         .filter_map(|k| inf.get(&k.to_ascii_lowercase()))
         .flat_map(|v| v.keys())
-        .find(|k| k.contains(r#""control panel\cursors\schemes","#))
-        .ok_or_else(|| anyhow!("couldn't find cursor mappings"))?;
+        .filter(|k| k.contains("control panel\\cursors\\schemes"))
+        .collect();
+
+    let scheme = match scheme.as_slice() {
+        [] => bail!("couldn't find any cursor mappings"),
+        [entry] => entry,
+        _ => bail!("more than one cursor mapping found: {scheme:?}"),
+    };
 
     let subs = inf.get("strings");
     let expanded_reg = expand_scheme(scheme, subs)?;
-    let mut reg_info = expanded_reg.split(',');
 
-    reg_info.next(); // root key, e.g., hkcu, hklm
-    reg_info.next(); // subkey
+    // reg-root,[subkey],[value-entry-name],[flags],[value][,[value]]
+    let reg_info = split_csv(&expanded_reg)?;
 
-    let name = reg_info
-        .next()
-        .ok_or_else(|| anyhow!("couldn't parse theme name; reg_info doesn't have enough info"))?
-        .strip_prefix('"') // refrain from trim_matches; only one quote should be removed
-        .and_then(|n| n.strip_suffix('"'))
-        .ok_or_else(|| anyhow!("expected theme name to be quoted"))?
-        .to_string();
+    let (Some(name), Some(paths)) = (reg_info.get(2), reg_info.get(4)) else {
+        bail!("expected cursor registry entry to have at least five fields, reg_info={reg_info:?}");
+    };
 
-    reg_info.next(); // flags
+    let name = name.to_string();
+    let paths = split_csv(paths)?;
 
-    let mut paths: Vec<_> = reg_info
-        .map(|s| {
-            s.rsplit_once('\\')
-                .ok_or_else(|| anyhow!("failed to extract filename from path, s={s}"))
-                .map(|s| s.1.to_ascii_lowercase())
+    // get filenames
+    let dst_filenames: Vec<_> = paths
+        .iter()
+        .map(|p| {
+            if p.is_empty() {
+                return Ok(None);
+            }
+
+            p.rsplit_once('\\')
+                .map(|(_, filename)| Some(filename.to_ascii_lowercase()))
+                .ok_or_else(|| anyhow!("failed to extract filename from path, p={p}"))
         })
         .collect::<Result<_>>()?;
 
-    let end = paths.len() - 1;
-    paths[end] = paths[paths.len() - 1]
-        .strip_suffix('"')
-        .ok_or_else(|| anyhow!("expected closing quotation for paths, didn't find it"))?
-        .to_string();
+    let src_paths = resolve_paths(&inf, defaultinstall, &dst_filenames)?;
 
-    let paths = resolve_paths(&inf, defaultinstall, &paths)?;
-
-    let mappings: Vec<_> = paths
+    let mappings: Vec<_> = src_paths
         .into_iter()
         .zip(0..15)
-        .map(|(p, i)| CursorMapping {
-            r#type: index_to_cursor_type(i),
-            path: parent.join(p),
+        .filter_map(|(path, i)| {
+            path.map(|p| CursorMapping {
+                r#type: index_to_cursor_type(i),
+                path: parent.join(p),
+            })
         })
         .collect();
 
@@ -140,8 +201,7 @@ const fn index_to_cursor_type(index: usize) -> CursorType {
         12 => Move,          13 => CenterPtr,
         14 => Hand,           _ => unreachable!(),
 
-        // 15/16 are person and pin, which do not 
-        // have (commonly-used) xcursor equivalents
+        // 15/16 are pin and person, which do not have (commonly-used) Xcursor equivalents
     }
 }
 
@@ -149,43 +209,47 @@ const fn index_to_cursor_type(index: usize) -> CursorType {
 fn resolve_paths(
     inf: &HashMap<String, HashMap<String, Option<String>>>,
     defaultinstall: &HashMap<String, Option<String>>,
-    paths: &[String],
-) -> Result<Vec<String>> {
+    paths: &[Option<String>],
+) -> Result<Vec<Option<String>>> {
     let copyfiles = defaultinstall
         .get("copyfiles")
         .cloned()
         .flatten()
         .ok_or_else(|| anyhow!("no copyfiles section"))?;
 
+    let fields = split_csv(&copyfiles)?;
+
     // paths are coerced to lowercase because they're "keys" (from configparser's perspective).
     // this most likely causes some extra lookups, since the initial path most likely has
     // the correct casing. could be solved with Ini::new_cs() but probably isn't worth it.
     let mut mappings = HashMap::with_capacity(paths.len());
 
-    for field in copyfiles.split(',') {
+    for field in &fields {
         // TODO: Implement this later.
-        if matches!(copyfiles.chars().next(), Some('@')) {
+        if matches!(field.chars().next(), Some('@')) {
             bail!("unsupported '@' syntax in copyfiles");
         }
 
-        let field = field.trim();
-
-        let section = inf
-            .get(&field.to_ascii_lowercase())
-            .ok_or_else(|| anyhow!("copyfiles specifies '{field}' should exist, but doesn't"))?;
+        let Some(section) = inf.get(&field.to_ascii_lowercase()) else {
+            warn!("copyfiles refers to section '{field}', but the section is missing");
+            continue;
+        };
 
         for k in section.keys() {
             // destination-file-name[,[source-file-name][,[unused][,flag]]]
-            let entry: Vec<_> = k.split(',').map(|f| f.replace('\\', "/")).collect();
+            let entry = split_csv(k)?;
+            let mut entry = entry.iter().map(|f| f.replace('\\', "/"));
 
-            if entry.is_empty() {
-                bail!("empty entry in section={field}");
-            }
+            let Some(dst) = entry.next() else {
+                bail!("empty entry in section={field}")
+            };
 
-            if entry.len() == 1 {
-                mappings.insert(dequote(&entry[0]), dequote(&entry[0]));
+            if let Some(src) = entry.next()
+                && !src.is_empty()
+            {
+                mappings.insert(dst, src);
             } else {
-                mappings.insert(dequote(&entry[0]), dequote(&entry[1]));
+                mappings.insert(dst.clone(), dst);
             }
         }
     }
@@ -193,12 +257,17 @@ fn resolve_paths(
     let mut new = Vec::with_capacity(paths.len());
 
     for p in paths {
-        new.push(
+        let Some(p) = p else {
+            new.push(None);
+            continue;
+        };
+
+        new.push(Some(
             mappings
-                .get(p.as_str())
+                .get(p)
                 .ok_or_else(|| anyhow!("missing mapping for {p}"))?
                 .clone(),
-        );
+        ));
     }
 
     Ok(new)
@@ -222,30 +291,23 @@ fn expand_scheme(reg: &str, subs: Option<&HashMap<String, Option<String>>>) -> R
     expand(reg, &subs).with_context(|| format!("for input reg={reg}"))
 }
 
-/// Dequotes following INF spec.
-///
-/// The INF parser not only discards the outermost pair of enclosing double quotation
-/// marks for any "quoted string" in this section, but also condenses each subsequent
-/// sequential pair of double quotation marks into a single double quotation marks character.
-///
-/// For example, """some string""" also becomes "some string" when it is parsed.
-fn dequote(input: &str) -> String {
-    let mut input = input.trim();
-
-    if input.starts_with('"') && input.ends_with('"') && input.len() >= 2 {
-        input = &input[1..(input.len() - 1)];
-    }
-
-    input.replace("\"\"", "\"")
-}
-
 /// Helper function for [`expand_scheme`] to remove the outer pair of quotes.
 ///
 /// This is because [`configparser`] takes _everything_ as a string,
 /// for example: `key = "value"` means `config["key"] == "\"value\""`.
 fn dequote_value(entry: (&String, &Option<String>)) -> Option<(String, String)> {
     match entry {
-        (k, Some(v)) => Some((k.clone(), dequote(v))),
+        (k, Some(v)) => {
+            let value = v.trim();
+
+            let value = value
+                .strip_prefix('"')
+                .and_then(|value| value.strip_suffix('"'))
+                .unwrap_or(value)
+                .replace("\"\"", "\"");
+
+            Some((k.clone(), value))
+        }
         (k, None) => {
             // side effect but shhh
             warn!("key={k} has value None");
@@ -282,7 +344,7 @@ fn expand(input: &str, subs: &HashMap<String, String>) -> Result<String> {
             .or_else(|| (key == "%%").then_some("%"))
             .or_else(|| {
                 if key.chars().all(|c| c.is_ascii_digit() || c == '%') {
-                    // let's just assume it's a DIRID and leave it :)
+                    // let's just assume it's a DIRID and leave it, ok?
                     Some(key)
                 } else {
                     None
