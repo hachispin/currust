@@ -43,6 +43,8 @@ fn read_to_string_utf16(path: &Path) -> Result<String> {
 ///
 /// Also trims.
 fn split_csv(record_str: &str) -> Result<StringRecord> {
+    // TODO: Consider handling cases such as `a , "b"` becoming ["a", "\"b\""]
+
     let mut rdr = ReaderBuilder::new()
         .has_headers(false)
         .from_reader(record_str.as_bytes());
@@ -100,6 +102,8 @@ fn split_csv(record_str: &str) -> Result<StringRecord> {
 /// ; they're variables (in the `Strings` section), sometimes not
 /// ```
 pub fn parse_inf_installer(inf_path: &Path) -> Result<(String, Vec<CursorMapping>)> {
+    // TODO: Handle line continuation. Or just don't and delete this TODO.
+
     let inf_string = read_to_string_utf16(inf_path)?;
 
     let parent = inf_path
