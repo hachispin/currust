@@ -272,30 +272,23 @@ fn expand_scheme(reg: &str, subs: Option<&HashMap<String, Option<String>>>) -> R
     expand(reg, &subs).with_context(|| format!("for input reg={reg}"))
 }
 
-/// Dequotes following INF spec.
-///
-/// The INF parser not only discards the outermost pair of enclosing double quotation
-/// marks for any "quoted string" in this section, but also condenses each subsequent
-/// sequential pair of double quotation marks into a single double quotation marks character.
-///
-/// For example, """some string""" also becomes "some string" when it is parsed.
-fn dequote(input: &str) -> String {
-    let mut input = input.trim();
-
-    if input.starts_with('"') && input.ends_with('"') && input.len() >= 2 {
-        input = &input[1..(input.len() - 1)];
-    }
-
-    input.replace("\"\"", "\"")
-}
-
 /// Helper function for [`expand_scheme`] to remove the outer pair of quotes.
 ///
 /// This is because [`configparser`] takes _everything_ as a string,
 /// for example: `key = "value"` means `config["key"] == "\"value\""`.
 fn dequote_value(entry: (&String, &Option<String>)) -> Option<(String, String)> {
     match entry {
-        (k, Some(v)) => Some((k.clone(), dequote(v))),
+        (k, Some(v)) => {
+            let value = v.trim();
+
+            let value = value
+                .strip_prefix('"')
+                .and_then(|value| value.strip_suffix('"'))
+                .unwrap_or(value)
+                .replace("\"\"", "\"");
+
+            Some((k.clone(), value))
+        }
         (k, None) => {
             // side effect but shhh
             warn!("key={k} has value None");
