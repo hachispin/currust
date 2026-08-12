@@ -221,9 +221,10 @@ fn resolve_paths(
             bail!("unsupported '@' syntax in copyfiles");
         }
 
-        let section = inf
-            .get(&field.to_ascii_lowercase())
-            .ok_or_else(|| anyhow!("copyfiles specifies '{field}' should exist, but doesn't"))?;
+        let Some(section) = inf.get(&field.to_ascii_lowercase()) else {
+            warn!("copyfiles refers to section '{field}', but the section is missing");
+            continue;
+        };
 
         for k in section.keys() {
             // destination-file-name[,[source-file-name][,[unused][,flag]]]
