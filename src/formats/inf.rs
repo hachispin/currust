@@ -21,6 +21,19 @@ fn inf_new() -> Ini {
     Ini::new_from_defaults(defaults)
 }
 
+/// Helper for [`read_to_string_utf16`]. Stable makes me cry.
+fn decode_utf16(bytes: &[u8], decoder: impl Fn([u8; 2]) -> u16) -> Result<String> {
+    let (bytes, rem) = bytes.as_chunks::<2>();
+
+    if !rem.is_empty() {
+        warn!("u16 bytecount not divisible by 2");
+    }
+
+    Ok(String::from_utf16(
+        &bytes.iter().map(|&b| decoder(b)).collect::<Vec<_>>(),
+    )?)
+}
+
 /// [`fs::read_to_string`] with UTF16 considerations.
 ///
 /// Follows the BOM if present, otherwise, parses as
@@ -29,13 +42,13 @@ fn read_to_string_utf16(path: &Path) -> Result<String> {
     let mut bytes = fs::read(path)?;
 
     Ok(match bytes.as_slice() {
-        [0xff, 0xfe, rest @ ..] => String::from_utf16le(rest)?,
-        [0xfe, 0xff, rest @ ..] => String::from_utf16be(rest)?,
+        [0xff, 0xfe, rest @ ..] => decode_utf16(rest, u16::from_le_bytes)?,
+        [0xfe, 0xff, rest @ ..] => decode_utf16(rest, u16::from_be_bytes)?,
         [0xef, 0xbb, 0xbf, ..] => {
             bytes.drain(0..3);
             String::from_utf8(bytes)?
         }
-        _ => String::from_utf8_lossy_owned(bytes),
+        _ => String::from_utf8_lossy(&bytes).into_owned(),
     })
 }
 
