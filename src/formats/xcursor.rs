@@ -333,9 +333,6 @@ mod tests {
         }
     }
 
-    // NOTE: Mark any test that uses libXcursor as `#[cfg(target_os = "linux")]`.
-    // If libXcursor tests (cargo test) fail to link, add `RUSTFLAGS='-lXcursor'`.
-
     /// Attempts to load the cursor produced from `black_and_white()` with libXcursor.
     #[cfg(target_os = "linux")]
     #[test]

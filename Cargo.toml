@@ -25,10 +25,9 @@ rayon = "1.11.0"
 [dev-dependencies]
 libc = "0.2.180"
 tempfile = "3.24.0"
-x11 = "2.21.0"
 
-[profile.release]
-lto = "fat"
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+x11 = { version = "2.21.0", features = ["xcursor"] }
 
 [profile.dist]
 inherits = "release"
