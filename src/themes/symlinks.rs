@@ -3,7 +3,8 @@
 //! The first string in each list is treated as the "concrete" file that symlinks point to.
 //!
 //! Derived from [win2xcur-batch](https://github.com/khayalhus/win2xcur-batch/blob/main/map.json),
-//! with some modifications.
+//! with some modifications. You may also want to read the [freedesktop.org
+//! cursor spec](https://wiki.freedesktop.org/www/Specifications/cursor-spec/).
 
 use super::theme::CursorType;
 
@@ -15,28 +16,28 @@ pub(super) const ARROW: &[&str] = &[
     // Context menus are normally the default cursor with a menu badge.
     "context-menu",
     "08ffe1e65f80fcfdf9fff11263e74c48",
-    // Drag-and-drop copy aliases use the default cursor as their closest equivalent.
+    // Drag-and-drop aliases use the default cursor as their closest equivalent.
     "copy",
     "dnd-copy",
     "08ffe1cb5fe6fc01f906f1c063814ccf",
     "1081e37283d90000800003c07f3ef6bf",
     "6407b0e94181790501fd1e167b474872",
     "b66166c04f8c3109214a4fbd64a50fc8",
-];
-
-pub(super) const HAND: &[&str] = &[
     "alias",
     "dnd-link",
-    "hand",
-    "hand2",
     "link",
-    "pointer",
-    "pointing_hand",
     "0876e1c15ff2fc01f906f1c363074c0f",
     "3085a0e285430894940527032f8b26df",
     "640fb0e74195791501fd1ed57b41487f",
-    "9d800788f1b08800ae810202380a0822",
     "a2a266d0498c3104214a47bd64ab0fc8",
+];
+
+pub(super) const HAND: &[&str] = &[
+    "hand",
+    "hand2",
+    "pointer",
+    "pointing_hand",
+    "9d800788f1b08800ae810202380a0822",
     "e29285e634086352946a0e7090d73106",
 ];
 
@@ -110,6 +111,7 @@ pub(super) const NS_RESIZE: &[&str] = &[
     "row-resize",
     "s-resize",
     "sb_down_arrow",
+    "sb_up_arrow",
     "sb_v_double_arrow",
     "size-ver",
     "size_ver",
@@ -195,9 +197,10 @@ pub(super) const MOVE: &[&str] = &[
 ];
 
 pub(super) const CENTER_PTR: &[&str] = &[
+    // Up-arrow identifies an insertion point, not vertical resizing.
+    // This corresponds with Windows' "Alternate Select" cursor.
     "up_arrow",
     "up-arrow",
-    "sb_up_arrow",
     "right_ptr",
     "top_right_arrow",
     "draft_large",
