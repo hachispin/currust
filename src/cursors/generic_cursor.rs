@@ -9,7 +9,7 @@ use crate::{
 
 use std::{
     fs::{self, File},
-    io::{BufWriter, Cursor},
+    io::{BufWriter, Cursor, Write},
     mem,
     path::Path,
 };
@@ -184,7 +184,7 @@ impl GenericCursor {
             if image.dimensions() == base_dims {
                 base.push(image);
             } else {
-                scaled.push(image);
+                scaled.push(vec![image].try_into()?);
             }
         }
 
@@ -193,7 +193,7 @@ impl GenericCursor {
         if scaled.is_empty() {
             Ok(Self::new_unscaled(base, None))
         } else {
-            Self::new(base, vec![scaled.try_into()?], None)
+            Self::new(base, scaled, None)
         }
     }
 
@@ -222,8 +222,14 @@ impl GenericCursor {
         let icos: Vec<IconDir> = ani_file
             .ico_frames
             .into_iter()
-            .map(|chunk| IconDir::read(&mut Cursor::new(&chunk)))
-            .collect::<Result<_, _>>()?;
+            .map(|chunk| {
+                let ico = IconDir::read(&mut Cursor::new(&chunk))?;
+                if ico.entries().is_empty() {
+                    bail!("ANI frame contains no images");
+                }
+                Ok(ico)
+            })
+            .collect::<Result<_>>()?;
 
         // get display order as indices into icos
         let sequence: Option<Vec<usize>> = ani_file
@@ -276,8 +282,7 @@ impl GenericCursor {
             return Ok(Self::new_unscaled(base, info));
         }
 
-        // could use hashmap here but ehh
-        scaled_ungrouped.sort_unstable_by_key(CursorImage::dimensions);
+        scaled_ungrouped.sort_by_key(CursorImage::dimensions);
         let scaled_ungrouped = scaled_ungrouped;
         let mut scaled = Vec::new();
         let mut buffer = Vec::new();
@@ -315,8 +320,8 @@ impl GenericCursor {
 
         let xcursor = Xcursor::new(self)?;
 
-        // this can create partial writes. consider fixing
         xcursor.write(&mut writer)?;
+        writer.flush().context("failed to flush Xcursor output")?;
 
         Ok(())
     }

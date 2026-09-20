@@ -10,7 +10,7 @@ use crate::{
 
 use std::{
     fs::{self, File},
-    io::Write,
+    io::{self, Write},
     path::{Path, PathBuf},
 };
 
@@ -175,24 +175,37 @@ impl TypedCursor {
     /// Saves as Xcursor to `dir`, along with symlinks.
     fn save_as_xcursor(&self, dir: &Path) -> Result<()> {
         let aliases = get_symlinks(&self.r#type);
-        self.inner.save_as_xcursor(dir.join(aliases[0]))?;
+        let primary = dir.join(aliases[0]);
+
+        match fs::symlink_metadata(&primary) {
+            Ok(metadata) if metadata.is_symlink() => fs::remove_file(&primary)?,
+            Ok(_) => (),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => (),
+            Err(e) => return Err(e.into()),
+        }
+        self.inner.save_as_xcursor(primary)?;
 
         // relative symlink
         #[cfg(unix)]
         for symlink in &aliases[1..] {
-            use std::{io, os::unix};
+            use std::os::unix;
 
-            match unix::fs::symlink(aliases[0], dir.join(symlink)) {
+            let path = dir.join(symlink);
+            match unix::fs::symlink(aliases[0], &path) {
                 Ok(()) => Ok(()),
-                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Ok(()),
-                Err(e) => Err(e).with_context(|| {
-                    format!(
-                        "failed to create symlink {} pointing to {}",
-                        dir.join(symlink).display(),
-                        aliases[0]
-                    )
-                }),
-            }?;
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                    fs::remove_file(&path)?;
+                    unix::fs::symlink(aliases[0], &path)
+                }
+                Err(e) => Err(e),
+            }
+            .with_context(|| {
+                format!(
+                    "failed to create symlink {} pointing to {}",
+                    path.display(),
+                    aliases[0]
+                )
+            })?;
         }
 
         Ok(())

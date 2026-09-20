@@ -407,6 +407,10 @@ impl AniFile {
         let num_frames = usize::try_from(hdr.num_frames)?;
         let num_steps = usize::try_from(hdr.num_steps)?;
 
+        if num_frames == 0 || num_steps == 0 {
+            bail!("ANI must contain at least one frame and one animation step");
+        }
+
         if num_frames != ani.ico_frames.len() {
             bail!(
                 "expected num_frames={num_frames}, instead got ico_frames.len()={}",
