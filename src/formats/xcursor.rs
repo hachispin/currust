@@ -138,9 +138,10 @@ struct ImageChunk {
     #[bw(calc = versions::IMAGE)]
     version: u32,
 
-    #[bw(assert(*width != 0, *width <= 2048))]
+    // TODO: Validate this earlier.
+    #[bw(assert(*width != 0 && *width <= 2048))]
     width: u32,
-    #[bw(assert(*height != 0, *height <= 2048))]
+    #[bw(assert(*height != 0 && *height <= 2048))]
     height: u32,
     #[bw(assert(hotspot_x <= width))]
     hotspot_x: u32,
@@ -396,7 +397,7 @@ mod tests {
 
         // only image chunks and each chunk has same dimensions
         // so the position step is consistent and allows this "hack"
-        for (pos, toc) in (268..82908).step_by(4132).zip(xcursor.header.toc) {
+        for (pos, toc) in (268..=82908).step_by(4132).zip(xcursor.header.toc) {
             assert_eq!(toc.r#type, ChunkType::Image);
             assert_eq!(toc.subtype, 32);
             assert_eq!(toc.position, pos);
