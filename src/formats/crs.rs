@@ -3,7 +3,7 @@
 //! Pretty sure CRS is just TOML with required sections.
 
 use crate::{
-    themes::theme::{CursorMapping, CursorType},
+    themes::theme::{CursorMapping, CursorRole},
     warn,
 };
 
@@ -13,8 +13,8 @@ use anyhow::{Result, anyhow, bail};
 use configparser::ini::Ini;
 
 /// Section names in CRS files.
-fn section_to_type(section: &str) -> Option<CursorType> {
-    use CursorType::*;
+fn section_to_type(section: &str) -> Option<CursorRole> {
+    use CursorRole::*;
 
     Some(match section {
         "arrow" | "default" => Arrow, // unsure
@@ -55,7 +55,7 @@ pub fn parse_crs_installer(crs_path: &Path) -> Result<Vec<CursorMapping>> {
         .read(fs::read_to_string(crs_path)?)
         .map_err(|e| anyhow!("failed to read crs, error e={e}"))?;
 
-    let mut mappings = Vec::with_capacity(CursorType::NUM_VARIANTS);
+    let mut mappings = Vec::with_capacity(CursorRole::NUM_VARIANTS);
 
     for (section, value) in crs {
         let Some(r#type) = section_to_type(&section) else {
