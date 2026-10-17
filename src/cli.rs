@@ -20,6 +20,7 @@ use dialoguer::{
     console::{Term, style},
     theme::ColorfulTheme,
 };
+
 use documented::DocumentedVariants;
 
 /// Raw arguments from CLI. Has the [`Parser`] trait.
@@ -48,6 +49,13 @@ pub struct Args {
     ///   but if you want to see them, consider downloading a nerd font.
     #[arg(long, verbatim_doc_comment)]
     manual: bool,
+
+    /// Sets the selected cursors nominal size to the provided value.
+    ///
+    /// This is also scaled accordingly for scaled variants. For example, if the base
+    /// nominal size is 24, the 2x scaled variant would have a nominal size of 48.
+    #[arg(long)]
+    base_nominal_size: Option<u32>,
 
     /// Uses the provided scaling algorithm.
     ///
@@ -130,19 +138,13 @@ impl From<&ScalingAlgorithm> for ResizeAlg {
 /// Parsed CLI arguments.
 #[derive(Debug)]
 pub struct ParsedArgs {
-    /// All installer files.
     pub installer_files: Vec<PathBuf>,
-    /// All cursor files.
     pub cursor_files: Vec<PathBuf>,
-    /// Installation is manual. Or not.
     pub manual: bool,
-    /// Scale factors.
+    pub base_nominal_size: Option<u32>,
     pub scale_to: Vec<f64>,
-    /// Algorithm for upscaling.
     pub upscale_with: ResizeAlg,
-    /// Algorithm for downscaling.
     pub downscale_with: ResizeAlg,
-    /// Where to put parsed Xcursor files.
     pub out: PathBuf,
 }
 
@@ -159,6 +161,7 @@ impl ParsedArgs {
     pub fn from_args(args: Args) -> Result<Self> {
         let paths = args.paths;
         let manual = args.manual;
+        let base_nominal_size = args.base_nominal_size;
         let mut installer_files = Vec::new();
         let mut cursor_files = Vec::new();
 
@@ -227,6 +230,7 @@ impl ParsedArgs {
             installer_files,
             cursor_files,
             manual,
+            base_nominal_size,
             scale_to,
             upscale_with,
             downscale_with,
