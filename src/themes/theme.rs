@@ -152,7 +152,7 @@ impl TypedCursor {
     ///
     /// - if path contained inside of `mapping` doesn't exist, even after a case-insensitive check
     /// - generic cursor parsing fails
-    pub fn from_mapping(mapping: CursorMapping) -> Result<Self> {
+    pub fn from_mapping(mapping: CursorMapping, base_nominal_size: Option<u32>) -> Result<Self> {
         let CursorMapping { path, r#type } = mapping;
 
         let path = if path.exists() {
@@ -166,7 +166,7 @@ impl TypedCursor {
             })?
         };
 
-        let inner = GenericCursor::from_path(&path)
+        let inner = GenericCursor::from_path(&path, base_nominal_size)
             .with_context(|| format!("while reading path={} as generic cursor", path.display()))?;
 
         Ok(Self { inner, r#type })
@@ -257,7 +257,10 @@ impl CursorTheme {
     /// ## Errors
     ///
     /// Mostly from parsing the INF file and filesystem operations.
-    pub fn from_installer_file(installer_file: impl AsRef<Path>) -> Result<Self> {
+    pub fn from_installer_file(
+        installer_file: impl AsRef<Path>,
+        base_nominal_size: Option<u32>,
+    ) -> Result<Self> {
         let installer_file = installer_file.as_ref();
         let ext = installer_file.extension().ok_or_else(|| {
             anyhow!(
@@ -276,7 +279,7 @@ impl CursorTheme {
 
         let typed_cursors: Vec<_> = mappings
             .into_iter()
-            .map(TypedCursor::from_mapping)
+            .map(|m| TypedCursor::from_mapping(m, base_nominal_size))
             .collect::<Result<_>>()?;
 
         Self::new(typed_cursors, name)

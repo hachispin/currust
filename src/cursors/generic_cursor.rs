@@ -134,7 +134,7 @@ impl GenericCursor {
     /// ## Errors
     ///
     /// If `path` has no extension or an extension that isn't "ani" or "cur".
-    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self> {
+    pub fn from_path<P: AsRef<Path>>(path: P, base_nominal_size: Option<u32>) -> Result<Self> {
         let path = path.as_ref();
 
         let Some(ext) = path.extension() else {
@@ -144,9 +144,9 @@ impl GenericCursor {
         let ext = ext.to_ascii_lowercase();
 
         let cursor = if ext == "cur" {
-            Self::from_cur_path(path)
+            Self::from_cur_path(path, base_nominal_size)
         } else if ext == "ani" {
-            Self::from_ani_path(path)
+            Self::from_ani_path(path, base_nominal_size)
         } else {
             bail!(
                 "expected extension 'cur' or 'ani' for path, got ext={}",
@@ -164,7 +164,10 @@ impl GenericCursor {
     ///
     /// If a file handle to `cur_path` can't be opened,
     /// or the file stored is not a CUR file.
-    pub fn from_cur_path<P: AsRef<Path>>(cur_path: P) -> Result<Self> {
+    pub fn from_cur_path<P: AsRef<Path>>(
+        cur_path: P,
+        base_nominal_size: Option<u32>,
+    ) -> Result<Self> {
         let cur_path = cur_path.as_ref();
         let handle = fs::read(cur_path).context("(filesystem) failed to read")?;
         let icon_dir = IconDir::read(Cursor::new(handle)).context("failed to read `IconDir`")?;
@@ -179,7 +182,7 @@ impl GenericCursor {
         let base_dims = Self::get_base_dimensions(&[&icon_dir]);
 
         for entry in entries {
-            let image = CursorImage::from_entry(entry, 0)?;
+            let image = CursorImage::from_entry(entry, base_nominal_size, 0)?;
 
             if image.dimensions() == base_dims {
                 base.push(image);
@@ -205,7 +208,10 @@ impl GenericCursor {
     /// - Stored RGBA in ICO frames fail to be decoded.
     /// - Frames are inconsistent, see [`CursorImages`].
     /// - [`TryInto`] conversions fail (between primitive types).
-    pub fn from_ani_path<P: AsRef<Path>>(ani_path: P) -> Result<Self> {
+    pub fn from_ani_path<P: AsRef<Path>>(
+        ani_path: P,
+        base_nominal_size: Option<u32>,
+    ) -> Result<Self> {
         let ani_blob = fs::read(&ani_path)?;
         let ani_file = AniFile::from_blob(&ani_blob)?;
         let header = &ani_file.header;
@@ -266,7 +272,7 @@ impl GenericCursor {
             let entries = ico.entries();
 
             for entry in entries {
-                let image = CursorImage::from_entry(entry, delay)?;
+                let image = CursorImage::from_entry(entry, base_nominal_size, delay)?;
 
                 if image.dimensions() == base_dims {
                     base.push(image);

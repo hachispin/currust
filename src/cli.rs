@@ -9,7 +9,7 @@ use crate::{
     warn,
 };
 
-use std::{fs, path::PathBuf};
+use std::{ffi::OsStr, fs, path::PathBuf};
 
 use anyhow::{Result, anyhow, bail};
 use clap::{Parser, ValueEnum};
@@ -20,6 +20,7 @@ use dialoguer::{
     console::{Term, style},
     theme::ColorfulTheme,
 };
+
 use documented::DocumentedVariants;
 
 /// Raw arguments from CLI. Has the [`Parser`] trait.
@@ -48,6 +49,16 @@ pub struct Args {
     ///   but if you want to see them, consider downloading a nerd font.
     #[arg(long, verbatim_doc_comment)]
     manual: bool,
+
+    /// Sets the selected cursors nominal size to the provided value.
+    ///
+    /// This is also scaled accordingly for scaled variants. For example, if the base
+    /// nominal size is 24, the 2x scaled variant would have a nominal size of 48.
+    ///
+    /// Setting this to 24 may help with preventing applications
+    /// from scaling your cursor. Perhaps useful for pixel art.
+    #[arg(long, value_name = "U32_SIZE")]
+    base_nominal_size: Option<u32>,
 
     /// Uses the provided scaling algorithm.
     ///
@@ -130,19 +141,13 @@ impl From<&ScalingAlgorithm> for ResizeAlg {
 /// Parsed CLI arguments.
 #[derive(Debug)]
 pub struct ParsedArgs {
-    /// All installer files.
     pub installer_files: Vec<PathBuf>,
-    /// All cursor files.
     pub cursor_files: Vec<PathBuf>,
-    /// Installation is manual. Or not.
     pub manual: bool,
-    /// Scale factors.
+    pub base_nominal_size: Option<u32>,
     pub scale_to: Vec<f64>,
-    /// Algorithm for upscaling.
     pub upscale_with: ResizeAlg,
-    /// Algorithm for downscaling.
     pub downscale_with: ResizeAlg,
-    /// Where to put parsed Xcursor files.
     pub out: PathBuf,
 }
 
@@ -157,16 +162,27 @@ impl ParsedArgs {
     ///
     /// If any provided paths don't exist or `out` directory can't be made.
     pub fn from_args(args: Args) -> Result<Self> {
-        let paths = args.paths;
-        let manual = args.manual;
+        let Args {
+            paths,
+            manual,
+            upscale_with,
+            downscale_with,
+            base_nominal_size,
+            scale_with,
+            mut scale_to,
+            out,
+        } = args;
+
         let mut installer_files = Vec::new();
         let mut cursor_files = Vec::new();
+        let upscale_with = ResizeAlg::from(upscale_with.as_ref().unwrap_or(&scale_with));
+        let downscale_with = ResizeAlg::from(downscale_with.as_ref().unwrap_or(&scale_with));
 
         for path in paths {
             let path_display = path.display();
 
             if !path.exists() {
-                // this is not my problem. https://github.com/rust-lang/rust/issues/72653
+                // weird. https://github.com/rust-lang/rust/issues/72653
                 #[cfg(windows)]
                 bail!(
                     "path={path_display} doesn't exist. \n\
@@ -175,13 +191,14 @@ impl ParsedArgs {
                     .\\currust.exe '.\\a path\\to a\\dir\\' -> .\\currust.exe '.\\a path\\to a\\dir'"
                 );
 
+                #[cfg(not(windows))]
                 bail!("path={path_display} doesn't exist");
             }
 
             if path.is_dir() {
                 cursor_files.extend(find_extensions_icase(&path, &["cur", "ani"])?);
             } else if path.is_file() {
-                let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+                let Some(ext) = path.extension().and_then(OsStr::to_str) else {
                     warn!("ignoring file {path_display} as it has no extension");
                     continue;
                 };
@@ -189,14 +206,20 @@ impl ParsedArgs {
                 match ext.to_ascii_lowercase().as_str() {
                     "inf" | "crs" => installer_files.push(path),
                     "cur" | "ani" => cursor_files.push(path),
-                    _ => warn!("ignoring file {path_display} as it is not a cursor"),
+                    _ => warn!("ignoring file {path_display} as it is not INF, CRS, CUR or ANI"),
                 }
             } else {
                 warn!("ignoring path={path_display} as it is neither a dir or a file",);
             }
         }
 
-        let mut scale_to = args.scale_to;
+        if cursor_files.is_empty() && installer_files.is_empty() {
+            bail!("no cursor or installer files found");
+        }
+
+        if base_nominal_size == Some(0) {
+            bail!("nominal size can't be zero");
+        }
 
         for &sf in &scale_to {
             if sf.is_nan() || sf.is_infinite() {
@@ -214,19 +237,13 @@ impl ParsedArgs {
 
         scale_to.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
         scale_to.dedup();
-
-        let (upscale_with, downscale_with) = (
-            ResizeAlg::from(args.upscale_with.as_ref().unwrap_or(&args.scale_with)),
-            ResizeAlg::from(args.downscale_with.as_ref().unwrap_or(&args.scale_with)),
-        );
-
-        let out = args.out;
         fs::create_dir_all(&out)?;
 
         Ok(Self {
             installer_files,
             cursor_files,
             manual,
+            base_nominal_size,
             scale_to,
             upscale_with,
             downscale_with,
@@ -253,7 +270,10 @@ impl ParsedArgs {
 ///
 /// - any path in `cursor_paths` has no filename
 /// - [`Select`] prompt fails (e.g., if user is not in a terminal)
-pub(super) fn prompt_for_theme(cursor_files: &[PathBuf]) -> Result<CursorTheme> {
+pub(super) fn prompt_for_theme(
+    cursor_files: &[PathBuf],
+    base_nominal_size: Option<u32>,
+) -> Result<CursorTheme> {
     let mut mappings = Vec::with_capacity(cursor_files.len());
     let mut cursor_paths_display: Vec<_> = cursor_files
         .iter()
@@ -298,7 +318,7 @@ pub(super) fn prompt_for_theme(cursor_files: &[PathBuf]) -> Result<CursorTheme> 
 
     let typed_cursors = mappings
         .into_iter()
-        .map(TypedCursor::from_mapping)
+        .map(|m| TypedCursor::from_mapping(m, base_nominal_size))
         .collect::<Result<_>>()?;
 
     let theme = CursorTheme::new(typed_cursors, name)?;
