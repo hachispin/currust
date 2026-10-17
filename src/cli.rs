@@ -9,7 +9,7 @@ use crate::{
     warn,
 };
 
-use std::{fs, path::PathBuf};
+use std::{ffi::OsStr, fs, path::PathBuf};
 
 use anyhow::{Result, anyhow, bail};
 use clap::{Parser, ValueEnum};
@@ -162,17 +162,27 @@ impl ParsedArgs {
     ///
     /// If any provided paths don't exist or `out` directory can't be made.
     pub fn from_args(args: Args) -> Result<Self> {
-        let paths = args.paths;
-        let manual = args.manual;
-        let base_nominal_size = args.base_nominal_size;
+        let Args {
+            paths,
+            manual,
+            upscale_with,
+            downscale_with,
+            base_nominal_size,
+            scale_with,
+            mut scale_to,
+            out,
+        } = args;
+
         let mut installer_files = Vec::new();
         let mut cursor_files = Vec::new();
+        let upscale_with = ResizeAlg::from(upscale_with.as_ref().unwrap_or(&scale_with));
+        let downscale_with = ResizeAlg::from(downscale_with.as_ref().unwrap_or(&scale_with));
 
         for path in paths {
             let path_display = path.display();
 
             if !path.exists() {
-                // this is not my problem. https://github.com/rust-lang/rust/issues/72653
+                // weird. https://github.com/rust-lang/rust/issues/72653
                 #[cfg(windows)]
                 bail!(
                     "path={path_display} doesn't exist. \n\
@@ -181,13 +191,14 @@ impl ParsedArgs {
                     .\\currust.exe '.\\a path\\to a\\dir\\' -> .\\currust.exe '.\\a path\\to a\\dir'"
                 );
 
+                #[cfg(not(windows))]
                 bail!("path={path_display} doesn't exist");
             }
 
             if path.is_dir() {
                 cursor_files.extend(find_extensions_icase(&path, &["cur", "ani"])?);
             } else if path.is_file() {
-                let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+                let Some(ext) = path.extension().and_then(OsStr::to_str) else {
                     warn!("ignoring file {path_display} as it has no extension");
                     continue;
                 };
@@ -195,14 +206,20 @@ impl ParsedArgs {
                 match ext.to_ascii_lowercase().as_str() {
                     "inf" | "crs" => installer_files.push(path),
                     "cur" | "ani" => cursor_files.push(path),
-                    _ => warn!("ignoring file {path_display} as it is not a cursor"),
+                    _ => warn!("ignoring file {path_display} as it not INF, CRS, CUR or ANI"),
                 }
             } else {
                 warn!("ignoring path={path_display} as it is neither a dir or a file",);
             }
         }
 
-        let mut scale_to = args.scale_to;
+        if cursor_files.is_empty() && installer_files.is_empty() {
+            bail!("no cursor or installer files found");
+        }
+
+        if base_nominal_size == Some(0) {
+            bail!("nominal size can't be zero");
+        }
 
         for &sf in &scale_to {
             if sf.is_nan() || sf.is_infinite() {
@@ -220,13 +237,6 @@ impl ParsedArgs {
 
         scale_to.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
         scale_to.dedup();
-
-        let (upscale_with, downscale_with) = (
-            ResizeAlg::from(args.upscale_with.as_ref().unwrap_or(&args.scale_with)),
-            ResizeAlg::from(args.downscale_with.as_ref().unwrap_or(&args.scale_with)),
-        );
-
-        let out = args.out;
         fs::create_dir_all(&out)?;
 
         Ok(Self {
