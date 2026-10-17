@@ -1,7 +1,7 @@
 //! Parses INF installer files for cursor themes.
 
 use crate::{
-    themes::theme::{CursorMapping, CursorType},
+    themes::theme::{CursorMapping, CursorRole},
     warn,
 };
 
@@ -201,8 +201,8 @@ pub fn parse_inf_installer(inf_path: &Path) -> Result<(String, Vec<CursorMapping
 ///
 /// The index should be offsets relative to the first cursor in `Scheme.Reg`.
 #[rustfmt::skip]
-const fn index_to_cursor_type(index: usize) -> CursorType {
-    use CursorType::*;
+const fn index_to_cursor_type(index: usize) -> CursorRole {
+    use CursorRole::*;
 
     match index {
          0 => Arrow,          1 => Help,

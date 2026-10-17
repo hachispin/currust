@@ -6,7 +6,7 @@
 //! with some modifications. You may also want to read the [freedesktop.org
 //! cursor spec](https://wiki.freedesktop.org/www/Specifications/cursor-spec/).
 
-use super::theme::CursorType;
+use super::theme::CursorRole;
 
 pub(super) const ARROW: &[&str] = &[
     "arrow",
@@ -208,8 +208,8 @@ pub(super) const CENTER_PTR: &[&str] = &[
     "center_ptr",
 ];
 
-pub(super) const fn get_symlinks(r#type: &CursorType) -> &'static [&'static str] {
-    use CursorType::*;
+pub(super) const fn get_symlinks(r#type: &CursorRole) -> &'static [&'static str] {
+    use CursorRole::*;
 
     match r#type {
         Arrow => ARROW,

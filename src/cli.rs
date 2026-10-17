@@ -5,7 +5,7 @@
 
 use crate::{
     fs_utils::find_extensions_icase,
-    themes::theme::{CursorMapping, CursorTheme, CursorType, TypedCursor},
+    themes::theme::{CursorMapping, CursorRole, CursorTheme, TypedCursor},
     warn,
 };
 
@@ -284,7 +284,7 @@ pub(super) fn prompt_for_theme(
         })
         .collect::<Result<_>>()?;
 
-    for r#type in CursorType::VARIANTS {
+    for r#type in CursorRole::VARIANTS {
         let prompt = format!(
             "Select the file representing '{:?}'.\n{}",
             r#type,
