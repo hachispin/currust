@@ -15,6 +15,10 @@
     clippy::enum_glob_use,
     reason = "when used, scope is restricted (e.g., inside functions)"
 )]
+#![allow(
+    rust_analyzer::inactive_code,
+    reason = "this really shouldn't be a warning tbh"
+)]
 
 pub mod cli;
 pub mod cursors;
