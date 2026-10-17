@@ -119,7 +119,7 @@ impl CursorImage {
         let (w1, h1) = self.dimensions();
         let (w2, h2) = Self::scale_point((w1, h1), scale_factor);
         #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let nominal_size = (scale_factor * f64::from(self.nominal_size())) as u32;
+        let nominal_size = (f64::from(self.nominal_size()) * scale_factor).floor() as u32;
         let (hx2, hy2) = Self::scale_point(self.hotspot(), scale_factor);
         let src = ImageRef::new(w1, h1, self.rgba(), PixelType::U8x4)?;
         let mut dst = Image::new(w2, h2, PixelType::U8x4);

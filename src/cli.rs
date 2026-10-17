@@ -206,7 +206,7 @@ impl ParsedArgs {
                 match ext.to_ascii_lowercase().as_str() {
                     "inf" | "crs" => installer_files.push(path),
                     "cur" | "ani" => cursor_files.push(path),
-                    _ => warn!("ignoring file {path_display} as it not INF, CRS, CUR or ANI"),
+                    _ => warn!("ignoring file {path_display} as it is not INF, CRS, CUR or ANI"),
                 }
             } else {
                 warn!("ignoring path={path_display} as it is neither a dir or a file",);
