@@ -54,7 +54,7 @@ pub struct Args {
     ///
     /// This is also scaled accordingly for scaled variants. For example, if the base
     /// nominal size is 24, the 2x scaled variant would have a nominal size of 48.
-    #[arg(long)]
+    #[arg(long, value_name = "U32_SIZE")]
     base_nominal_size: Option<u32>,
 
     /// Uses the provided scaling algorithm.
@@ -257,7 +257,10 @@ impl ParsedArgs {
 ///
 /// - any path in `cursor_paths` has no filename
 /// - [`Select`] prompt fails (e.g., if user is not in a terminal)
-pub(super) fn prompt_for_theme(cursor_files: &[PathBuf]) -> Result<CursorTheme> {
+pub(super) fn prompt_for_theme(
+    cursor_files: &[PathBuf],
+    base_nominal_size: Option<u32>,
+) -> Result<CursorTheme> {
     let mut mappings = Vec::with_capacity(cursor_files.len());
     let mut cursor_paths_display: Vec<_> = cursor_files
         .iter()
@@ -302,7 +305,7 @@ pub(super) fn prompt_for_theme(cursor_files: &[PathBuf]) -> Result<CursorTheme> 
 
     let typed_cursors = mappings
         .into_iter()
-        .map(TypedCursor::from_mapping)
+        .map(|m| TypedCursor::from_mapping(m, base_nominal_size))
         .collect::<Result<_>>()?;
 
     let theme = CursorTheme::new(typed_cursors, name)?;

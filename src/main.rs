@@ -59,7 +59,7 @@ fn main() -> Result<()> {
     let args = ParsedArgs::from_args(raw_args)?;
 
     args.installer_files.par_iter().try_for_each(|d| {
-        let mut theme = CursorTheme::from_installer_file(d)
+        let mut theme = CursorTheme::from_installer_file(d, args.base_nominal_size)
             .with_context(|| format!("while reading dir={} as theme", d.display()))?;
 
         for &sf in &args.scale_to {
@@ -70,7 +70,7 @@ fn main() -> Result<()> {
     })?;
 
     if args.manual {
-        let mut theme = prompt_for_theme(&args.cursor_files)?;
+        let mut theme = prompt_for_theme(&args.cursor_files, args.base_nominal_size)?;
 
         for &sf in &args.scale_to {
             theme.add_scale(sf, args.get_algorithm(sf))?;
@@ -79,7 +79,7 @@ fn main() -> Result<()> {
         theme.save_as_x11_theme(&args.out)?;
     } else {
         args.cursor_files.par_iter().try_for_each(|f| {
-            let mut cursor = GenericCursor::from_path(f)
+            let mut cursor = GenericCursor::from_path(f, args.base_nominal_size)
                 .with_context(|| format!("while reading f={} as cursor", f.display()))?;
 
             let filename = args.out.join(
