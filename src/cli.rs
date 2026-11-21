@@ -271,10 +271,7 @@ impl ParsedArgs {
 ///
 /// - any path in `cursor_paths` has no filename
 /// - [`Select`] prompt fails (e.g., if user is not in a terminal)
-pub(super) fn prompt_for_theme(
-    cursor_files: &[PathBuf],
-    base_nominal_size: Option<u32>,
-) -> Result<CursorTheme> {
+pub(super) fn prompt_for_theme(cursor_files: &[PathBuf]) -> Result<CursorTheme> {
     let mut mappings = Vec::with_capacity(cursor_files.len());
     let mut cursor_paths_display: Vec<_> = cursor_files
         .iter()
@@ -317,5 +314,5 @@ pub(super) fn prompt_for_theme(
         }
     };
 
-    CursorTheme::from_mappings(mappings, name, base_nominal_size)
+    CursorTheme::from_mappings(mappings, name)
 }

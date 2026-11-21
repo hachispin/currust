@@ -39,11 +39,7 @@ impl CursorTheme {
     ///
     /// ## Errors
     /// If the mappings are empty, contain duplicate roles, or a cursor fails to load.
-    pub fn from_mappings(
-        mappings: Vec<CursorMapping>,
-        name: String,
-        base_nominal_size: Option<u32>,
-    ) -> Result<Self> {
+    pub fn from_mappings(mappings: Vec<CursorMapping>, name: String) -> Result<Self> {
         if mappings.is_empty() {
             bail!("can't create theme with no cursors (empty)");
         }
@@ -77,10 +73,9 @@ impl CursorTheme {
                 })?
             };
 
-            let mut cursor =
-                GenericCursor::from_path(&path, base_nominal_size).with_context(|| {
-                    format!("while reading path={} as generic cursor", path.display())
-                })?;
+            let mut cursor = GenericCursor::from_path(&path).with_context(|| {
+                format!("while reading path={} as generic cursor", path.display())
+            })?;
             cursor.role = Some(role);
             cursors.push(cursor);
         }
@@ -93,10 +88,7 @@ impl CursorTheme {
     /// ## Errors
     ///
     /// Mostly from parsing the INF file and filesystem operations.
-    pub fn from_installer_file(
-        installer_file: impl AsRef<Path>,
-        base_nominal_size: Option<u32>,
-    ) -> Result<Self> {
+    pub fn from_installer_file(installer_file: impl AsRef<Path>) -> Result<Self> {
         let installer_file = installer_file.as_ref();
         let ext = installer_file.extension().ok_or_else(|| {
             anyhow!(
@@ -113,7 +105,19 @@ impl CursorTheme {
             bail!("unsupported installer file extension ext={}", ext.display())
         };
 
-        Self::from_mappings(mappings, name, base_nominal_size)
+        Self::from_mappings(mappings, name)
+    }
+
+    /// Sets the base nominal size of every cursor in this theme.
+    ///
+    /// ## Errors
+    /// From [`GenericCursor::set_base_nominal_size`].
+    pub fn with_base_nominal_size(mut self, size: u32) -> Result<Self> {
+        for cursor in &mut self.cursors {
+            cursor.set_base_nominal_size(size)?;
+        }
+
+        Ok(self)
     }
 
     /// Adds scale to all cursors for the current theme.

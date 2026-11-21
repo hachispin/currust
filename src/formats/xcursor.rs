@@ -386,11 +386,9 @@ mod tests {
             argb: Vec::new(), // stored somewhere else
         };
 
-        let cursor = GenericCursor::from_ani_path(
-            from_root!("/testing/fixtures/neuro/Neuro help.ani"),
-            None,
-        )
-        .unwrap();
+        let cursor =
+            GenericCursor::from_ani_path(from_root!("/testing/fixtures/neuro/Neuro help.ani"))
+                .unwrap();
 
         let xcursor = Xcursor::new(&cursor).unwrap();
 

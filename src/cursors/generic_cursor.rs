@@ -39,12 +39,10 @@ impl GenericCursor {
     fn from_source(
         base: Vec<CursorImage>,
         variants: impl IntoIterator<Item = Vec<CursorImage>>,
-        base_nominal_size: Option<u32>,
         info: Option<String>,
     ) -> Result<Self> {
         let base_frame = base.first().context("no base frames found")?;
         let base_size = base_frame.nominal_size;
-        let base_nominal_size = base_nominal_size.unwrap_or(base_size);
         let base_len = base.len();
         let mut images: Vec<(f64, Vec<CursorImage>)> = Vec::new();
 
@@ -55,23 +53,15 @@ impl GenericCursor {
 
             CursorImage::validate_frames(&mut frames)?;
             let source_size = frames[0].nominal_size;
-            let scale_factor = f64::from(source_size) / f64::from(base_size);
-            let nominal_size =
-                u64::from(base_nominal_size) * u64::from(source_size) / u64::from(base_size);
-            let nominal_size = u32::try_from(nominal_size.max(1))
-                .context("source cursor nominal size exceeds u32")?;
 
             if images
                 .iter()
-                .any(|(_, stored)| stored[0].nominal_size == nominal_size)
+                .any(|(_, stored)| stored[0].nominal_size == source_size)
             {
-                bail!("multiple source cursor variants have nominal size {nominal_size}");
+                bail!("multiple source cursor variants have nominal size {source_size}");
             }
 
-            for frame in &mut frames {
-                frame.nominal_size = nominal_size;
-            }
-
+            let scale_factor = f64::from(source_size) / f64::from(base_size);
             images.push((scale_factor, frames));
         }
 
@@ -80,6 +70,39 @@ impl GenericCursor {
             role: None,
             info,
         })
+    }
+
+    /// Sets the nominal size of the base and updates each variant by its stored scale.
+    ///
+    /// ## Errors
+    /// If the base size is zero or a scaled nominal size exceeds `u32::MAX`.
+    pub fn set_base_nominal_size(&mut self, size: u32) -> Result<()> {
+        if size == 0 {
+            bail!("nominal size can't be zero");
+        }
+
+        let nominal_sizes = self
+            .images
+            .iter()
+            .map(|(scale, _)| {
+                let nominal_size = (f64::from(size) * scale).floor().max(1.0);
+
+                if nominal_size > f64::from(u32::MAX) {
+                    bail!("nominal size {nominal_size} at scale {scale} exceeds u32");
+                }
+
+                #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                Ok(nominal_size as u32)
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        for ((_, frames), nominal_size) in self.images.iter_mut().zip(nominal_sizes) {
+            for frame in frames {
+                frame.nominal_size = nominal_size;
+            }
+        }
+
+        Ok(())
     }
 
     /// Adds a variant scaled from the canonical base if its scale and nominal size are new.
@@ -120,7 +143,7 @@ impl GenericCursor {
     /// ## Errors
     ///
     /// If `path` has no extension or an extension that isn't "ani" or "cur".
-    pub fn from_path<P: AsRef<Path>>(path: P, base_nominal_size: Option<u32>) -> Result<Self> {
+    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
 
         let Some(ext) = path.extension() else {
@@ -129,18 +152,16 @@ impl GenericCursor {
 
         let ext = ext.to_ascii_lowercase();
 
-        let cursor = if ext == "cur" {
-            Self::from_cur_path(path, base_nominal_size)
+        if ext == "cur" {
+            Self::from_cur_path(path)
         } else if ext == "ani" {
-            Self::from_ani_path(path, base_nominal_size)
+            Self::from_ani_path(path)
         } else {
             bail!(
                 "expected extension 'cur' or 'ani' for path, got ext={}",
                 ext.display()
             )
-        }?;
-
-        Ok(cursor)
+        }
     }
 
     /// Reads and parses a cursor from `cur_path`, which
@@ -150,10 +171,7 @@ impl GenericCursor {
     ///
     /// If a file handle to `cur_path` can't be opened,
     /// or the file stored is not a CUR file.
-    pub fn from_cur_path<P: AsRef<Path>>(
-        cur_path: P,
-        base_nominal_size: Option<u32>,
-    ) -> Result<Self> {
+    pub fn from_cur_path<P: AsRef<Path>>(cur_path: P) -> Result<Self> {
         let cur_path = cur_path.as_ref();
         let handle = fs::read(cur_path).context("(filesystem) failed to read")?;
         let icon_dir = IconDir::read(Cursor::new(handle)).context("failed to read `IconDir`")?;
@@ -177,7 +195,7 @@ impl GenericCursor {
             }
         }
 
-        Self::from_source(base, variants, base_nominal_size, None)
+        Self::from_source(base, variants, None)
     }
 
     /// Parses `ani_path`.
@@ -188,10 +206,7 @@ impl GenericCursor {
     /// - Stored RGBA in ICO frames fail to be decoded.
     /// - Frame sequences have incompatible dimensions, delays, or lengths.
     /// - [`TryInto`] conversions fail (between primitive types).
-    pub fn from_ani_path<P: AsRef<Path>>(
-        ani_path: P,
-        base_nominal_size: Option<u32>,
-    ) -> Result<Self> {
+    pub fn from_ani_path<P: AsRef<Path>>(ani_path: P) -> Result<Self> {
         let ani_blob = fs::read(&ani_path)?;
         let ani_file = AniFile::from_blob(&ani_blob)?;
         let header = &ani_file.header;
@@ -263,7 +278,7 @@ impl GenericCursor {
             .remove(&base_dims)
             .context("no base frames found")?;
 
-        Self::from_source(base, by_dimensions.into_values(), base_nominal_size, info)
+        Self::from_source(base, by_dimensions.into_values(), info)
     }
 
     /// Saves `self` to `path` as Xcursor.
@@ -339,7 +354,8 @@ pub mod tests {
         }
 
         icon.write(File::create(&path).unwrap()).unwrap();
-        let mut cursor = GenericCursor::from_path(path, Some(24)).unwrap();
+        let mut cursor = GenericCursor::from_path(path).unwrap();
+        cursor.set_base_nominal_size(24).unwrap();
 
         for scale in [1.0, 2.0, 1.5, 1.5, 1.51] {
             cursor.add_scale(scale, ResizeAlg::Nearest).unwrap();
@@ -353,6 +369,12 @@ pub mod tests {
             sizes_and_pixels,
             [((32, 32), 24, 255), ((64, 64), 48, 0), ((48, 48), 36, 255)]
         );
+
+        cursor.set_base_nominal_size(1).unwrap();
+        assert!(cursor.set_base_nominal_size(u32::MAX).is_err());
+
+        let sizes: Vec<_> = cursor.frames().map(|frame| frame.nominal_size).collect();
+        assert_eq!(sizes, [1, 2, 1]);
     }
 
     /// Generates an animated cursor with ten alternating black and white frames.
@@ -371,6 +393,6 @@ pub mod tests {
             WHITE.clone(),
         ];
 
-        GenericCursor::from_source(frames.to_vec(), [], None, None).unwrap()
+        GenericCursor::from_source(frames.to_vec(), [], None).unwrap()
     }
 }
