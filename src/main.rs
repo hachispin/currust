@@ -60,7 +60,7 @@ macro_rules! warn {
 
 fn save_theme(mut theme: CursorTheme, args: &ParsedArgs) -> Result<()> {
     if let Some(size) = args.base_nominal_size {
-        theme = theme.with_base_nominal_size(size)?;
+        theme = theme.set_base_nominal_size(size)?;
     }
 
     for &sf in &args.scale_to {

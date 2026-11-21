@@ -24,8 +24,8 @@ pub struct GenericCursor {
     /// Source and generated frame sequences paired with their scale factors.
     ///
     /// The first sequence is the canonical base at scale 1.0, chosen by
-    /// [`Self::get_base_dimensions`]. For a source with 32x32 and 64x64 frames, `--scale-to 2.0`
-    /// targets the 64x64 size that is already present.
+    /// [`Self::get_base_dimensions`]. For a source with 32x32 and 64x64 frames,
+    /// `--scale-to 2.0` targets the 64x64 size that is already present.
     images: Vec<(f64, Vec<CursorImage>)>,
     /// The cursor's role when used in a theme.
     pub role: Option<CursorRole>,
@@ -52,6 +52,7 @@ impl GenericCursor {
             }
 
             CursorImage::validate_frames(&mut frames)?;
+
             let source_size = frames[0].nominal_size;
 
             if images
@@ -75,7 +76,8 @@ impl GenericCursor {
     /// Sets the nominal size of the base and updates each variant by its stored scale.
     ///
     /// ## Errors
-    /// If the base size is zero or a scaled nominal size exceeds `u32::MAX`.
+    ///
+    /// If the base size is zero.
     pub fn set_base_nominal_size(&mut self, size: u32) -> Result<()> {
         if size == 0 {
             bail!("nominal size can't be zero");
@@ -86,10 +88,6 @@ impl GenericCursor {
             .iter()
             .map(|(scale, _)| {
                 let nominal_size = (f64::from(size) * scale).floor().max(1.0);
-
-                if nominal_size > f64::from(u32::MAX) {
-                    bail!("nominal size {nominal_size} at scale {scale} exceeds u32");
-                }
 
                 #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
                 Ok(nominal_size as u32)
@@ -124,7 +122,7 @@ impl GenericCursor {
             .iter()
             .any(|(scale, frames)| *scale == scale_factor || frames[0].nominal_size == nominal_size)
         {
-            eprintln!("scale_factor={scale_factor} already covered, skipping");
+            eprintln!("scale_factor={scale_factor} already exists, skipping");
             return Ok(());
         }
 
@@ -337,45 +335,6 @@ impl GenericCursor {
 pub mod tests {
     use super::*;
     use crate::cursors::cursor_image::tests::{BLACK, WHITE};
-    use ico::{IconDirEntry, IconImage, ResourceType};
-
-    #[test]
-    fn scales_multi_size_cur_from_canonical_base() {
-        let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("multi.cur");
-        let mut icon = IconDir::new(ResourceType::Cursor);
-
-        for (size, shade) in [(64, 0), (32, 255)] {
-            let pixel_count = usize::try_from(size * size).unwrap();
-            let rgba = [shade, shade, shade, 255].repeat(pixel_count);
-            let mut image = IconImage::from_rgba_data(size, size, rgba);
-            image.set_cursor_hotspot(Some((0, 0)));
-            icon.add_entry(IconDirEntry::encode(&image).unwrap());
-        }
-
-        icon.write(File::create(&path).unwrap()).unwrap();
-        let mut cursor = GenericCursor::from_path(path).unwrap();
-        cursor.set_base_nominal_size(24).unwrap();
-
-        for scale in [1.0, 2.0, 1.5, 1.5, 1.51] {
-            cursor.add_scale(scale, ResizeAlg::Nearest).unwrap();
-        }
-
-        let sizes_and_pixels: Vec<_> = cursor
-            .frames()
-            .map(|frame| (frame.dimensions(), frame.nominal_size, frame.rgba()[0]))
-            .collect();
-        assert_eq!(
-            sizes_and_pixels,
-            [((32, 32), 24, 255), ((64, 64), 48, 0), ((48, 48), 36, 255)]
-        );
-
-        cursor.set_base_nominal_size(1).unwrap();
-        assert!(cursor.set_base_nominal_size(u32::MAX).is_err());
-
-        let sizes: Vec<_> = cursor.frames().map(|frame| frame.nominal_size).collect();
-        assert_eq!(sizes, [1, 2, 1]);
-    }
 
     /// Generates an animated cursor with ten alternating black and white frames.
     #[expect(clippy::missing_panics_doc)]

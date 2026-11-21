@@ -38,6 +38,7 @@ impl CursorTheme {
     /// Loads a theme from cursor paths and their roles.
     ///
     /// ## Errors
+    ///
     /// If the mappings are empty, contain duplicate roles, or a cursor fails to load.
     pub fn from_mappings(mappings: Vec<CursorMapping>, name: String) -> Result<Self> {
         if mappings.is_empty() {
@@ -111,8 +112,9 @@ impl CursorTheme {
     /// Sets the base nominal size of every cursor in this theme.
     ///
     /// ## Errors
+    ///
     /// From [`GenericCursor::set_base_nominal_size`].
-    pub fn with_base_nominal_size(mut self, size: u32) -> Result<Self> {
+    pub fn set_base_nominal_size(mut self, size: u32) -> Result<Self> {
         for cursor in &mut self.cursors {
             cursor.set_base_nominal_size(size)?;
         }
@@ -238,8 +240,7 @@ impl CursorTheme {
         Ok(())
     }
 
-    /// Writes a bash script to `cursor_dir` that
-    /// creates symlinks for windows "compatibility".
+    /// Writes a bash script to `cursor_dir` that creates symlinks for windows "compatibility".
     ///
     /// This expects the Xcursor files (src) to already be written.
     #[cfg(windows)]
