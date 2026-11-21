@@ -1,0 +1,25 @@
+name: Tests
+
+on: [push, pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install Xcursor development dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcursor-dev pkg-config
+
+      - name: Install stable Rust
+        run: rustup toolchain install stable --profile minimal
+
+      - name: Run tests
+        run: cargo +stable test --locked
