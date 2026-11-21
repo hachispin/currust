@@ -51,10 +51,10 @@ pub struct Args {
     #[arg(long, verbatim_doc_comment)]
     manual: bool,
 
-    /// Sets the selected cursors nominal size to the provided value.
+    /// Sets the nominal size of each cursor's base variant.
     ///
-    /// This is also scaled accordingly for scaled variants. For example, if the base
-    /// nominal size is 24, the 2x scaled variant would have a nominal size of 48.
+    /// Existing and generated variants are sized relative to the base. For example, if the
+    /// base nominal size is 24, a 2x variant has a nominal size of 48.
     ///
     /// Setting this to 24 may help with preventing applications
     /// from scaling your cursor. Perhaps useful for pixel art.

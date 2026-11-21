@@ -162,7 +162,7 @@ impl ImageChunk {
         let toc = TableOfContents {
             r#type: ChunkType::Image,
             // nominal size
-            subtype: image.nominal_size(),
+            subtype: image.nominal_size,
             position,
         };
 
@@ -174,7 +174,7 @@ impl ImageChunk {
 
 impl From<&CursorImage> for ImageChunk {
     fn from(image: &CursorImage) -> Self {
-        let nominal_size = image.nominal_size();
+        let nominal_size = image.nominal_size;
         let (width, height) = image.dimensions();
         let (hotspot_x, hotspot_y) = image.hotspot();
         let delay = image.delay();
