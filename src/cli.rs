@@ -4,8 +4,9 @@
 //! and the [`ParsedArgs`] struct, which is just plain old data.
 
 use crate::{
+    cursors::cursor_role::CursorRole,
     fs_utils::find_extensions_icase,
-    themes::theme::{CursorMapping, CursorRole, CursorTheme, TypedCursor},
+    themes::theme::{CursorMapping, CursorTheme},
     warn,
 };
 
@@ -284,11 +285,11 @@ pub(super) fn prompt_for_theme(
         })
         .collect::<Result<_>>()?;
 
-    for r#type in CursorRole::VARIANTS {
+    for role in CursorRole::VARIANTS {
         let prompt = format!(
             "Select the file representing '{:?}'.\n{}",
-            r#type,
-            r#type.get_variant_docs()
+            role,
+            role.get_variant_docs()
         );
 
         let chosen_index = Select::with_theme(&ColorfulTheme::default())
@@ -301,7 +302,7 @@ pub(super) fn prompt_for_theme(
         cursor_paths_display[chosen_index].push_str(&style("✓").green().to_string());
 
         let path = cursor_files[chosen_index].clone();
-        mappings.push(CursorMapping { r#type, path });
+        mappings.push(CursorMapping { role, path });
     }
 
     let name = loop {
@@ -316,12 +317,5 @@ pub(super) fn prompt_for_theme(
         }
     };
 
-    let typed_cursors = mappings
-        .into_iter()
-        .map(|m| TypedCursor::from_mapping(m, base_nominal_size))
-        .collect::<Result<_>>()?;
-
-    let theme = CursorTheme::new(typed_cursors, name)?;
-
-    Ok(theme)
+    CursorTheme::from_mappings(mappings, name, base_nominal_size)
 }

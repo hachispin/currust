@@ -272,7 +272,7 @@ impl Xcursor {
             None
         };
 
-        for image in cursor.joined_images() {
+        for image in cursor.frames() {
             let image_chunk_size = sizes::IMAGE + u32::try_from(image.rgba().len())?;
             let (chunk, toc_entry) = ImageChunk::new(image, position);
 

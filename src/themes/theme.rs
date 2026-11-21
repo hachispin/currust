@@ -22,116 +22,67 @@ use rayon::iter::{IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelI
 #[derive(Debug, PartialEq, Eq)]
 pub struct CursorMapping {
     /// Semantic role of cursor.
-    pub r#type: CursorRole,
+    pub role: CursorRole,
     /// Full path to (expected) cursor.
     pub path: PathBuf,
-}
-
-impl TypedCursor {
-    /// Creates a cursor from `mapping`.
-    ///
-    /// Note that this does a case-insensitive search if the path stored in `mapping` doesn't
-    /// exist. This aspect is also why this isn't inside of a [`TryFrom`] implementation.
-    ///
-    /// ## Errors
-    ///
-    /// - if path contained inside of `mapping` doesn't exist, even after a case-insensitive check
-    /// - generic cursor parsing fails
-    pub fn from_mapping(mapping: CursorMapping, base_nominal_size: Option<u32>) -> Result<Self> {
-        let CursorMapping { path, r#type } = mapping;
-
-        let path = if path.exists() {
-            path
-        } else {
-            resolve_icase(&path)?.ok_or_else(|| {
-                anyhow!(
-                    "cursor path, path={} not found in parent (case-insensitive)",
-                    path.display()
-                )
-            })?
-        };
-
-        let inner = GenericCursor::from_path(&path, base_nominal_size)
-            .with_context(|| format!("while reading path={} as generic cursor", path.display()))?;
-
-        Ok(Self { inner, r#type })
-    }
-
-    /// Saves as Xcursor to `dir`, along with symlinks.
-    fn save_as_xcursor(&self, dir: &Path) -> Result<()> {
-        let aliases = get_symlinks(&self.r#type);
-        let primary = dir.join(aliases[0]);
-
-        match fs::symlink_metadata(&primary) {
-            Ok(metadata) if metadata.is_symlink() => fs::remove_file(&primary)?,
-            Ok(_) => (),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => (),
-            Err(e) => return Err(e.into()),
-        }
-        self.inner.save_as_xcursor(primary)?;
-
-        // relative symlink
-        #[cfg(unix)]
-        for symlink in &aliases[1..] {
-            use std::os::unix;
-
-            let path = dir.join(symlink);
-            match unix::fs::symlink(aliases[0], &path) {
-                Ok(()) => Ok(()),
-                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
-                    fs::remove_file(&path)?;
-                    unix::fs::symlink(aliases[0], &path)
-                }
-                Err(e) => Err(e),
-            }
-            .with_context(|| {
-                format!(
-                    "failed to create symlink {} pointing to {}",
-                    path.display(),
-                    aliases[0]
-                )
-            })?;
-        }
-
-        Ok(())
-    }
 }
 
 /// Represents a generic cursor theme.
 #[derive(Debug)]
 pub struct CursorTheme {
-    cursors: Vec<TypedCursor>,
+    cursors: Vec<GenericCursor>,
     name: String,
 }
 
 impl CursorTheme {
-    /// Validated constructor for [`CursorTheme`].
+    /// Loads a theme from cursor paths and their roles.
     ///
     /// ## Errors
-    ///
-    /// - `cursors` is empty
-    /// - more cursors than variants
-    /// - duplicate variants
-    pub fn new(cursors: Vec<TypedCursor>, name: String) -> Result<Self> {
-        if cursors.is_empty() {
+    /// If the mappings are empty, contain duplicate roles, or a cursor fails to load.
+    pub fn from_mappings(
+        mappings: Vec<CursorMapping>,
+        name: String,
+        base_nominal_size: Option<u32>,
+    ) -> Result<Self> {
+        if mappings.is_empty() {
             bail!("can't create theme with no cursors (empty)");
         }
 
-        if cursors.len() > CursorRole::NUM_VARIANTS {
+        if mappings.len() > CursorRole::NUM_VARIANTS {
             bail!(
                 "too many cursors; expected {} max for theme, got {}",
                 CursorRole::NUM_VARIANTS,
-                cursors.len(),
+                mappings.len(),
             );
         }
 
-        let mut seen = Vec::new();
-        for cursor in &cursors {
-            if seen.contains(&cursor.r#type) {
-                bail!("duplicate cursor type: {:?}", cursor.r#type);
+        let mut cursors: Vec<GenericCursor> = Vec::with_capacity(mappings.len());
+
+        for CursorMapping { path, role } in mappings {
+            if cursors
+                .iter()
+                .any(|cursor| cursor.role.as_ref() == Some(&role))
+            {
+                bail!("duplicate cursor type: {role:?}");
             }
 
-            seen.push(cursor.r#type.clone());
+            let path = if path.exists() {
+                path
+            } else {
+                resolve_icase(&path)?.ok_or_else(|| {
+                    anyhow!(
+                        "cursor path, path={} not found in parent (case-insensitive)",
+                        path.display()
+                    )
+                })?
+            };
+
+            let mut cursor =
+                GenericCursor::from_path(&path, base_nominal_size).with_context(|| {
+                    format!("while reading path={} as generic cursor", path.display())
+                })?;
+            cursor.role = Some(role);
+            cursors.push(cursor);
         }
 
         Ok(Self { cursors, name })
@@ -162,12 +113,7 @@ impl CursorTheme {
             bail!("unsupported installer file extension ext={}", ext.display())
         };
 
-        let typed_cursors: Vec<_> = mappings
-            .into_iter()
-            .map(|m| TypedCursor::from_mapping(m, base_nominal_size))
-            .collect::<Result<_>>()?;
-
-        Self::new(typed_cursors, name)
+        Self::from_mappings(mappings, name, base_nominal_size)
     }
 
     /// Adds scale to all cursors for the current theme.
@@ -178,7 +124,7 @@ impl CursorTheme {
     pub fn add_scale(&mut self, scale_factor: f64, algorithm: ResizeAlg) -> Result<()> {
         self.cursors
             .par_iter_mut()
-            .try_for_each(|c| c.inner.add_scale(scale_factor, algorithm))?;
+            .try_for_each(|c| c.add_scale(scale_factor, algorithm))?;
 
         Ok(())
     }
@@ -220,7 +166,7 @@ impl CursorTheme {
 
         self.cursors
             .par_iter()
-            .try_for_each(|c| c.save_as_xcursor(&cursor_dir))?;
+            .try_for_each(|c| Self::save_cursor(c, &cursor_dir))?;
 
         /* ... write index.theme ... */
         let mut f = File::create(theme_dir.join("index.theme"))?;
@@ -247,6 +193,47 @@ impl CursorTheme {
         Ok(())
     }
 
+    /// Saves as Xcursor to `dir`, along with symlinks.
+    fn save_cursor(cursor: &GenericCursor, dir: &Path) -> Result<()> {
+        let role = cursor.role.as_ref().expect("theme cursors have roles");
+        let aliases = get_symlinks(role);
+        let primary = dir.join(aliases[0]);
+
+        match fs::symlink_metadata(&primary) {
+            Ok(metadata) if metadata.is_symlink() => fs::remove_file(&primary)?,
+            Ok(_) => (),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => (),
+            Err(e) => return Err(e.into()),
+        }
+
+        cursor.save_as_xcursor(primary)?;
+
+        // relative symlink
+        #[cfg(unix)]
+        for symlink in &aliases[1..] {
+            use std::os::unix;
+
+            let path = dir.join(symlink);
+            match unix::fs::symlink(aliases[0], &path) {
+                Ok(()) => Ok(()),
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                    fs::remove_file(&path)?;
+                    unix::fs::symlink(aliases[0], &path)
+                }
+                Err(e) => Err(e),
+            }
+            .with_context(|| {
+                format!(
+                    "failed to create symlink {} pointing to {}",
+                    path.display(),
+                    aliases[0]
+                )
+            })?;
+        }
+
+        Ok(())
+    }
+
     /// Writes a bash script to `cursor_dir` that
     /// creates symlinks for windows "compatibility".
     ///
@@ -263,7 +250,9 @@ impl CursorTheme {
         let mut f = File::create(cursor_dir.join("write_symlinks.sh"))?;
         writeln!(&mut f, "#!/usr/bin/env bash\n")?;
 
-        for filenames in self.cursors.iter().map(|c| get_symlinks(&c.r#type)) {
+        for cursor in &self.cursors {
+            let role = cursor.role.as_ref().expect("theme cursors have roles");
+            let filenames = get_symlinks(role);
             let src = filenames[0];
             let symlinks = &filenames[1..];
 
