@@ -2,10 +2,7 @@
 //!
 //! Pretty sure CRS is just TOML with required sections.
 
-use crate::{
-    themes::theme::{CursorMapping, CursorType},
-    warn,
-};
+use crate::{cursors::cursor_role::CursorRole, themes::theme::CursorMapping, warn};
 
 use std::{fs, path::Path};
 
@@ -13,8 +10,8 @@ use anyhow::{Result, anyhow, bail};
 use configparser::ini::Ini;
 
 /// Section names in CRS files.
-fn section_to_type(section: &str) -> Option<CursorType> {
-    use CursorType::*;
+fn section_to_role(section: &str) -> Option<CursorRole> {
+    use CursorRole::*;
 
     Some(match section {
         "arrow" | "default" => Arrow, // unsure
@@ -55,10 +52,10 @@ pub fn parse_crs_installer(crs_path: &Path) -> Result<Vec<CursorMapping>> {
         .read(fs::read_to_string(crs_path)?)
         .map_err(|e| anyhow!("failed to read crs, error e={e}"))?;
 
-    let mut mappings = Vec::with_capacity(CursorType::NUM_VARIANTS);
+    let mut mappings = Vec::with_capacity(CursorRole::NUM_VARIANTS);
 
     for (section, value) in crs {
-        let Some(r#type) = section_to_type(&section) else {
+        let Some(role) = section_to_role(&section) else {
             bail!("unexpected section in crs file (please report), section={section}");
         };
 
@@ -69,7 +66,7 @@ pub fn parse_crs_installer(crs_path: &Path) -> Result<Vec<CursorMapping>> {
 
         let path = parent.join(relative);
 
-        mappings.push(CursorMapping { r#type, path });
+        mappings.push(CursorMapping { role, path });
     }
 
     Ok(mappings)

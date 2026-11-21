@@ -58,38 +58,45 @@ macro_rules! warn {
     };
 }
 
+fn save_theme(mut theme: CursorTheme, args: &ParsedArgs) -> Result<()> {
+    if let Some(size) = args.base_nominal_size {
+        theme = theme.set_base_nominal_size(size)?;
+    }
+
+    for &sf in &args.scale_to {
+        theme.add_scale(sf, args.get_algorithm(sf))?;
+    }
+
+    theme.save_as_x11_theme(&args.out)
+}
+
 fn main() -> Result<()> {
     let raw_args = Args::parse();
     let args = ParsedArgs::from_args(raw_args)?;
 
     args.installer_files.par_iter().try_for_each(|d| {
-        let mut theme = CursorTheme::from_installer_file(d, args.base_nominal_size)
+        let theme = CursorTheme::from_installer_file(d)
             .with_context(|| format!("while reading dir={} as theme", d.display()))?;
 
-        for &sf in &args.scale_to {
-            theme.add_scale(sf, args.get_algorithm(sf))?;
-        }
-
-        theme.save_as_x11_theme(&args.out)
+        save_theme(theme, &args)
     })?;
 
     if args.manual {
-        let mut theme = prompt_for_theme(&args.cursor_files, args.base_nominal_size)?;
-
-        for &sf in &args.scale_to {
-            theme.add_scale(sf, args.get_algorithm(sf))?;
-        }
-
-        theme.save_as_x11_theme(&args.out)?;
+        let theme = prompt_for_theme(&args.cursor_files)?;
+        save_theme(theme, &args)?;
     } else {
         args.cursor_files.par_iter().try_for_each(|f| {
-            let mut cursor = GenericCursor::from_path(f, args.base_nominal_size)
+            let mut cursor = GenericCursor::from_path(f)
                 .with_context(|| format!("while reading f={} as cursor", f.display()))?;
 
             let filename = args.out.join(
                 f.file_stem()
                     .ok_or_else(|| anyhow!("no file stem for cursor_file={}", f.display()))?,
             );
+
+            if let Some(size) = args.base_nominal_size {
+                cursor.set_base_nominal_size(size)?;
+            }
 
             for &sf in &args.scale_to {
                 cursor.add_scale(sf, args.get_algorithm(sf))?;

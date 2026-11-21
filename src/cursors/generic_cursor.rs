@@ -2,15 +2,14 @@
 //!
 //! This represents a full static/animated cursor.
 
-use crate::{
-    cursors::cursor_image::{CursorImage, CursorImages},
-    formats::{ani::AniFile, xcursor::Xcursor},
-};
+use crate::formats::{ani::AniFile, xcursor::Xcursor};
+
+use super::{cursor_image::CursorImage, cursor_role::CursorRole};
 
 use std::{
+    collections::BTreeMap,
     fs::{self, File},
     io::{BufWriter, Cursor, Write},
-    mem,
     path::Path,
 };
 
@@ -22,109 +21,117 @@ use ico::IconDir;
 /// Represents a generic cursor.
 #[derive(Debug)]
 pub struct GenericCursor {
-    /// The base images, used for scaling.
-    base: CursorImages,
-    /// Scaled cursors derived from `base`.
+    /// Source and generated frame sequences paired with their scale factors.
     ///
-    /// Each vector has the same length as `base`.
-    scaled: Vec<CursorImages>,
-    /// Used scale factors. Always includes 1.0.
-    scale_factors: Vec<f64>,
+    /// The first sequence is the canonical base at scale 1.0, chosen by
+    /// [`Self::get_base_dimensions`]. For a source with 32x32 and 64x64 frames,
+    /// `--scale-to 2.0` targets the 64x64 size that is already present.
+    images: Vec<(f64, Vec<CursorImage>)>,
+    /// The cursor's role when used in a theme.
+    pub role: Option<CursorRole>,
     /// Info stored within the cursor.
     ///
-    /// Both ANI and Xcursor have the capability of storing metadata similar
-    /// to this. ANI uses it's "INFO" chunk, while Xcursor uses comment chunks.
+    /// For ANI this is its "INFO" chunk, while for Xcursor this is a comment chunk.
     info: Option<String>,
 }
 
 impl GenericCursor {
-    /// Trivial constructor. `scale_factors` is inferred from `scaled_images`.
-    ///
-    /// ## Errors
-    ///
-    /// - If `base_images` or `scaled_images` is empty.
-    /// - If propagated from [`CursorImages`] construction.
-    fn new(
-        base_images: CursorImages,
-        scaled_images: Vec<CursorImages>,
+    fn from_source(
+        base: Vec<CursorImage>,
+        variants: impl IntoIterator<Item = Vec<CursorImage>>,
         info: Option<String>,
     ) -> Result<Self> {
-        if scaled_images.is_empty() {
-            bail!("scaled_images can't be empty, call Self::new_unscaled() if this is expected");
-        }
+        let base_frame = base.first().context("no base frames found")?;
+        let base_size = base_frame.nominal_size;
+        let base_len = base.len();
+        let mut images: Vec<(f64, Vec<CursorImage>)> = Vec::new();
 
-        let mut scale_factors = Vec::with_capacity(scaled_images.len());
-        scale_factors.push(1.0);
-
-        // used for calculating sf
-        let base_nominal = f64::from(base_images.first().nominal_size());
-        let base_len = base_images.len();
-
-        for images in &scaled_images {
-            if images.len() != base_len {
-                bail!(
-                    "expected base_len={base_len} images, instead got images.len()={}",
-                    images.len()
-                );
+        for mut frames in std::iter::once(base).chain(variants) {
+            if frames.len() != base_len {
+                bail!("expected {base_len} frames per size, got {}", frames.len());
             }
 
-            let scaled_nominal = f64::from(images.first().nominal_size());
-            let scale_factor = scaled_nominal / base_nominal;
+            CursorImage::validate_frames(&mut frames)?;
 
-            if scale_factors.contains(&scale_factor) {
-                bail!(
-                    "scaled `GenericCursor` constructor must \
-                    have unique scale factors for scaled frames"
-                );
+            let source_size = frames[0].nominal_size;
+
+            if images
+                .iter()
+                .any(|(_, stored)| stored[0].nominal_size == source_size)
+            {
+                bail!("multiple source cursor variants have nominal size {source_size}");
             }
 
-            scale_factors.push(scale_factor);
+            let scale_factor = f64::from(source_size) / f64::from(base_size);
+            images.push((scale_factor, frames));
         }
 
         Ok(Self {
-            base: base_images,
-            scaled: scaled_images,
-            scale_factors,
+            images,
+            role: None,
             info,
         })
     }
 
-    /// Constructor without `scaled`.
-    #[must_use]
-    fn new_unscaled(base_images: CursorImages, info: Option<String>) -> Self {
-        Self {
-            base: base_images,
-            scaled: Vec::new(),
-            scale_factors: vec![1.0],
-            info,
-        }
-    }
-
-    /// Adds scaled [`CursorImage`] from `base` to `scaled`.
-    ///
-    /// NOTE: Downscaling isn't recommended for pixel-art images.
+    /// Sets the nominal size of the base and updates each variant by its stored scale.
     ///
     /// ## Errors
     ///
-    /// If the newly made [`CursorImage`] doesn't
-    /// have a unique (canon) scale factor.
+    /// If the base size is zero.
+    pub fn set_base_nominal_size(&mut self, size: u32) -> Result<()> {
+        if size == 0 {
+            bail!("nominal size can't be zero");
+        }
+
+        let nominal_sizes = self
+            .images
+            .iter()
+            .map(|(scale, _)| {
+                let nominal_size = (f64::from(size) * scale).floor().max(1.0);
+
+                #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                Ok(nominal_size as u32)
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        for ((_, frames), nominal_size) in self.images.iter_mut().zip(nominal_sizes) {
+            for frame in frames {
+                frame.nominal_size = nominal_size;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Adds a variant scaled from the canonical base if its scale and nominal size are new.
+    ///
+    /// ## Errors
+    ///
+    /// If resizing fails.
     pub fn add_scale(&mut self, scale_factor: f64, algorithm: ResizeAlg) -> Result<()> {
-        // some cursors already store scaled versions
-        if self.scale_factors.contains(&scale_factor) {
-            eprintln!("scale_factor={scale_factor} already added, skipping");
+        let base = &self.images[0].1;
+        #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let nominal_size = ((f64::from(base[0].nominal_size) * scale_factor).floor() as u32).max(1);
+
+        #[expect(
+            clippy::float_cmp,
+            reason = "skip scales already present at the requested factor"
+        )]
+        if self
+            .images
+            .iter()
+            .any(|(scale, frames)| *scale == scale_factor || frames[0].nominal_size == nominal_size)
+        {
+            eprintln!("scale_factor={scale_factor} already exists, skipping");
             return Ok(());
         }
 
-        self.scale_factors.push(scale_factor);
-
-        let scaled_images: Vec<CursorImage> = self
-            .base
-            .inner()
+        let scaled_frames = base
             .iter()
-            .map(|c| c.scaled_to(scale_factor, algorithm))
+            .map(|c| c.scaled_to(scale_factor, nominal_size, algorithm))
             .collect::<Result<_>>()?;
 
-        self.scaled.push(scaled_images.try_into()?);
+        self.images.push((scale_factor, scaled_frames));
 
         Ok(())
     }
@@ -134,7 +141,7 @@ impl GenericCursor {
     /// ## Errors
     ///
     /// If `path` has no extension or an extension that isn't "ani" or "cur".
-    pub fn from_path<P: AsRef<Path>>(path: P, base_nominal_size: Option<u32>) -> Result<Self> {
+    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
 
         let Some(ext) = path.extension() else {
@@ -143,18 +150,16 @@ impl GenericCursor {
 
         let ext = ext.to_ascii_lowercase();
 
-        let cursor = if ext == "cur" {
-            Self::from_cur_path(path, base_nominal_size)
+        if ext == "cur" {
+            Self::from_cur_path(path)
         } else if ext == "ani" {
-            Self::from_ani_path(path, base_nominal_size)
+            Self::from_ani_path(path)
         } else {
             bail!(
                 "expected extension 'cur' or 'ani' for path, got ext={}",
                 ext.display()
             )
-        }?;
-
-        Ok(cursor)
+        }
     }
 
     /// Reads and parses a cursor from `cur_path`, which
@@ -164,10 +169,7 @@ impl GenericCursor {
     ///
     /// If a file handle to `cur_path` can't be opened,
     /// or the file stored is not a CUR file.
-    pub fn from_cur_path<P: AsRef<Path>>(
-        cur_path: P,
-        base_nominal_size: Option<u32>,
-    ) -> Result<Self> {
+    pub fn from_cur_path<P: AsRef<Path>>(cur_path: P) -> Result<Self> {
         let cur_path = cur_path.as_ref();
         let handle = fs::read(cur_path).context("(filesystem) failed to read")?;
         let icon_dir = IconDir::read(Cursor::new(handle)).context("failed to read `IconDir`")?;
@@ -178,26 +180,20 @@ impl GenericCursor {
         }
 
         let mut base = Vec::new();
-        let mut scaled = Vec::new();
+        let mut variants = Vec::new();
         let base_dims = Self::get_base_dimensions(&[&icon_dir]);
 
         for entry in entries {
-            let image = CursorImage::from_entry(entry, base_nominal_size, 0)?;
+            let image = CursorImage::from_entry(entry, 0)?;
 
             if image.dimensions() == base_dims {
                 base.push(image);
             } else {
-                scaled.push(vec![image].try_into()?);
+                variants.push(vec![image]);
             }
         }
 
-        let base = CursorImages::try_from(base)?;
-
-        if scaled.is_empty() {
-            Ok(Self::new_unscaled(base, None))
-        } else {
-            Self::new(base, scaled, None)
-        }
+        Self::from_source(base, variants, None)
     }
 
     /// Parses `ani_path`.
@@ -206,12 +202,9 @@ impl GenericCursor {
     ///
     /// - `ani_path` fails to be parsed as an [`IconDir`]
     /// - Stored RGBA in ICO frames fail to be decoded.
-    /// - Frames are inconsistent, see [`CursorImages`].
+    /// - Frame sequences have incompatible dimensions, delays, or lengths.
     /// - [`TryInto`] conversions fail (between primitive types).
-    pub fn from_ani_path<P: AsRef<Path>>(
-        ani_path: P,
-        base_nominal_size: Option<u32>,
-    ) -> Result<Self> {
+    pub fn from_ani_path<P: AsRef<Path>>(ani_path: P) -> Result<Self> {
         let ani_blob = fs::read(&ani_path)?;
         let ani_file = AniFile::from_blob(&ani_blob)?;
         let header = &ani_file.header;
@@ -230,9 +223,11 @@ impl GenericCursor {
             .into_iter()
             .map(|chunk| {
                 let ico = IconDir::read(&mut Cursor::new(&chunk))?;
+
                 if ico.entries().is_empty() {
                     bail!("ANI frame contains no images");
                 }
+
                 Ok(ico)
             })
             .collect::<Result<_>>()?;
@@ -265,51 +260,23 @@ impl GenericCursor {
             .collect();
 
         let base_dims = Self::get_base_dimensions(&sequenced_icos);
-        let mut base = Vec::new();
-        let mut scaled_ungrouped = Vec::new();
+        let mut by_dimensions = BTreeMap::<_, Vec<_>>::new();
 
         for (ico, delay) in sequenced_icos.iter().zip(delays_ms) {
-            let entries = ico.entries();
-
-            for entry in entries {
-                let image = CursorImage::from_entry(entry, base_nominal_size, delay)?;
-
-                if image.dimensions() == base_dims {
-                    base.push(image);
-                } else {
-                    scaled_ungrouped.push(image);
-                }
+            for entry in ico.entries() {
+                let image = CursorImage::from_entry(entry, delay)?;
+                by_dimensions
+                    .entry(image.dimensions())
+                    .or_default()
+                    .push(image);
             }
         }
 
-        let base = CursorImages::try_from(base)?;
+        let base = by_dimensions
+            .remove(&base_dims)
+            .context("no base frames found")?;
 
-        if scaled_ungrouped.is_empty() {
-            return Ok(Self::new_unscaled(base, info));
-        }
-
-        scaled_ungrouped.sort_by_key(CursorImage::dimensions);
-        let scaled_ungrouped = scaled_ungrouped;
-        let mut scaled = Vec::new();
-        let mut buffer = Vec::new();
-        let mut current_dims = scaled_ungrouped[0].dimensions();
-
-        // group by dimensions
-        for image in scaled_ungrouped {
-            if image.dimensions() != current_dims {
-                scaled.push((mem::take(&mut buffer)).try_into()?);
-                current_dims = image.dimensions();
-            }
-
-            buffer.push(image);
-        }
-
-        // push anything left
-        if !buffer.is_empty() {
-            scaled.push(buffer.try_into()?);
-        }
-
-        Self::new(base, scaled, info)
+        Self::from_source(base, by_dimensions.into_values(), info)
     }
 
     /// Saves `self` to `path` as Xcursor.
@@ -332,8 +299,6 @@ impl GenericCursor {
         Ok(())
     }
 
-    /// Helper function for [`Self::from_ani_path`].
-    ///
     /// Tries to use 32x32 as base and checks `icons`. If there are
     /// no 32x32 entries, defaults to dimensions of first entry.
     fn get_base_dimensions(icons: &[&IconDir]) -> (u32, u32) {
@@ -349,39 +314,20 @@ impl GenericCursor {
         }
     }
 
-    /// Trivial accessor for `base` field.
-    #[must_use]
-    pub const fn base_images(&self) -> &CursorImages {
-        &self.base
+    /// Iterates over the base frames followed by the frames of each other size.
+    pub fn frames(&self) -> impl Iterator<Item = &CursorImage> {
+        self.images.iter().flat_map(|(_, frames)| frames)
     }
 
-    /// Trivial accessor for `scaled` field.
-    pub fn scaled_images(&self) -> impl Iterator<Item = &CursorImages> {
-        self.scaled.iter()
-    }
-
-    /// Trivial accessor for `info` field.
     #[must_use]
     pub fn info(&self) -> Option<String> {
         self.info.clone()
     }
 
-    /// Returns the number of `base` and `scaled` images.
-    ///
-    /// Prefer this over calling [`Iterator::count`]
-    /// on [`Self::joined_images`] or equivalent.
+    /// Returns the total number of frames across all sizes.
     #[must_use]
-    pub const fn num_images(&self) -> usize {
-        (self.scaled.len() + 1) * self.base.len()
-    }
-
-    /// Returns an iterator joining `base` and `scaled` flattened
-    /// over [`CursorImage`] (rather than [`CursorImages`]).
-    pub fn joined_images(&self) -> impl Iterator<Item = &CursorImage> {
-        self.base
-            .inner()
-            .iter()
-            .chain(self.scaled.iter().flat_map(CursorImages::inner))
+    pub fn num_images(&self) -> usize {
+        self.images.iter().map(|(_, frames)| frames.len()).sum()
     }
 }
 
@@ -406,7 +352,6 @@ pub mod tests {
             WHITE.clone(),
         ];
 
-        let frames = CursorImages::try_from(frames.to_vec()).unwrap();
-        GenericCursor::new_unscaled(frames, None)
+        GenericCursor::from_source(frames.to_vec(), [], None).unwrap()
     }
 }

@@ -162,7 +162,7 @@ impl ImageChunk {
         let toc = TableOfContents {
             r#type: ChunkType::Image,
             // nominal size
-            subtype: image.nominal_size(),
+            subtype: image.nominal_size,
             position,
         };
 
@@ -174,7 +174,7 @@ impl ImageChunk {
 
 impl From<&CursorImage> for ImageChunk {
     fn from(image: &CursorImage) -> Self {
-        let nominal_size = image.nominal_size();
+        let nominal_size = image.nominal_size;
         let (width, height) = image.dimensions();
         let (hotspot_x, hotspot_y) = image.hotspot();
         let delay = image.delay();
@@ -272,7 +272,7 @@ impl Xcursor {
             None
         };
 
-        for image in cursor.joined_images() {
+        for image in cursor.frames() {
             let image_chunk_size = sizes::IMAGE + u32::try_from(image.rgba().len())?;
             let (chunk, toc_entry) = ImageChunk::new(image, position);
 
@@ -386,11 +386,9 @@ mod tests {
             argb: Vec::new(), // stored somewhere else
         };
 
-        let cursor = GenericCursor::from_ani_path(
-            from_root!("/testing/fixtures/neuro/Neuro help.ani"),
-            None,
-        )
-        .unwrap();
+        let cursor =
+            GenericCursor::from_ani_path(from_root!("/testing/fixtures/neuro/Neuro help.ani"))
+                .unwrap();
 
         let xcursor = Xcursor::new(&cursor).unwrap();
 

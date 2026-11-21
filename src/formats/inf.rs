@@ -1,9 +1,6 @@
 //! Parses INF installer files for cursor themes.
 
-use crate::{
-    themes::theme::{CursorMapping, CursorType},
-    warn,
-};
+use crate::{cursors::cursor_role::CursorRole, themes::theme::CursorMapping, warn};
 
 use std::{collections::HashMap, fs, path::Path};
 
@@ -188,7 +185,7 @@ pub fn parse_inf_installer(inf_path: &Path) -> Result<(String, Vec<CursorMapping
         .zip(0..15)
         .filter_map(|(path, i)| {
             path.map(|p| CursorMapping {
-                r#type: index_to_cursor_type(i),
+                role: index_to_cursor_role(i),
                 path: parent.join(p),
             })
         })
@@ -201,8 +198,8 @@ pub fn parse_inf_installer(inf_path: &Path) -> Result<(String, Vec<CursorMapping
 ///
 /// The index should be offsets relative to the first cursor in `Scheme.Reg`.
 #[rustfmt::skip]
-const fn index_to_cursor_type(index: usize) -> CursorType {
-    use CursorType::*;
+const fn index_to_cursor_role(index: usize) -> CursorRole {
+    use CursorRole::*;
 
     match index {
          0 => Arrow,          1 => Help,
@@ -427,7 +424,7 @@ mod tests {
             ($root:expr; $($variant:ident => $filename_suffix:literal),+ $(,)?) => {[
                 $(
                     CursorMapping {
-                        r#type: crate::themes::theme::CursorType::$variant,
+                        role: CursorRole::$variant,
                         path: $root.join(concat!("neuro ", $filename_suffix, ".ani")),
                     },
                 )+

@@ -4,8 +4,9 @@
 //! and the [`ParsedArgs`] struct, which is just plain old data.
 
 use crate::{
+    cursors::cursor_role::CursorRole,
     fs_utils::find_extensions_icase,
-    themes::theme::{CursorMapping, CursorTheme, CursorType, TypedCursor},
+    themes::theme::{CursorMapping, CursorTheme},
     warn,
 };
 
@@ -50,10 +51,10 @@ pub struct Args {
     #[arg(long, verbatim_doc_comment)]
     manual: bool,
 
-    /// Sets the selected cursors nominal size to the provided value.
+    /// Sets the nominal size of each cursor's base variant.
     ///
-    /// This is also scaled accordingly for scaled variants. For example, if the base
-    /// nominal size is 24, the 2x scaled variant would have a nominal size of 48.
+    /// Existing and generated variants are sized relative to the base. For example, if the
+    /// base nominal size is 24, a 2x variant has a nominal size of 48.
     ///
     /// Setting this to 24 may help with preventing applications
     /// from scaling your cursor. Perhaps useful for pixel art.
@@ -270,10 +271,7 @@ impl ParsedArgs {
 ///
 /// - any path in `cursor_paths` has no filename
 /// - [`Select`] prompt fails (e.g., if user is not in a terminal)
-pub(super) fn prompt_for_theme(
-    cursor_files: &[PathBuf],
-    base_nominal_size: Option<u32>,
-) -> Result<CursorTheme> {
+pub(super) fn prompt_for_theme(cursor_files: &[PathBuf]) -> Result<CursorTheme> {
     let mut mappings = Vec::with_capacity(cursor_files.len());
     let mut cursor_paths_display: Vec<_> = cursor_files
         .iter()
@@ -284,11 +282,11 @@ pub(super) fn prompt_for_theme(
         })
         .collect::<Result<_>>()?;
 
-    for r#type in CursorType::VARIANTS {
+    for role in CursorRole::VARIANTS {
         let prompt = format!(
             "Select the file representing '{:?}'.\n{}",
-            r#type,
-            r#type.get_variant_docs()
+            role,
+            role.get_variant_docs()
         );
 
         let chosen_index = Select::with_theme(&ColorfulTheme::default())
@@ -301,7 +299,7 @@ pub(super) fn prompt_for_theme(
         cursor_paths_display[chosen_index].push_str(&style("✓").green().to_string());
 
         let path = cursor_files[chosen_index].clone();
-        mappings.push(CursorMapping { r#type, path });
+        mappings.push(CursorMapping { role, path });
     }
 
     let name = loop {
@@ -316,12 +314,5 @@ pub(super) fn prompt_for_theme(
         }
     };
 
-    let typed_cursors = mappings
-        .into_iter()
-        .map(|m| TypedCursor::from_mapping(m, base_nominal_size))
-        .collect::<Result<_>>()?;
-
-    let theme = CursorTheme::new(typed_cursors, name)?;
-
-    Ok(theme)
+    CursorTheme::from_mappings(mappings, name)
 }
