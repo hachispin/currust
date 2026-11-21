@@ -4,10 +4,7 @@
 
 use crate::formats::{ani::AniFile, xcursor::Xcursor};
 
-use super::{
-    cursor_image::{CursorImage, CursorImages},
-    cursor_role::CursorRole,
-};
+use super::{cursor_image::CursorImage, cursor_role::CursorRole};
 
 use std::{
     collections::BTreeMap,
@@ -24,13 +21,12 @@ use ico::IconDir;
 /// Represents a generic cursor.
 #[derive(Debug)]
 pub struct GenericCursor {
-    /// Source images and scaled images as (`scale_factor`, `CursorImages`) pairs.
+    /// Source and generated frame sequences paired with their scale factors.
     ///
-    /// The canonical base (with `scale_factor = 1.0`) is chosen with the logic in
-    /// [`Self::get_base_dimensions`]. This prevents the situation where the source already contains
-    /// multiple scaled variants (e.g., 32x32, 64x64), with `--scale-to 2.0` scaling each variant,
-    /// giving you a cursor with 32x32, 64x64, 128x128 sizes (which is probably not expected).
-    images: Vec<(f64, CursorImages)>,
+    /// The first sequence is the canonical base at scale 1.0, chosen by
+    /// [`Self::get_base_dimensions`]. For a source with 32x32 and 64x64 frames, `--scale-to 2.0`
+    /// targets the 64x64 size that is already present.
+    images: Vec<(f64, Vec<CursorImage>)>,
     /// The cursor's role when used in a theme.
     pub role: Option<CursorRole>,
     /// Info stored within the cursor.
@@ -41,27 +37,29 @@ pub struct GenericCursor {
 
 impl GenericCursor {
     fn from_source(
-        base: CursorImages,
-        variants: Vec<CursorImages>,
+        base: Vec<CursorImage>,
+        variants: impl IntoIterator<Item = Vec<CursorImage>>,
         info: Option<String>,
     ) -> Result<Self> {
-        let base_nominal = f64::from(base.first().nominal_size());
+        let base_frame = base.first().context("no base frames found")?;
+        let base_nominal = f64::from(base_frame.nominal_size());
         let base_len = base.len();
-        let mut images = Vec::with_capacity(variants.len() + 1);
-        images.push((1.0, base));
+        let mut images = Vec::new();
 
-        for variant in variants {
-            if variant.len() != base_len {
-                bail!("expected {base_len} frames per size, got {}", variant.len());
+        for mut frames in std::iter::once(base).chain(variants) {
+            if frames.len() != base_len {
+                bail!("expected {base_len} frames per size, got {}", frames.len());
             }
 
-            let scale_factor = f64::from(variant.first().nominal_size()) / base_nominal;
+            CursorImage::validate_frames(&mut frames)?;
+            let scale_factor = f64::from(frames[0].nominal_size()) / base_nominal;
 
+            #[expect(clippy::float_cmp, reason = "equal nominal sizes produce equal scales")]
             if images.iter().any(|(scale, _)| *scale == scale_factor) {
                 bail!("duplicate source cursor scale factor: {scale_factor}");
             }
 
-            images.push((scale_factor, variant));
+            images.push((scale_factor, frames));
         }
 
         Ok(Self {
@@ -77,20 +75,22 @@ impl GenericCursor {
     ///
     /// If resizing fails.
     pub fn add_scale(&mut self, scale_factor: f64, algorithm: ResizeAlg) -> Result<()> {
-        // some cursors already store scaled versions
+        #[expect(
+            clippy::float_cmp,
+            reason = "skip scales already present at the requested factor"
+        )]
         if self.images.iter().any(|(scale, _)| *scale == scale_factor) {
             eprintln!("scale_factor={scale_factor} already added, skipping");
             return Ok(());
         }
 
-        let scaled_images: Vec<CursorImage> = self.images[0]
+        let scaled_frames = self.images[0]
             .1
-            .inner()
             .iter()
             .map(|c| c.scaled_to(scale_factor, algorithm))
             .collect::<Result<_>>()?;
 
-        self.images.push((scale_factor, scaled_images.try_into()?));
+        self.images.push((scale_factor, scaled_frames));
 
         Ok(())
     }
@@ -144,7 +144,7 @@ impl GenericCursor {
         }
 
         let mut base = Vec::new();
-        let mut scaled = Vec::new();
+        let mut variants = Vec::new();
         let base_dims = Self::get_base_dimensions(&[&icon_dir]);
 
         for entry in entries {
@@ -153,11 +153,11 @@ impl GenericCursor {
             if image.dimensions() == base_dims {
                 base.push(image);
             } else {
-                scaled.push(vec![image].try_into()?);
+                variants.push(vec![image]);
             }
         }
 
-        Self::from_source(base.try_into()?, scaled, None)
+        Self::from_source(base, variants, None)
     }
 
     /// Parses `ani_path`.
@@ -166,7 +166,7 @@ impl GenericCursor {
     ///
     /// - `ani_path` fails to be parsed as an [`IconDir`]
     /// - Stored RGBA in ICO frames fail to be decoded.
-    /// - Frames are inconsistent, see [`CursorImages`].
+    /// - Frame sequences have incompatible dimensions, delays, or lengths.
     /// - [`TryInto`] conversions fail (between primitive types).
     pub fn from_ani_path<P: AsRef<Path>>(
         ani_path: P,
@@ -242,12 +242,8 @@ impl GenericCursor {
         let base = by_dimensions
             .remove(&base_dims)
             .context("no base frames found")?;
-        let variants = by_dimensions
-            .into_values()
-            .map(CursorImages::try_from)
-            .collect::<Result<_>>()?;
 
-        Self::from_source(base.try_into()?, variants, info)
+        Self::from_source(base, by_dimensions.into_values(), info)
     }
 
     /// Saves `self` to `path` as Xcursor.
@@ -287,7 +283,7 @@ impl GenericCursor {
 
     /// Iterates over the base frames followed by the frames of each other size.
     pub fn frames(&self) -> impl Iterator<Item = &CursorImage> {
-        self.images.iter().flat_map(|(_, frames)| frames.inner())
+        self.images.iter().flat_map(|(_, frames)| frames)
     }
 
     #[must_use]
@@ -323,7 +319,6 @@ pub mod tests {
             WHITE.clone(),
         ];
 
-        let frames = CursorImages::try_from(frames.to_vec()).unwrap();
-        GenericCursor::from_source(frames, Vec::new(), None).unwrap()
+        GenericCursor::from_source(frames.to_vec(), [], None).unwrap()
     }
 }
