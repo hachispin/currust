@@ -16,20 +16,6 @@ pub(super) const ARROW: &[&str] = &[
     // Context menus are normally the default cursor with a menu badge.
     "context-menu",
     "08ffe1e65f80fcfdf9fff11263e74c48",
-    // Drag-and-drop aliases use the default cursor as their closest equivalent.
-    "copy",
-    "dnd-copy",
-    "08ffe1cb5fe6fc01f906f1c063814ccf",
-    "1081e37283d90000800003c07f3ef6bf",
-    "6407b0e94181790501fd1e167b474872",
-    "b66166c04f8c3109214a4fbd64a50fc8",
-    "alias",
-    "dnd-link",
-    "link",
-    "0876e1c15ff2fc01f906f1c363074c0f",
-    "3085a0e285430894940527032f8b26df",
-    "640fb0e74195791501fd1ed57b41487f",
-    "a2a266d0498c3104214a47bd64ab0fc8",
 ];
 
 pub(super) const HAND: &[&str] = &[
@@ -54,7 +40,6 @@ pub(super) const LEFT_PTR_WATCH: &[&str] = &[
 ];
 
 pub(super) const HELP: &[&str] = &[
-    "dnd-ask",
     "help",
     "left_ptr_help",
     "question_arrow",
@@ -89,10 +74,8 @@ pub(super) const CROSSHAIR: &[&str] = &[
 pub(super) const FORBIDDEN: &[&str] = &[
     "circle",
     "crossed_circle",
-    "dnd-no-drop",
     "forbidden",
     "not-allowed",
-    "no-drop",
     "03b6e0fcb3499374a867c041f52298f0",
     "03b6e0fcb3499374a867d041f52298f0",
     "1001208387f90000800003000700f6ff",
@@ -180,8 +163,6 @@ pub(super) const MOVE: &[&str] = &[
     "all-resize",
     "all-scroll",
     "closedhand",
-    "dnd-move",
-    "dnd-none",
     "fleur",
     "grab",
     "hand1",
@@ -191,9 +172,28 @@ pub(super) const MOVE: &[&str] = &[
     "pointer-move",
     "208530c400c041818281048008011002",
     "5aca4d189052212118709018842178c0",
+    // Drag-and-drop cursors share the Move cursor.
+    "dnd-ask",
+    "dnd-copy",
+    "dnd-link",
+    "dnd-move",
+    "dnd-no-drop",
+    "dnd-none",
+    "no-drop",
     "4498f0e0c1937ffe01fd06f973665830",
     "9081237383d90e509aa00f00170e968f",
     "fcf21c00b30f7e3f83fe0dfd12e71cff",
+    "copy",
+    "08ffe1cb5fe6fc01f906f1c063814ccf",
+    "1081e37283d90000800003c07f3ef6bf",
+    "6407b0e94181790501fd1e167b474872",
+    "b66166c04f8c3109214a4fbd64a50fc8",
+    "alias",
+    "link",
+    "0876e1c15ff2fc01f906f1c363074c0f",
+    "3085a0e285430894940527032f8b26df",
+    "640fb0e74195791501fd1ed57b41487f",
+    "a2a266d0498c3104214a47bd64ab0fc8",
 ];
 
 pub(super) const CENTER_PTR: &[&str] = &[
