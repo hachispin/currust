@@ -71,3 +71,60 @@ pub fn parse_crs_installer(crs_path: &Path) -> Result<Vec<CursorMapping>> {
 
     Ok(mappings)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::from_root;
+
+    #[test]
+    fn parses_standalone_crs() {
+        use CursorRole::*;
+
+        let fixture = Path::new(from_root!("/testing/fixtures/idk-either.crs"));
+        let parent = fixture.parent().unwrap();
+        let mappings = parse_crs_installer(fixture).unwrap();
+        let expected = [
+            (Arrow, "idkeither.cur"),
+            (CenterPtr, "idkeitheralt.cur"),
+            (Watch, "idkeitherbusy.cur"),
+            (Help, "idkeitherhelp.cur"),
+            (Hand, "idkeitherlink.cur"),
+            (Move, "idkeithermove.cur"),
+            (Forbidden, "idkeithernein.cur"),
+            (Pencil, "idkeitherpencil.cur"),
+            (Crosshair, "idkeitherprecision.cur"),
+            (NsResize, "idkeitherresize1.cur"),
+            (EwResize, "idkeitherresize2.cur"),
+            (NwseResize, "idkeitherresize3.cur"),
+            (NeswResize, "idkeitherresize4.cur"),
+            (Text, "idkeithertext.cur"),
+            (LeftPtrWatch, "idkeitherworking.cur"),
+        ];
+
+        assert_eq!(mappings.len(), expected.len());
+
+        for (role, filename) in expected {
+            let mapping = CursorMapping {
+                role,
+                path: parent.join(filename),
+            };
+            assert!(mappings.contains(&mapping), "missing {mapping:?}");
+        }
+    }
+
+    #[test]
+    fn parses_crs_with_omitted_roles() {
+        let directory = tempfile::tempdir().unwrap();
+        let fixture = directory.path().join("minimal.crs");
+        fs::write(&fixture, "[Default]\nPath=cursor.cur\n\n[Help]\n").unwrap();
+
+        assert_eq!(
+            parse_crs_installer(&fixture).unwrap(),
+            [CursorMapping {
+                role: CursorRole::Arrow,
+                path: directory.path().join("cursor.cur"),
+            }]
+        );
+    }
+}

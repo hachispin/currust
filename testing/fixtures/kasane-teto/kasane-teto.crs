@@ -1,0 +1,45 @@
+﻿[Arrow]
+Path=Normal Select (original filename was テト通常).ani
+
+[Help]
+Path=Help Select (original filename was テトヘルプ).cur
+
+[AppStarting]
+Path=Squeaky (original filename was テトキュッキュッry).ani
+
+[Wait]
+Path=Waiting (original filename was テト待機).ani
+
+[Crosshair]
+Path=Precision Select (original filename was テト領域).ani
+
+[IBeam]
+Path=Text Select (original filename was テトテキスト).ani
+
+[NWPen]
+Path=Handwriting (original filename was テト手書き).ani
+
+[No]
+Path=Unavailable (original filename was テト利用不可).cur
+
+[SizeNESW]
+Path=Diagonal Resize 2 (original filename was テト縦拡大縮小).ani
+
+[SizeNS]
+Path=Vertical Resize 2 (original filename was テト縦拡大縮小).ani
+
+[SizeWE]
+Path=Horizontal Resize 1 (original filename was テト横拡大縮小).ani
+
+[SizeNWSE]
+Path=Diagonal Resize 1 (original filename was テト斜拡大縮小2).ani
+
+[SizeAll]
+Path=Move (original filename was テト移動).ani
+
+[UpArrow]
+Path=Alternate Select (original filename was テト代替).ani
+
+[Hand]
+Path=Link Select 1 (original filename was テトリンク).ani
+
