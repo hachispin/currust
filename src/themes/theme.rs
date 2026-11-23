@@ -10,8 +10,9 @@ use crate::{
 
 use std::{
     fs::{self, File},
+    hash::{DefaultHasher, Hash, Hasher},
     io::{self, Write},
-    path::{Path, PathBuf},
+    path::{Path, PathBuf, absolute},
 };
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -41,6 +42,14 @@ impl CursorTheme {
     ///
     /// If the mappings are empty, contain duplicate roles, or a cursor fails to load.
     pub fn from_mappings(mappings: Vec<CursorMapping>, name: String) -> Result<Self> {
+        Self::load_mappings(mappings, name, None)
+    }
+
+    fn load_mappings(
+        mappings: Vec<CursorMapping>,
+        name: String,
+        installer_file: Option<&Path>,
+    ) -> Result<Self> {
         if mappings.is_empty() {
             bail!("can't create theme with no cursors (empty)");
         }
@@ -54,6 +63,7 @@ impl CursorTheme {
         }
 
         let mut cursors: Vec<GenericCursor> = Vec::with_capacity(mappings.len());
+        let mut fallback_hash = name.is_empty().then(DefaultHasher::new);
 
         for CursorMapping { path, role } in mappings {
             if cursors
@@ -77,9 +87,29 @@ impl CursorTheme {
             let mut cursor = GenericCursor::from_path(&path).with_context(|| {
                 format!("while reading path={} as generic cursor", path.display())
             })?;
+
+            if let Some(hasher) = &mut fallback_hash
+                && installer_file.is_none()
+            {
+                role.hash(hasher);
+                absolute(&path)?.hash(hasher);
+            }
+
             cursor.role = Some(role);
             cursors.push(cursor);
         }
+
+        let name = if let Some(mut hasher) = fallback_hash {
+            if let Some(path) = installer_file {
+                absolute(path)?.hash(&mut hasher);
+            }
+
+            let name = format!("unnamed-theme-{:016x}", hasher.finish());
+            warn!("blank theme name, using '{name}'");
+            name
+        } else {
+            name
+        };
 
         Ok(Self { cursors, name })
     }
@@ -106,7 +136,7 @@ impl CursorTheme {
             bail!("unsupported installer file extension ext={}", ext.display())
         };
 
-        Self::from_mappings(mappings, name)
+        Self::load_mappings(mappings, name, Some(installer_file))
     }
 
     /// Sets the base nominal size of every cursor in this theme.
@@ -144,14 +174,7 @@ impl CursorTheme {
     ///
     /// If writing Xcursor/symlinks fail.
     pub fn save_as_x11_theme(&self, dir: &Path) -> Result<()> {
-        let name = if self.name.is_empty() {
-            warn!("blank theme name, using a placeholder name");
-            String::from("placeholder_theme_name")
-        } else {
-            self.name.clone()
-        };
-
-        let sanitized = name.replace(['/', '\\', '.'], "_");
+        let sanitized = self.name.replace(['/', '\\', '.'], "_");
         let theme_dir = dir.join(sanitized);
         let cursor_dir = theme_dir.join("cursors");
         fs::create_dir_all(&cursor_dir)
@@ -182,12 +205,7 @@ impl CursorTheme {
         )?;
         writeln!(&mut f, "[Icon Theme]")?;
 
-        // should probably use option but i'm lazy
-        if self.name.is_empty() {
-            writeln!(&mut f, "# Name=theme_name")?;
-        } else {
-            writeln!(&mut f, "Name={}", self.name)?;
-        }
+        writeln!(&mut f, "Name={}", self.name)?;
 
         writeln!(
             &mut f,
@@ -267,5 +285,31 @@ impl CursorTheme {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::from_root;
+
+    #[test]
+    fn hashes_manual_cursor_paths_and_roles() {
+        let load = |role, path: &str| {
+            let mapping = CursorMapping {
+                role,
+                path: Path::new(from_root!("/testing/fixtures/neuro")).join(path),
+            };
+
+            CursorTheme::from_mappings(vec![mapping], String::new())
+                .unwrap()
+                .name
+        };
+
+        let name = load(CursorRole::Arrow, "Neuro normal.ani");
+        assert!(name.starts_with("unnamed-theme-"));
+        assert_eq!(name, load(CursorRole::Arrow, "Neuro normal.ani"));
+        assert_ne!(name, load(CursorRole::Help, "Neuro normal.ani"));
+        assert_ne!(name, load(CursorRole::Arrow, "Neuro help.ani"));
     }
 }

@@ -5,7 +5,7 @@ use std::{
     fs::{self, File},
     os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Output},
     ptr::NonNull,
     slice,
 };
@@ -26,7 +26,7 @@ fn currust(input: &Path, out: &Path) -> Command {
     command
 }
 
-fn run_success(command: &mut Command) {
+fn run_success(command: &mut Command) -> Output {
     let output = command.output().unwrap();
     assert!(
         output.status.success(),
@@ -34,6 +34,8 @@ fn run_success(command: &mut Command) {
         output.status,
         String::from_utf8_lossy(&output.stderr)
     );
+
+    output
 }
 
 fn run_failure(command: &mut Command, expected_error: &str) {
@@ -133,16 +135,38 @@ fn converts_inf_theme() {
     );
 }
 
+fn assert_unnamed_theme(theme: &Path, stderr: &[u8]) {
+    let name = theme.file_name().unwrap().to_str().unwrap();
+    let hash = name.strip_prefix("unnamed-theme-").unwrap();
+    assert_eq!(hash.len(), 16);
+    assert!(hash.bytes().all(|byte| byte.is_ascii_hexdigit()));
+
+    let stderr = String::from_utf8_lossy(stderr);
+    assert!(
+        stderr.contains(&format!("blank theme name, using '{name}'")),
+        "{stderr}"
+    );
+
+    let index = fs::read_to_string(theme.join("index.theme")).unwrap();
+    assert!(
+        index
+            .lines()
+            .any(|line| line.strip_prefix("Name=") == Some(name))
+    );
+}
+
 #[test]
 fn converts_crs_theme() {
     let out = tempdir().unwrap();
-    run_success(&mut currust(
+    let output = run_success(&mut currust(
         &fixture("kasane-teto/kasane-teto.crs"),
         out.path(),
     ));
 
-    let theme = out.path().join("placeholder_theme_name");
-    assert!(theme.join("index.theme").is_file());
+    let mut themes = fs::read_dir(out.path()).unwrap();
+    let theme = themes.next().unwrap().unwrap().path();
+    assert!(themes.next().is_none());
+    assert_unnamed_theme(&theme, &output.stderr);
 
     let cursors = theme.join("cursors");
     assert_alias(&cursors, "default", "arrow");
@@ -167,6 +191,50 @@ fn converts_crs_theme() {
             delay: 0,
         }]
     );
+}
+
+#[test]
+fn keeps_unnamed_installer_themes_separate() {
+    let directory = tempdir().unwrap();
+    let first = Path::new("first/install.crs");
+    let second = Path::new("second/install.crs");
+    let out = directory.path().join("out");
+
+    for (relative_path, role) in [(first, "Arrow"), (second, "Help")] {
+        let installer = directory.path().join(relative_path);
+        let parent = installer.parent().unwrap();
+        fs::create_dir(parent).unwrap();
+        fs::copy(fixture("neuro/Neuro help.ani"), parent.join("cursor.ani")).unwrap();
+        fs::write(installer, format!("[{role}]\nPath=cursor.ani\n")).unwrap();
+    }
+
+    let output = run_success(
+        currust(&directory.path().join(first), &out).arg(directory.path().join(second)),
+    );
+    let themes: Vec<_> = fs::read_dir(&out)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect();
+    assert_eq!(themes.len(), 2);
+    let theme_for = |cursor| {
+        themes
+            .iter()
+            .find(|theme| theme.join("cursors").join(cursor).is_file())
+            .unwrap()
+    };
+    assert_ne!(theme_for("arrow"), theme_for("help"));
+
+    let repeated = run_success(
+        currust(second, &out)
+            .arg(first)
+            .current_dir(directory.path()),
+    );
+    assert_eq!(fs::read_dir(&out).unwrap().count(), 2);
+
+    for theme in themes {
+        assert_unnamed_theme(&theme, &output.stderr);
+        assert_unnamed_theme(&theme, &repeated.stderr);
+    }
 }
 
 fn cursor_entry(size: u32, hotspot: (u16, u16)) -> IconDirEntry {

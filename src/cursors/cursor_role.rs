@@ -6,7 +6,7 @@ use documented::DocumentedVariants;
 ///
 /// Some cursors, such as `Crosshair`, have symlinks to Xcursors
 /// that aren't _exactly_ the same, such as `color-picker`.
-#[derive(Debug, PartialEq, Eq, Clone, DocumentedVariants)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash, DocumentedVariants)]
 pub enum CursorRole {
     // using https://github.com/khayalhus/win2xcur-batch/blob/main/map.json
     // NOTE: documentation here is displayed to users in manual installs.
