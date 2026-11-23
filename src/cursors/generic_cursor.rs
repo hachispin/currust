@@ -7,7 +7,6 @@ use crate::formats::{ani::AniFile, xcursor::Xcursor};
 use super::{cursor_image::CursorImage, cursor_role::CursorRole};
 
 use std::{
-    collections::BTreeMap,
     fs::{self, File},
     io::{BufWriter, Cursor, Write},
     path::Path,
@@ -24,8 +23,7 @@ pub struct GenericCursor {
     /// Source and generated frame sequences paired with their scale factors.
     ///
     /// The first sequence is the canonical base at scale 1.0, chosen by
-    /// [`Self::get_base_dimensions`]. For a source with 32x32 and 64x64 frames,
-    /// `--scale-to 2.0` targets the 64x64 size that is already present.
+    /// [`Self::get_base_dimensions`]. Each sequence has a distinct nominal size.
     images: Vec<(f64, Vec<CursorImage>)>,
     /// The cursor's role when used in a theme.
     pub role: Option<CursorRole>,
@@ -59,7 +57,7 @@ impl GenericCursor {
                 .iter()
                 .any(|(_, stored)| stored[0].nominal_size == source_size)
             {
-                bail!("multiple source cursor variants have nominal size {source_size}");
+                bail!("duplicate nominal size {source_size} in source cursor variants");
             }
 
             let scale_factor = f64::from(source_size) / f64::from(base_size);
@@ -77,22 +75,23 @@ impl GenericCursor {
     ///
     /// ## Errors
     ///
-    /// If the base size is zero.
+    /// If the base size is zero or produces duplicate nominal sizes.
     pub fn set_base_nominal_size(&mut self, size: u32) -> Result<()> {
         if size == 0 {
             bail!("nominal size can't be zero");
         }
 
-        let nominal_sizes = self
-            .images
-            .iter()
-            .map(|(scale, _)| {
-                let nominal_size = (f64::from(size) * scale).floor().max(1.0);
+        let mut nominal_sizes = Vec::with_capacity(self.images.len());
 
-                #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                Ok(nominal_size as u32)
-            })
-            .collect::<Result<Vec<_>>>()?;
+        for (scale, _) in &self.images {
+            let nominal_size = Self::scaled_nominal_size(size, *scale);
+
+            if nominal_sizes.contains(&nominal_size) {
+                bail!("base nominal size {size} produces duplicate nominal size {nominal_size}");
+            }
+
+            nominal_sizes.push(nominal_size);
+        }
 
         for ((_, frames), nominal_size) in self.images.iter_mut().zip(nominal_sizes) {
             for frame in frames {
@@ -103,27 +102,21 @@ impl GenericCursor {
         Ok(())
     }
 
-    /// Adds a variant scaled from the canonical base if its scale and nominal size are new.
+    /// Adds a variant scaled from the canonical base.
     ///
     /// ## Errors
     ///
-    /// If resizing fails.
+    /// If the nominal size already exists or resizing fails.
     pub fn add_scale(&mut self, scale_factor: f64, algorithm: ResizeAlg) -> Result<()> {
         let base = &self.images[0].1;
-        #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let nominal_size = ((f64::from(base[0].nominal_size) * scale_factor).floor() as u32).max(1);
+        let nominal_size = Self::scaled_nominal_size(base[0].nominal_size, scale_factor);
 
-        #[expect(
-            clippy::float_cmp,
-            reason = "skip scales already present at the requested factor"
-        )]
         if self
             .images
             .iter()
-            .any(|(scale, frames)| *scale == scale_factor || frames[0].nominal_size == nominal_size)
+            .any(|(_, frames)| frames[0].nominal_size == nominal_size)
         {
-            eprintln!("scale_factor={scale_factor} already exists, skipping");
-            return Ok(());
+            bail!("scale factor {scale_factor} produces duplicate nominal size {nominal_size}");
         }
 
         let scaled_frames = base
@@ -134,6 +127,11 @@ impl GenericCursor {
         self.images.push((scale_factor, scaled_frames));
 
         Ok(())
+    }
+
+    #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    fn scaled_nominal_size(base_size: u32, scale_factor: f64) -> u32 {
+        (f64::from(base_size) * scale_factor).floor().max(1.0) as u32
     }
 
     /// Reads the file and parses based on extension.
@@ -186,7 +184,7 @@ impl GenericCursor {
         for entry in entries {
             let image = CursorImage::from_entry(entry, 0)?;
 
-            if image.dimensions() == base_dims {
+            if base.is_empty() && image.dimensions() == base_dims {
                 base.push(image);
             } else {
                 variants.push(vec![image]);
@@ -260,23 +258,42 @@ impl GenericCursor {
             .collect();
 
         let base_dims = Self::get_base_dimensions(&sequenced_icos);
-        let mut by_dimensions = BTreeMap::<_, Vec<_>>::new();
+        let mut base = Vec::new();
+        let mut variants = Vec::<Vec<CursorImage>>::new();
+        let mut step_sizes = Vec::new();
 
         for (ico, delay) in sequenced_icos.iter().zip(delays_ms) {
+            step_sizes.clear();
+
             for entry in ico.entries() {
                 let image = CursorImage::from_entry(entry, delay)?;
-                by_dimensions
-                    .entry(image.dimensions())
-                    .or_default()
-                    .push(image);
+
+                if step_sizes.contains(&image.nominal_size) {
+                    bail!(
+                        "duplicate nominal size {} in an ANI frame",
+                        image.nominal_size
+                    );
+                }
+
+                step_sizes.push(image.nominal_size);
+                let dimensions = image.dimensions();
+
+                if dimensions == base_dims {
+                    base.push(image);
+                } else if let Some(frames) = variants
+                    .iter_mut()
+                    .find(|frames| frames[0].dimensions() == dimensions)
+                {
+                    frames.push(image);
+                } else {
+                    variants.push(vec![image]);
+                }
             }
         }
 
-        let base = by_dimensions
-            .remove(&base_dims)
-            .context("no base frames found")?;
+        variants.sort_unstable_by_key(|frames| frames[0].dimensions());
 
-        Self::from_source(base, by_dimensions.into_values(), info)
+        Self::from_source(base, variants, info)
     }
 
     /// Saves `self` to `path` as Xcursor.

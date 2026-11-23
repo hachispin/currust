@@ -36,6 +36,18 @@ fn run_success(command: &mut Command) {
     );
 }
 
+fn run_failure(command: &mut Command, expected_error: &str) {
+    let output = command.output().unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        !output.status.success(),
+        "{command:?} unexpectedly succeeded"
+    );
+    assert!(stderr.contains(expected_error), "{command:?}: {stderr}");
+    assert!(!stderr.contains("panicked"), "{command:?}: {stderr}");
+}
+
 fn assert_alias(cursors: &Path, alias: &str, target: &str) {
     let path = cursors.join(alias);
     let link = fs::read_link(&path)
@@ -216,6 +228,49 @@ fn adds_cur_sizes_and_preserves_native_images() {
     );
 }
 
+#[test]
+fn rejects_duplicate_nominal_sizes_when_scaling() {
+    let directory = tempdir().unwrap();
+    let input = directory.path().join("multi-size.cur");
+    let out = directory.path().join("out");
+    let mut cursor = IconDir::new(ResourceType::Cursor);
+
+    for size in [16, 32, 64] {
+        cursor.add_entry(cursor_entry(size, (0, 0)));
+    }
+
+    cursor.write(File::create(&input).unwrap()).unwrap();
+
+    let cases: &[(&[&str], u32)] = &[
+        (&["--scale-to", "1.5", "1.51"], 48),
+        (&["--scale-to", "1.5", "1.5"], 48),
+        (&["--scale-to", "2"], 64),
+        (&["--base-nominal-size", "1"], 1),
+    ];
+
+    for &(args, size) in cases {
+        run_failure(
+            currust(&input, &out).args(args),
+            &format!("duplicate nominal size {size}"),
+        );
+        assert!(!out.join("multi-size").exists());
+    }
+}
+
+#[test]
+fn rejects_duplicate_sizes_in_cur() {
+    let directory = tempdir().unwrap();
+    let input = directory.path().join("duplicate.cur");
+    let out = directory.path().join("out");
+    let mut cursor = IconDir::new(ResourceType::Cursor);
+    cursor.add_entry(cursor_entry(32, (0, 0)));
+    cursor.add_entry(cursor_entry(32, (1, 1)));
+    cursor.write(File::create(&input).unwrap()).unwrap();
+
+    run_failure(&mut currust(&input, &out), "duplicate nominal size 32");
+    assert!(!out.join("duplicate").exists());
+}
+
 fn riff_chunk(id: &[u8; 4], data: &[u8]) -> Vec<u8> {
     let mut chunk = id.to_vec();
     chunk.extend(u32::try_from(data.len()).unwrap().to_le_bytes());
@@ -236,12 +291,17 @@ fn riff_numbers(id: &[u8; 4], values: &[u32]) -> Vec<u8> {
     riff_chunk(id, &data)
 }
 
-fn animated_cursor(sequence: [u32; 3]) -> Vec<u8> {
+const ANI_FRAME_HOTSPOTS: [&[(u16, u16)]; 2] = [&[(1, 2)], &[(3, 4)]];
+
+fn animated_cursor(sequence: [u32; 3], frame_hotspots: [&[(u16, u16)]; 2]) -> Vec<u8> {
     let mut frames = b"fram".to_vec();
 
-    for hotspot in [(1, 2), (3, 4)] {
+    for hotspots in frame_hotspots {
         let mut cursor = IconDir::new(ResourceType::Cursor);
-        cursor.add_entry(cursor_entry(8, hotspot));
+
+        for &hotspot in hotspots {
+            cursor.add_entry(cursor_entry(8, hotspot));
+        }
 
         let mut icon = Vec::new();
         cursor.write(&mut icon).unwrap();
@@ -263,7 +323,7 @@ fn preserves_ani_playback_order_and_step_delays() {
     let directory = tempdir().unwrap();
     let input = directory.path().join("sequenced.ani");
     let out = directory.path().join("out");
-    fs::write(&input, animated_cursor([1, 0, 1])).unwrap();
+    fs::write(&input, animated_cursor([1, 0, 1], ANI_FRAME_HOTSPOTS)).unwrap();
 
     run_success(&mut currust(&input, &out));
 
@@ -279,25 +339,26 @@ fn preserves_ani_playback_order_and_step_delays() {
 fn rejects_malformed_ani() {
     let directory = tempdir().unwrap();
     let out = directory.path().join("out");
-    let mut truncated = animated_cursor([1, 0, 1]);
+    let mut truncated = animated_cursor([1, 0, 1], ANI_FRAME_HOTSPOTS);
     truncated.truncate(truncated.len() - 4);
 
     for (name, bytes, expected_error) in [
         (
             "bad-sequence",
-            animated_cursor([1, 2, 1]),
+            animated_cursor([1, 2, 1], ANI_FRAME_HOTSPOTS),
             "go out of bounds",
         ),
         ("truncated", truncated, "outside of blob"),
+        (
+            "duplicate-size",
+            animated_cursor([1, 0, 1], [&[(1, 2), (2, 3)], &[(3, 4), (4, 5)]]),
+            "duplicate nominal size 8",
+        ),
     ] {
         let input = directory.path().join(format!("{name}.ani"));
         fs::write(&input, bytes).unwrap();
 
-        let result = currust(&input, &out).output().unwrap();
-        let stderr = String::from_utf8_lossy(&result.stderr);
-        assert!(!result.status.success(), "{name} unexpectedly converted");
-        assert!(stderr.contains(expected_error), "{name}: {stderr}");
-        assert!(!stderr.contains("panicked"), "{name}: {stderr}");
+        run_failure(&mut currust(&input, &out), expected_error);
         assert!(!out.join(name).exists());
     }
 }

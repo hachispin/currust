@@ -55,6 +55,7 @@ pub struct Args {
     ///
     /// Existing and generated variants are sized relative to the base. For example, if the
     /// base nominal size is 24, a 2x variant has a nominal size of 48.
+    /// The resulting nominal sizes must be distinct within each cursor.
     ///
     /// Setting this to 24 may help with preventing applications
     /// from scaling your cursor. Perhaps useful for pixel art.
@@ -97,6 +98,7 @@ pub struct Args {
     /// etc. Any negative values are considered invalid scale factors.
     ///
     /// All scaled variations and the original cursor are included in the produced Xcursor file(s).
+    /// Each requested scale must produce a nominal size distinct from existing variants.
     #[arg(long, value_parser, num_args(1..), value_name = "F64_SCALE_FACTORS")]
     scale_to: Vec<f64>,
 
@@ -237,7 +239,6 @@ impl ParsedArgs {
         }
 
         scale_to.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
-        scale_to.dedup();
         fs::create_dir_all(&out)?;
 
         Ok(Self {
