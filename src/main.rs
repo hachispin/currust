@@ -58,14 +58,22 @@ macro_rules! warn {
     };
 }
 
-fn save_theme(mut theme: CursorTheme, args: &ParsedArgs) -> Result<()> {
+fn scale_cursor(cursor: &mut GenericCursor, args: &ParsedArgs) -> Result<()> {
     if let Some(size) = args.base_nominal_size {
-        theme = theme.set_base_nominal_size(size)?;
+        cursor.set_base_nominal_size(size)?;
     }
 
-    for &sf in &args.scale_to {
-        theme.add_scale(sf, args.get_algorithm(sf))?;
+    for &factor in &args.scale_to {
+        cursor.add_scale(factor, args.get_algorithm(factor))?;
     }
+
+    Ok(())
+}
+
+fn save_theme(mut theme: CursorTheme, args: &ParsedArgs) -> Result<()> {
+    theme
+        .par_cursors_mut()
+        .try_for_each(|cursor| scale_cursor(cursor, args))?;
 
     theme.save_as_x11_theme(&args.out)
 }
@@ -94,14 +102,7 @@ fn main() -> Result<()> {
                     .ok_or_else(|| anyhow!("no file stem for cursor_file={}", f.display()))?,
             );
 
-            if let Some(size) = args.base_nominal_size {
-                cursor.set_base_nominal_size(size)?;
-            }
-
-            for &sf in &args.scale_to {
-                cursor.add_scale(sf, args.get_algorithm(sf))?;
-            }
-
+            scale_cursor(&mut cursor, &args)?;
             cursor.save_as_xcursor(filename)
         })?;
     }

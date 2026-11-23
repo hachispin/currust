@@ -119,25 +119,17 @@ enum ScalingAlgorithm {
     Lanczos3,
 }
 
-// not meant to be used directly; use ResizeAlg impl.
-impl From<&ScalingAlgorithm> for FilterType {
-    fn from(alg: &ScalingAlgorithm) -> Self {
-        match alg {
-            ScalingAlgorithm::Nearest => unreachable!(),
-            ScalingAlgorithm::Box => Self::Box,
-            ScalingAlgorithm::Bilinear => Self::Bilinear,
-            ScalingAlgorithm::Mitchell => Self::Mitchell,
-            ScalingAlgorithm::Lanczos3 => Self::Lanczos3,
-        }
-    }
-}
-
 impl From<&ScalingAlgorithm> for ResizeAlg {
     fn from(alg: &ScalingAlgorithm) -> Self {
-        match alg {
-            ScalingAlgorithm::Nearest => Self::Nearest,
-            v => Self::Convolution(FilterType::from(v)),
-        }
+        let filter = match alg {
+            ScalingAlgorithm::Nearest => return Self::Nearest,
+            ScalingAlgorithm::Box => FilterType::Box,
+            ScalingAlgorithm::Bilinear => FilterType::Bilinear,
+            ScalingAlgorithm::Mitchell => FilterType::Mitchell,
+            ScalingAlgorithm::Lanczos3 => FilterType::Lanczos3,
+        };
+
+        Self::Convolution(filter)
     }
 }
 

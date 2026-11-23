@@ -10,7 +10,6 @@ use fast_image_resize::{
 use ico::{IconDirEntry, ResourceType};
 
 /// Represents a generic cursor image.
-#[derive(Clone)]
 pub struct CursorImage {
     width: u32,
     height: u32,
@@ -204,30 +203,4 @@ impl fmt::Debug for CursorImage {
             .field("delay", &self.delay)
             .finish_non_exhaustive()
     }
-}
-
-#[cfg(test)]
-pub mod tests {
-    use super::CursorImage;
-    use std::sync::LazyLock;
-
-    pub static BLACK: LazyLock<CursorImage> = LazyLock::new(|| CursorImage {
-        width: 32,
-        height: 32,
-        nominal_size: 32,
-        hotspot_x: 0,
-        hotspot_y: 0,
-        delay: 100,
-        rgba: vec![0_u8; 4096],
-    });
-
-    pub static WHITE: LazyLock<CursorImage> = LazyLock::new(|| CursorImage {
-        width: 32,
-        height: 32,
-        nominal_size: 32,
-        hotspot_x: 0,
-        hotspot_y: 0,
-        delay: 100,
-        rgba: vec![255u8; 4096],
-    });
 }

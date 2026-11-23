@@ -16,7 +16,6 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow, bail};
-use fast_image_resize::ResizeAlg;
 use rayon::iter::{IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator};
 
 /// Cursor mappings stored in installer files.
@@ -31,7 +30,7 @@ pub struct CursorMapping {
 /// Represents a generic cursor theme.
 #[derive(Debug)]
 pub struct CursorTheme {
-    cursors: Vec<GenericCursor>,
+    cursors: Vec<(CursorRole, GenericCursor)>,
     name: String,
 }
 
@@ -62,29 +61,25 @@ impl CursorTheme {
             );
         }
 
-        let mut cursors: Vec<GenericCursor> = Vec::with_capacity(mappings.len());
+        let mut cursors = Vec::with_capacity(mappings.len());
         let mut fallback_hash = name.is_empty().then(DefaultHasher::new);
 
         for CursorMapping { path, role } in mappings {
             if cursors
                 .iter()
-                .any(|cursor| cursor.role.as_ref() == Some(&role))
+                .any(|(existing_role, _)| existing_role == &role)
             {
                 bail!("duplicate cursor type: {role:?}");
             }
 
-            let path = if path.exists() {
-                path
-            } else {
-                resolve_icase(&path)?.ok_or_else(|| {
-                    anyhow!(
-                        "cursor path, path={} not found in parent (case-insensitive)",
-                        path.display()
-                    )
-                })?
-            };
+            let path = resolve_icase(&path)?.ok_or_else(|| {
+                anyhow!(
+                    "cursor path, path={} not found in parent (case-insensitive)",
+                    path.display()
+                )
+            })?;
 
-            let mut cursor = GenericCursor::from_path(&path).with_context(|| {
+            let cursor = GenericCursor::from_path(&path).with_context(|| {
                 format!("while reading path={} as generic cursor", path.display())
             })?;
 
@@ -95,8 +90,7 @@ impl CursorTheme {
                 absolute(&path)?.hash(hasher);
             }
 
-            cursor.role = Some(role);
-            cursors.push(cursor);
+            cursors.push((role, cursor));
         }
 
         let name = if let Some(mut hasher) = fallback_hash {
@@ -139,30 +133,9 @@ impl CursorTheme {
         Self::load_mappings(mappings, name, Some(installer_file))
     }
 
-    /// Sets the base nominal size of every cursor in this theme.
-    ///
-    /// ## Errors
-    ///
-    /// From [`GenericCursor::set_base_nominal_size`].
-    pub fn set_base_nominal_size(mut self, size: u32) -> Result<Self> {
-        for cursor in &mut self.cursors {
-            cursor.set_base_nominal_size(size)?;
-        }
-
-        Ok(self)
-    }
-
-    /// Adds scale to all cursors for the current theme.
-    ///
-    /// ## Errors
-    ///
-    /// From [`GenericCursor::add_scale`].
-    pub fn add_scale(&mut self, scale_factor: f64, algorithm: ResizeAlg) -> Result<()> {
-        self.cursors
-            .par_iter_mut()
-            .try_for_each(|c| c.add_scale(scale_factor, algorithm))?;
-
-        Ok(())
+    /// Iterates over mutable cursor data in parallel.
+    pub fn par_cursors_mut(&mut self) -> impl ParallelIterator<Item = &mut GenericCursor> {
+        self.cursors.par_iter_mut().map(|(_, cursor)| cursor)
     }
 
     /// Saves current theme in `dir`, which is created if it doesn't already exist.
@@ -195,7 +168,7 @@ impl CursorTheme {
 
         self.cursors
             .par_iter()
-            .try_for_each(|c| Self::save_cursor(c, &cursor_dir))?;
+            .try_for_each(|(role, cursor)| Self::save_cursor(role, cursor, &cursor_dir))?;
 
         /* ... write index.theme ... */
         let mut f = File::create(theme_dir.join("index.theme"))?;
@@ -218,8 +191,7 @@ impl CursorTheme {
     }
 
     /// Saves as Xcursor to `dir`, along with symlinks.
-    fn save_cursor(cursor: &GenericCursor, dir: &Path) -> Result<()> {
-        let role = cursor.role.as_ref().expect("theme cursors have roles");
+    fn save_cursor(role: &CursorRole, cursor: &GenericCursor, dir: &Path) -> Result<()> {
         let aliases = get_symlinks(role);
         let primary = dir.join(aliases[0]);
 
@@ -273,8 +245,7 @@ impl CursorTheme {
         let mut f = File::create(cursor_dir.join("write_symlinks.sh"))?;
         writeln!(&mut f, "#!/usr/bin/env bash\n")?;
 
-        for cursor in &self.cursors {
-            let role = cursor.role.as_ref().expect("theme cursors have roles");
+        for (role, _) in &self.cursors {
             let filenames = get_symlinks(role);
             let src = filenames[0];
             let symlinks = &filenames[1..];

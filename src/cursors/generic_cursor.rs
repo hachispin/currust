@@ -4,7 +4,7 @@
 
 use crate::formats::{ani::AniFile, xcursor::Xcursor};
 
-use super::{cursor_image::CursorImage, cursor_role::CursorRole};
+use super::cursor_image::CursorImage;
 
 use std::{
     fs::{self, File},
@@ -25,8 +25,6 @@ pub struct GenericCursor {
     /// The first sequence is the canonical base at scale 1.0, chosen by
     /// [`Self::get_base_dimensions`]. Each sequence has a distinct nominal size.
     images: Vec<(f64, Vec<CursorImage>)>,
-    /// The cursor's role when used in a theme.
-    pub role: Option<CursorRole>,
     /// Info stored within the cursor.
     ///
     /// For ANI this is its "INFO" chunk, while for Xcursor this is a comment chunk.
@@ -64,11 +62,7 @@ impl GenericCursor {
             images.push((scale_factor, frames));
         }
 
-        Ok(Self {
-            images,
-            role: None,
-            info,
-        })
+        Ok(Self { images, info })
     }
 
     /// Sets the nominal size of the base and updates each variant by its stored scale.
@@ -345,30 +339,5 @@ impl GenericCursor {
     #[must_use]
     pub fn num_images(&self) -> usize {
         self.images.iter().map(|(_, frames)| frames.len()).sum()
-    }
-}
-
-#[cfg(test)]
-pub mod tests {
-    use super::*;
-    use crate::cursors::cursor_image::tests::{BLACK, WHITE};
-
-    /// Generates an animated cursor with ten alternating black and white frames.
-    #[expect(clippy::missing_panics_doc)]
-    pub fn black_and_white() -> GenericCursor {
-        let frames = [
-            BLACK.clone(),
-            WHITE.clone(),
-            BLACK.clone(),
-            WHITE.clone(),
-            BLACK.clone(),
-            WHITE.clone(),
-            BLACK.clone(),
-            WHITE.clone(),
-            BLACK.clone(),
-            WHITE.clone(),
-        ];
-
-        GenericCursor::from_source(frames.to_vec(), [], None).unwrap()
     }
 }

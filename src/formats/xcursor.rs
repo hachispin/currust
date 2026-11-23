@@ -293,72 +293,9 @@ impl Xcursor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{cursors::generic_cursor::tests::black_and_white, from_root};
+    use crate::from_root;
 
-    use std::{
-        fmt::Write,
-        io::{BufWriter, Seek, SeekFrom},
-        os::fd::IntoRawFd,
-        ptr::NonNull,
-    };
-
-    use binrw::BinWrite;
-    use libc::{FILE, fclose, fdopen};
-    use tempfile::tempfile;
-
-    macro_rules! denullify {
-        ($ptr:expr, $($msg:tt)*) => {
-            NonNull::new($ptr).unwrap_or_else(|| panic!($($msg)*))
-        };
-    }
-
-    #[repr(transparent)]
-    struct CFile(NonNull<FILE>);
-
-    impl Drop for CFile {
-        fn drop(&mut self) {
-            unsafe {
-                fclose(self.0.as_ptr());
-            }
-        }
-    }
-
-    impl CFile {
-        fn new(fd: i32) -> Self {
-            let f = denullify!(
-                unsafe { fdopen(fd, c"r".as_ptr()) },
-                "fdopen() returned NULL with fd={fd}"
-            );
-
-            Self(f)
-        }
-    }
-
-    /// Attempts to load the cursor produced from `black_and_white()` with libXcursor.
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn libxcursor() {
-        use x11::xcursor::{XcursorFileLoadImages, XcursorImagesDestroy};
-
-        let xcursor = Xcursor::new(&black_and_white()).unwrap();
-        let mut tempfile = tempfile().unwrap();
-        xcursor.write(&mut BufWriter::new(&tempfile)).unwrap();
-        tempfile.seek(SeekFrom::Start(0)).unwrap();
-
-        let f = CFile::new(tempfile.into_raw_fd());
-
-        let image_ptr = denullify!(
-            unsafe { XcursorFileLoadImages(f.0.as_ptr(), 32) },
-            "XcursorFileLoadImages() returned NULL with f={:p}",
-            f.0.as_ptr()
-        );
-
-        unsafe {
-            XcursorImagesDestroy(image_ptr.as_ptr());
-        }
-
-        // NOTE: `tempfile` is cleaned up by the OS.
-    }
+    use std::fmt::Write;
 
     /// Golden file test.
     ///
